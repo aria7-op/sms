@@ -23,8 +23,64 @@ import CustomerEventService from '../services/customerEventService.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
+import mysql from 'mysql2/promise';
 
 const prisma = new PrismaClient();
+
+// Database connection pool
+let dbPool;
+
+// Initialize database pool
+async function initializeDbPool() {
+  if (dbPool) return dbPool;
+  
+  try {
+    let dbConfig;
+    
+    // Try to parse DATABASE_URL first
+    if (process.env.DATABASE_URL) {
+      // Remove mysql:// prefix
+      const cleanUrl = process.env.DATABASE_URL.replace('mysql://', '');
+      
+      // Split into parts
+      const [credentials, hostAndDb] = cleanUrl.split('@');
+      const [user, password] = credentials.split(':');
+      const [host, database] = hostAndDb.split('/');
+      
+      dbConfig = {
+        host: host.split(':')[0],
+        port: host.split(':')[1] || 3306,
+        user: user,
+        password: password,
+        database: database
+      };
+    } else {
+      dbConfig = {
+        host: process.env.DB_HOST || 'localhost',
+        port: process.env.DB_PORT || 3306,
+        user: process.env.DB_USER || 'mohammad1_ahmadi1',
+        password: process.env.DB_PASSWORD || 'mohammad112_',
+        database: process.env.DB_NAME || 'mohammad1_school'
+      };
+    }
+    
+    dbPool = mysql.createPool({
+      host: dbConfig.host,
+      port: dbConfig.port,
+      user: dbConfig.user,
+      password: dbConfig.password,
+      database: dbConfig.database,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0
+    });
+    
+    return dbPool;
+  } catch (error) {
+    console.error('Failed to initialize database pool:', error);
+    throw error;
+  }
+}
 
 // ======================
 // BASIC CRUD OPERATIONS
@@ -75,99 +131,85 @@ export const getAllCustomers = async (req, res) => {
     
     const { schoolId } = req.user;
 
-    // Build where clause
-    const whereClause = { schoolId: BigInt(schoolId) };
+    // Initialize database pool
+    const pool = await initializeDbPool();
+
+    // Use simple SQL query instead of complex Prisma
+    let sql = 'SELECT id, name, email, phone, gender, source, purpose, department, totalSpent, orderCount, type, createdAt FROM customers WHERE schoolId = ?';
+    let params = [schoolId];
     
     if (search) {
-      whereClause.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search, mode: 'insensitive' } }
-      ];
+      sql += ' AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)';
+      const searchTerm = `%${search}%`;
+      params.push(searchTerm, searchTerm, searchTerm);
     }
     
-    if (type) whereClause.type = type;
-    if (minValue || maxValue) {
-      whereClause.totalSpent = {};
-      if (minValue) whereClause.totalSpent.gte = parseFloat(minValue);
-      if (maxValue) whereClause.totalSpent.lte = parseFloat(maxValue);
+    if (type) {
+      sql += ' AND type = ?';
+      params.push(type);
     }
-    if (dateFrom || dateTo) {
-      whereClause.createdAt = {};
-      if (dateFrom) whereClause.createdAt.gte = new Date(dateFrom);
-      if (dateTo) whereClause.createdAt.lte = new Date(dateTo);
-    }
-
-    // Build include clause
-    const includeClause = {};
-    if (include) {
-      const includes = include.split(',');
-      if (includes.includes('user')) includeClause.user = true;
-      if (includes.includes('school')) includeClause.school = true;
-    }
-
-    // Build query options
-    const queryOptions = {
-      where: whereClause,
-      include: includeClause,
-      orderBy: { [sortBy]: sortOrder.toLowerCase() }
-    };
     
-    // Only apply pagination if requested
+    // Add sorting
+    sql += ` ORDER BY ${sortBy} ${sortOrder.toUpperCase()}`;
+    
+    // Add pagination
     if (isPaginationRequested) {
-      queryOptions.skip = (pageNum - 1) * limitNum;
-      queryOptions.take = limitNum;
+      const offset = (pageNum - 1) * limitNum;
+      sql += ' LIMIT ? OFFSET ?';
+      params.push(limitNum, offset);
     }
     
-    const [customers, total] = await Promise.all([
-      prisma.customer.findMany(queryOptions),
-      prisma.customer.count({ where: whereClause })
-    ]);
-
-    // Patch: Map null uuid to empty string for compatibility
-    const patchedCustomers = customers.map(c => ({
-      ...c,
-      uuid: c.uuid === null ? '' : c.uuid
+    // Execute query
+    const [customers] = await dbPool.execute(sql, params);
+    
+    // Get total count for pagination
+    let countSql = 'SELECT COUNT(*) as total FROM customers WHERE schoolId = ?';
+    let countParams = [schoolId];
+    
+    if (search) {
+      countSql += ' AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)';
+      const searchTerm = `%${search}%`;
+      countParams.push(searchTerm, searchTerm, searchTerm);
+    }
+    
+    if (type) {
+      countSql += ' AND type = ?';
+      countParams.push(type);
+    }
+    
+    const [countResult] = await dbPool.execute(countSql, countParams);
+    const totalCount = countResult[0].total;
+    
+    // Convert BigInt to string for JSON serialization
+    const formattedCustomers = customers.map(customer => ({
+      ...customer,
+      id: customer.id.toString(),
+      schoolId: customer.schoolId ? customer.schoolId.toString() : null,
+      totalSpent: customer.totalSpent ? customer.totalSpent.toString() : null,
+      createdAt: customer.createdAt ? customer.createdAt.toISOString() : null
     }));
 
-    const result = {
+    res.json({
       success: true,
-      message: 'Customers retrieved successfully',
-      data: convertBigInts(patchedCustomers),
-      meta: {
-        total,
-        filters: {
-          search,
-          status,
-          type,
-          minValue: minValue ? parseFloat(minValue) : undefined,
-          maxValue: maxValue ? parseFloat(maxValue) : undefined,
-          dateFrom,
-          dateTo,
-          tags: tags ? tags.split(',') : undefined
-        }
-      }
-    };
-    
-    // Only include pagination info if pagination was requested
-    if (isPaginationRequested) {
-      result.pagination = {
+      data: formattedCustomers,
+      pagination: isPaginationRequested ? {
         page: pageNum,
         limit: limitNum,
-        total,
-        pages: Math.ceil(total / limitNum)
-      };
-    }
+        total: totalCount,
+        pages: Math.ceil(totalCount / limitNum)
+      } : null,
+      meta: {
+        total: totalCount,
+        count: customers.length
+      }
+    });
 
-    logger.info(`Retrieved ${customers.length} customers`);
-    res.json(result);
   } catch (error) {
-    logger.error('Error getting customers:', error);
-    res.status(500).json({ 
-      success: false, 
+    console.error('❌ Failed to retrieve customers:', error);
+    res.status(500).json({
+      success: false,
       message: 'Failed to retrieve customers',
-      error: error.message 
+      error: error.message
     });
   }
 };
