@@ -1,10 +1,45 @@
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '../generated/prisma/client.js';
 import { default as ownersStore } from '../store/ownersStore.js';
+import mysql from 'mysql2/promise';
 
 const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+
+// Database connection pool (import from app.js)
+let dbPool;
+
+// Initialize database pool
+async function initializeDbPool() {
+  if (dbPool) return dbPool;
+  
+  try {
+    const dbConfig = {
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT || 3306,
+      user: process.env.DB_USER || 'mohammad1_ahmadi1',
+      password: process.env.DB_PASSWORD || 'mohammad112_',
+      database: process.env.DB_NAME || 'mohammad1_school'
+    };
+    
+    dbPool = mysql.createPool({
+      host: dbConfig.host,
+      port: dbConfig.port,
+      user: dbConfig.user,
+      password: dbConfig.password,
+      database: dbConfig.database,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0
+    });
+    
+    return dbPool;
+  } catch (error) {
+    console.error('Failed to initialize database pool:', error);
+    throw error;
+  }
+}
 
 // ======================
 // AUTHENTICATION MIDDLEWARE
@@ -13,7 +48,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-i
 /**
  * Verify JWT token and attach user to request
  */
-export const authenticateToken = (req, res, next) => {
+export const authenticateToken = async (req, res, next) => {
   console.log('=== authenticateToken START ===');
   console.log('Request:', req.method, req.path);
   console.log('Request IP:', req.ip, 'Forwarded for:', req.headers['x-forwarded-for']);
@@ -42,120 +77,47 @@ export const authenticateToken = (req, res, next) => {
     console.log('Token verified for user:', decoded.userId);
     console.log('Decoded token:', decoded);
     
-    // Check if this is an owner token or user token
-    if (decoded.role === 'SUPER_ADMIN' || decoded.ownerId) {
-      // This could be an owner or a SUPER_ADMIN user
-      console.log('Fetching owner from database...');
-      prisma.owner.findUnique({
-        where: { id: BigInt(decoded.userId || decoded.id) },
-        include: {
-          schools: {
-            select: {
-              id: true,
-              name: true,
-              code: true
-            }
-          }
-        }
-      }).then(owner => {
-        if (owner) {
-          console.log('Owner found:', owner.id, owner.email);
-          // Set owner properties for compatibility
-          req.user = {
-            ...owner,
-            role: 'SUPER_ADMIN',
-            type: 'owner',
-            schoolIds: owner.schools.map(school => school.id),
-            schoolId: owner.schools.length > 0 ? owner.schools[0].id : null
-          };
-          console.log('=== authenticateToken END (Owner) ===');
-          next();
-        } else {
-          // Owner not found, check if it's a SUPER_ADMIN user
-          console.log('Owner not found, checking users table...');
-          prisma.user.findUnique({
-            where: { id: BigInt(decoded.userId || decoded.id) },
-            include: {
-              school: true,
-              createdByOwner: true,
-              teacher: true,
-              parent: true,
-              student: true,
-              staff: true
-            }
-          }).then(user => {
-            if (!user) {
-              console.log('=== authenticateToken ERROR: User not found ===');
-              return res.status(401).json({
-                success: false,
-                error: 'Access denied',
-                message: 'User not found in database'
-              });
-            }
-
-            console.log('User found:', user.id, user.email);
-            req.user = user;
-            console.log('=== authenticateToken END (User) ===');
-            next();
-          }).catch(error => {
-            console.error('=== authenticateToken DATABASE ERROR ===', error);
-            return res.status(500).json({
-              success: false,
-              error: 'Authentication error',
-              message: 'Database error during authentication: ' + error.message
-            });
-          });
-        }
-      }).catch(error => {
-        console.error('=== authenticateToken DATABASE ERROR ===', error);
-        return res.status(500).json({
-          success: false,
-          error: 'Authentication error',
-          message: 'Database error during authentication: ' + error.message
-        });
-      });
-    } else {
-      // This is a regular user token
-      console.log('Fetching user from database...');
-      prisma.user.findUnique({
-        where: { id: BigInt(decoded.userId || decoded.id) },
-        include: {
-          school: true,
-          createdByOwner: true,
-          teacher: true,
-          parent: true,
-          student: true,
-          staff: true
-        }
-      }).then(user => {
-        if (!user) {
-          console.log('=== authenticateToken ERROR: User not found ===');
-          return res.status(401).json({
-            success: false,
-            error: 'Access denied',
-            message: 'User not found in database'
-          });
-        }
-
-        console.log('User found:', user.id, user.email);
-        req.user = user;
-        console.log('=== authenticateToken END (User) ===');
-        next();
-      }).catch(error => {
-        console.error('=== authenticateToken DATABASE ERROR ===', error);
-        return res.status(500).json({
-          success: false,
-          error: 'Authentication error',
-          message: 'Database error during authentication: ' + error.message
-        });
+    // Initialize database pool
+    const pool = await initializeDbPool();
+    
+    // Find user in database using MySQL
+    console.log('Fetching user from database...');
+    const [users] = await pool.execute(
+      'SELECT id, email, name, role, schoolId, status FROM users WHERE id = ?',
+      [decoded.userId]
+    );
+    
+    if (users.length === 0) {
+      console.log('=== authenticateToken ERROR: User not found ===');
+      return res.status(401).json({
+        success: false,
+        error: 'Access denied',
+        message: 'User not found in database'
       });
     }
+
+    const user = users[0];
+    console.log('User found:', user.id, user.email);
+    
+    // Set user data for compatibility
+    req.user = {
+      id: user.id.toString(),
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      schoolId: user.schoolId ? user.schoolId.toString() : null,
+      status: user.status
+    };
+    
+    console.log('=== authenticateToken END (User) ===');
+    next();
+    
   } catch (error) {
-    console.error('=== authenticateToken JWT ERROR ===', error);
-    return res.status(403).json({
+    console.error('=== authenticateToken ERROR ===', error);
+    return res.status(500).json({
       success: false,
-      error: 'Access denied',
-      message: 'Invalid token'
+      error: 'Authentication error',
+      message: 'Database error during authentication: ' + error.message
     });
   }
 };
@@ -1206,7 +1168,8 @@ export const authorize = (allowedRoles = [], requiredPermissions = [], options =
             permissionCheck(req, res, (err) => {
               if (err) return next(err);
               next();
-            });
+            }
+            );
           } else {
             next();
           }
