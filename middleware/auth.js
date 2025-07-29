@@ -15,13 +15,34 @@ async function initializeDbPool() {
   if (dbPool) return dbPool;
   
   try {
-    const dbConfig = {
-      host: process.env.DB_HOST || 'localhost',
-      port: process.env.DB_PORT || 3306,
-      user: process.env.DB_USER || 'mohammad1_ahmadi1',
-      password: process.env.DB_PASSWORD || 'mohammad112_',
-      database: process.env.DB_NAME || 'mohammad1_school'
-    };
+    let dbConfig;
+    
+    // Try to parse DATABASE_URL first
+    if (process.env.DATABASE_URL) {
+      // Remove mysql:// prefix
+      const cleanUrl = process.env.DATABASE_URL.replace('mysql://', '');
+      
+      // Split into parts
+      const [credentials, hostAndDb] = cleanUrl.split('@');
+      const [user, password] = credentials.split(':');
+      const [host, database] = hostAndDb.split('/');
+      
+      dbConfig = {
+        host: host.split(':')[0],
+        port: host.split(':')[1] || 3306,
+        user: user,
+        password: password,
+        database: database
+      };
+    } else {
+      dbConfig = {
+        host: process.env.DB_HOST || 'localhost',
+        port: process.env.DB_PORT || 3306,
+        user: process.env.DB_USER || 'school',
+        password: process.env.DB_PASSWORD || 'YourName123!',
+        database: process.env.DB_NAME || 'school'
+      };
+    }
     
     dbPool = mysql.createPool({
       host: dbConfig.host,
