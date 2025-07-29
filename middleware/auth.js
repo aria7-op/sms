@@ -89,7 +89,7 @@ export const authenticateToken = (req, res, next) => {
               return res.status(401).json({
                 success: false,
                 error: 'Access denied',
-                message: 'User not found'
+                message: 'User not found in database'
               });
             }
 
@@ -102,7 +102,7 @@ export const authenticateToken = (req, res, next) => {
             return res.status(500).json({
               success: false,
               error: 'Authentication error',
-              message: 'Database error during authentication'
+              message: 'Database error during authentication: ' + error.message
             });
           });
         }
@@ -111,7 +111,7 @@ export const authenticateToken = (req, res, next) => {
         return res.status(500).json({
           success: false,
           error: 'Authentication error',
-          message: 'Database error during authentication'
+          message: 'Database error during authentication: ' + error.message
         });
       });
     } else {
@@ -133,7 +133,7 @@ export const authenticateToken = (req, res, next) => {
           return res.status(401).json({
             success: false,
             error: 'Access denied',
-            message: 'User not found'
+            message: 'User not found in database'
           });
         }
 
@@ -146,7 +146,7 @@ export const authenticateToken = (req, res, next) => {
         return res.status(500).json({
           success: false,
           error: 'Authentication error',
-          message: 'Database error during authentication'
+          message: 'Database error during authentication: ' + error.message
         });
       });
     }
