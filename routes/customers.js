@@ -68,8 +68,8 @@ import {
 
 const router = express.Router();
 
-// Temporarily disable authentication for testing
-// router.use(authenticateToken);
+// Re-enable authentication
+router.use(authenticateToken);
 
 // Test route without authentication
 router.get('/test', (req, res) => {
@@ -267,3 +267,4 @@ router.get('/:id/analytics/lifetime-value',
 customerController.getLifetimeValueAnalytics);
 
 export default router;
+
