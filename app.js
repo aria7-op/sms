@@ -121,9 +121,9 @@ async function initializeDatabase() {
       dbConfig = {
         host: process.env.DB_HOST || 'localhost',
         port: process.env.DB_PORT || 3306,
-        user: process.env.DB_USER || 'mohammad1_ahmadi1',
-        password: process.env.DB_PASSWORD || 'mohammad112_',
-        database: process.env.DB_NAME || 'mohammad1_school'
+        user: process.env.DB_USER || 'school',
+        password: process.env.DB_PASSWORD || 'YourName123!',
+        database: process.env.DB_NAME || 'school'
       };
       console.log('📋 Using individual environment variables');
     }
@@ -745,36 +745,6 @@ app.use('/api/transport', transportRoutes);
 
 // User routes
 app.use('/api/users', userRoutes);
-
-// Test endpoint for debugging
-app.get('/api/test-db', async (req, res) => {
-  try {
-    console.log('🔍 Testing database connection...');
-    
-    // Test basic connection
-    const connection = await dbPool.getConnection();
-    console.log('✅ Database connection successful');
-    connection.release();
-    
-    // Test user lookup
-    const [users] = await dbPool.execute('SELECT id, email, role FROM users LIMIT 5');
-    console.log('✅ User query successful, found users:', users.length);
-    
-    res.json({
-      success: true,
-      message: 'Database connection and user lookup successful',
-      userCount: users.length,
-      sampleUsers: users
-    });
-  } catch (error) {
-    console.error('❌ Database test failed:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Database test failed',
-      message: error.message
-    });
-  }
-});
 
 // Global error handler
 app.use((err, req, res, next) => {
