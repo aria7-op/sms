@@ -1,16 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import http from 'http';
-import bcryptjs from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import multer from 'multer';
 import compression from 'compression';
 import helmet from 'helmet';
 import mysql from 'mysql2/promise';
 import CryptoJS from 'crypto-js';
+import multer from 'multer';
 
 // Import all route modules
 import authRoutes from './routes/auth.js';
@@ -73,161 +68,73 @@ import userRoutes from './routes/users.js';
 dotenv.config();
 
 const app = express();
-const server = http.createServer(app);
 const PORT = process.env.PORT || 4000;
 
 // Database connection pool
 let dbPool;
 
-// Parse DATABASE_URL from environment
-function parseDatabaseUrl(url) {
-  if (!url) return null;
-  
-  try {
-    // Remove mysql:// prefix
-    const cleanUrl = url.replace('mysql://', '');
-    
-    // Split into parts
-    const [credentials, hostAndDb] = cleanUrl.split('@');
-    const [user, password] = credentials.split(':');
-    const [host, database] = hostAndDb.split('/');
-    
-    return {
-      host: host.split(':')[0],
-      port: host.split(':')[1] || 3306,
-      user: user,
-      password: password,
-      database: database
-    };
-  } catch (error) {
-    console.error('Error parsing DATABASE_URL:', error);
-    return null;
-  }
-}
-
 // Initialize database connection
 async function initializeDatabase() {
   try {
-    let dbConfig;
-    
-    // Try to parse DATABASE_URL first
-    if (process.env.DATABASE_URL) {
-      dbConfig = parseDatabaseUrl(process.env.DATABASE_URL);
-      console.log('📋 Using DATABASE_URL from environment');
-    }
-    
-    // If DATABASE_URL parsing failed or not available, use individual env vars
-    if (!dbConfig) {
-      dbConfig = {
-        host: process.env.DB_HOST || 'localhost',
-        port: process.env.DB_PORT || 3306,
-        user: process.env.DB_USER || 'mohammad1_ahmadi1',
-        password: process.env.DB_PASSWORD || 'mohammad112_',
-        database: process.env.DB_NAME || 'mohammad1_school'
-      };
-      console.log('📋 Using individual environment variables');
-    }
-    
-    console.log('🔧 Attempting database connection with:', {
-      host: dbConfig.host,
-      port: dbConfig.port,
-      user: dbConfig.user,
-      database: dbConfig.database
-    });
-    
-    // For cPanel, try both localhost and 127.0.0.1
-    const connectionOptions = {
-      host: dbConfig.host,
-      port: dbConfig.port,
-      user: dbConfig.user,
-      password: dbConfig.password,
-      database: dbConfig.database,
+    const dbConfig = {
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT || 3306,
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || '',
+      database: process.env.DB_NAME || 'school_db',
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
-      acquireTimeout: 12000000, // 120 seconds (2 minutes)
-      timeout: 12000000, // 120 seconds (2 minutes)
-      reconnect: true,
-      connectTimeout: 12000000, // 120 seconds for initial connection
-      acquireTimeoutMillis: 12000000, // 120 seconds for acquiring connection
-      timeoutMillis: 12000000 // 120 seconds for query timeout
+      acquireTimeout: 60000,
+      timeout: 60000,
+      reconnect: true
     };
     
-    console.log('🔧 Connection options:', {
-      host: connectionOptions.host,
-      port: connectionOptions.port,
-      user: connectionOptions.user,
-      database: connectionOptions.database
-    });
-    
-    dbPool = mysql.createPool(connectionOptions);
+    console.log('🔧 Connecting to database...');
+    dbPool = mysql.createPool(dbConfig);
 
     // Test connection
     const connection = await dbPool.getConnection();
     console.log('✅ Database connected successfully');
-    console.log(`📊 Connected to: ${dbConfig.database} on ${dbConfig.host}:${dbConfig.port}`);
     connection.release();
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
-    console.error('🔍 Error details:', error);
-    
-    // Try alternative connection if localhost fails
-    if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost')) {
-      console.log('🔄 Trying with 127.0.0.1 instead of localhost...');
-      try {
-        const altDbConfig = parseDatabaseUrl(process.env.DATABASE_URL.replace('localhost', '127.0.0.1'));
-        if (altDbConfig) {
-          dbPool = mysql.createPool({
-            host: altDbConfig.host,
-            port: altDbConfig.port,
-            user: altDbConfig.user,
-            password: altDbConfig.password,
-            database: altDbConfig.database,
-            waitForConnections: true,
-            connectionLimit: 10,
-            queueLimit: 0,
-            acquireTimeout: 120000, // 120 seconds (2 minutes)
-            timeout: 120000, // 120 seconds (2 minutes)
-            reconnect: true,
-            connectTimeout: 120000, // 120 seconds for initial connection
-            acquireTimeoutMillis: 120000, // 120 seconds for acquiring connection
-            timeoutMillis: 120000 // 120 seconds for query timeout
-          });
-          
-          const connection = await dbPool.getConnection();
-          console.log('✅ Database connected successfully with 127.0.0.1');
-          connection.release();
-          return;
-        }
-      } catch (altError) {
-        console.error('❌ Alternative connection also failed:', altError.message);
-      }
-    }
-    
-    console.error('💡 Database connection troubleshooting:');
-    console.error('💡 1. Check if MySQL is running on the server');
-    console.error('💡 2. Verify database credentials in cPanel');
-    console.error('💡 3. Check if the database exists');
-    console.error('💡 4. Verify user permissions');
-    // Continue without database for basic functionality
+    console.error('💡 Please check your database credentials in .env file');
   }
 }
+
+// ======================
+// MIDDLEWARE SETUP
+// ======================
 
 // Security middleware
 app.use(helmet());
 app.use(compression());
 
-// Enhanced memory settings for 2GB RAM
-app.use(express.json({
-  limit: '10mb',
-  verify: (req, res, buf) => {
-    try {
-      JSON.parse(buf);
-    } catch (e) {
-      throw new Error('Invalid JSON');
-    }
-  }
+// Enhanced CORS configuration
+app.use(cors({
+  origin: [
+   '*'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With', 
+    'Accept',
+    'Origin',
+    'x-client-version', 
+    'x-device-type', 
+    'x-request-id', 
+    'x-request-timestamp'
+  ],
+  exposedHeaders: ['Content-Length', 'X-Requested-With'],
+  maxAge: 86400 // 24 hours
 }));
+
+// Body parsing middleware
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Ensure req.body is always an object
@@ -236,7 +143,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Enhanced error handling for JSON parsing
+// JSON parsing error handler
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     return res.status(400).json({
@@ -248,104 +155,49 @@ app.use((err, req, res, next) => {
   next();
 });
 
-// Encryption middleware for handling encrypted API requests and responses
+// Encryption middleware (simplified)
 app.use((req, res, next) => {
   try {
-    // Skip encryption check for file uploads and health checks
+    // Skip encryption for file uploads and health checks
     if (req.path.includes('/upload') || req.path.includes('/health')) {
       return next();
     }
 
-    // Check if request body contains encrypted data
+    // Handle encrypted requests
     if (req.body && req.body.encryptedData) {
       const encryptionKey = process.env.API_ENCRYPTION_KEY;
       
       if (!encryptionKey) {
-        console.error('❌ API_ENCRYPTION_KEY not found in environment variables');
         return res.status(500).json({
           success: false,
-          message: 'Server encryption configuration error',
-          error: 'ENCRYPTION_KEY_MISSING'
+          message: 'Server encryption configuration error'
         });
       }
 
       try {
-        // Decrypt the data
         const bytes = CryptoJS.AES.decrypt(req.body.encryptedData, encryptionKey);
         const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
         
         if (!decryptedData) {
           return res.status(400).json({
             success: false,
-            message: 'Invalid encrypted data',
-            error: 'INVALID_ENCRYPTED_DATA'
+            message: 'Invalid encrypted data'
           });
         }
 
-        // Parse the decrypted JSON
-        const parsedData = JSON.parse(decryptedData);
-        
-        // Replace the request body with decrypted data
-        req.body = parsedData;
-        
-        console.log('🔓 Successfully decrypted API request');
+        req.body = JSON.parse(decryptedData);
       } catch (decryptError) {
-        console.error('❌ Decryption failed:', decryptError.message);
         return res.status(400).json({
           success: false,
-          message: 'Failed to decrypt request data',
-          error: 'DECRYPTION_FAILED'
+          message: 'Failed to decrypt request data'
         });
       }
     }
 
-    // Store original send and json methods
-    const originalSend = res.send;
+    // Handle encrypted responses
     const originalJson = res.json;
-    
-    // Override send method to encrypt responses
-    res.send = function(data) {
-      try {
-        // Skip encryption for error responses or non-JSON data
-        if (res.statusCode >= 400 || typeof data !== 'string' || !data.startsWith('{')) {
-          return originalSend.call(this, data);
-        }
-
-        const encryptionKey = process.env.API_ENCRYPTION_KEY;
-        if (!encryptionKey) {
-          return originalSend.call(this, data);
-        }
-
-        // Parse the response data
-        let responseData;
-        try {
-          responseData = JSON.parse(data);
-        } catch (e) {
-          return originalSend.call(this, data);
-        }
-
-        // Encrypt the response
-        const encryptedResponse = CryptoJS.AES.encrypt(
-          JSON.stringify(responseData), 
-          encryptionKey
-        ).toString();
-
-        // Send encrypted response
-        const encryptedData = {
-          encryptedData: encryptedResponse
-        };
-
-        return originalSend.call(this, JSON.stringify(encryptedData));
-      } catch (error) {
-        console.error('❌ Response encryption failed:', error);
-        return originalSend.call(this, data);
-      }
-    };
-
-    // Override json method to encrypt responses
     res.json = function(data) {
       try {
-        // Skip encryption for error responses
         if (res.statusCode >= 400) {
           return originalJson.call(this, data);
         }
@@ -355,20 +207,13 @@ app.use((req, res, next) => {
           return originalJson.call(this, data);
         }
 
-        // Encrypt the response
         const encryptedResponse = CryptoJS.AES.encrypt(
           JSON.stringify(data), 
           encryptionKey
         ).toString();
 
-        // Send encrypted response
-        const encryptedData = {
-          encryptedData: encryptedResponse
-        };
-
-        return originalJson.call(this, encryptedData);
+        return originalJson.call(this, { encryptedData: encryptedResponse });
       } catch (error) {
-        console.error('❌ Response encryption failed:', error);
         return originalJson.call(this, data);
       }
     };
@@ -378,33 +223,8 @@ app.use((req, res, next) => {
     console.error('❌ Encryption middleware error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error in encryption middleware',
-      error: 'ENCRYPTION_MIDDLEWARE_ERROR'
+      message: 'Internal server error'
     });
-  }
-});
-
-// Enable CORS for frontend
-app.use(cors({
-  origin: true, // Allow all origins
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-client-version', 'x-device-type', 'x-request-id', 'x-request-timestamp']
-}));
-
-// Additional CORS headers for preflight requests
-app.use((req, res, next) => {
-  // Always set CORS headers
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-client-version, x-device-type, x-request-id, x-request-timestamp');
-  res.header('Access-Control-Allow-Credentials', 'true');
-    
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  } else {
-    next();
   }
 });
 
@@ -412,40 +232,19 @@ app.use((req, res, next) => {
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
-  }
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-// Database helper functions
-async function query(sql, params = []) {
-  if (!dbPool) {
-    throw new Error('Database not connected');
-  }
-  
-  // Add timeout to database queries
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('Database query timeout')), 1200000); // 2 minutes
-  });
-  
-  const queryPromise = dbPool.execute(sql, params);
-  
-  try {
-    const [rows] = await Promise.race([queryPromise, timeoutPromise]);
-    return rows;
-  } catch (error) {
-    console.error('Database query failed:', error.message);
-    throw error;
-  }
-}
+// ======================
+// BASIC ROUTES
+// ======================
 
-// Basic routes
+// Root endpoint
 app.get('/', (req, res) => {
   res.json({ 
     message: 'School Management API is running',
-    version: '2.0 MySQL2',
-    memory: process.memoryUsage(),
-    uptime: process.uptime(),
+    version: '2.0',
+    timestamp: new Date().toISOString(),
     database: dbPool ? 'Connected' : 'Not connected'
   });
 });
@@ -458,23 +257,10 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     memory: {
       rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
-      heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
-      heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
-      external: `${Math.round(memUsage.external / 1024 / 1024)}MB`
+      heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`
     },
     uptime: `${Math.round(process.uptime())}s`,
-    database: dbPool ? 'Connected' : 'Not connected',
-    encryption: process.env.API_ENCRYPTION_KEY ? 'Enabled' : 'Disabled',
-    cors: 'Enabled'
-  });
-});
-
-// Simple test endpoint
-app.get('/test', (req, res) => {
-  res.json({ 
-    message: 'API is working!',
-    timestamp: new Date().toISOString(),
-    cors: 'Enabled'
+    database: dbPool ? 'Connected' : 'Not connected'
   });
 });
 
@@ -505,19 +291,17 @@ app.get('/api/database/status', async (req, res) => {
       return res.json({
         success: false,
         connected: false,
-        message: 'Database not connected',
-        error: 'No database pool available'
+        message: 'Database not connected'
       });
     }
     
-    // Test a simple query
-    const result = await query('SELECT 1 as test');
+    const result = await dbPool.execute('SELECT 1 as test');
     
     res.json({
       success: true,
       connected: true,
       message: 'Database connected and responding',
-      test: result[0]
+      test: result[0][0]
     });
   } catch (error) {
     res.json({
@@ -529,226 +313,116 @@ app.get('/api/database/status', async (req, res) => {
   }
 });
 
-// API Status endpoint
-app.get('/api/status', (req, res) => {
-  res.json({
-    success: true,
-    message: 'API endpoints are available',
-    database: dbPool ? 'Connected' : 'Not connected',
-    endpoints: [
-      '/api/auth',
-      '/api/abac',
-      '/api/assignments',
-      '/api/assignment-attachments',
-      '/api/attendances',
-      '/api/budgets',
-      '/api/classes',
-      '/api/conversations',
-      '/api/cqrs/students',
-      '/api/cqrs/teachers',
-      '/api/customer-events',
-      '/api/customers',
-      '/api/documents',
-      '/api/equipment',
-      '/api/events',
-      '/api/exam-timetables',
-      '/api/examinations',
-      '/api/expenses',
-      '/api/fee-items',
-      '/api/fees',
-      '/api/files',
-      '/api/google-drive',
-      '/api/grades',
-      '/api/hostels',
-      '/api/incomes',
-      '/api/installments',
-      '/api/integrated-payments',
-      '/api/inventory',
-      '/api/inventory-suppliers',
-      '/api/library',
-      '/api/library-management',
-      '/api/messages',
-      '/api/monthly-tests',
-      '/api/notices',
-      '/api/notifications',
-      '/api/owners',
-      '/api/parents',
-      '/api/password-reset-tokens',
-      '/api/payments',
-      '/api/payrolls',
-      '/api/pbac',
-      '/api/purchase-orders',
-      '/api/rbac',
-      '/api/refunds',
-      '/api/schools',
-      '/api/sections',
-      '/api/staff',
-      '/api/staffs',
-      '/api/student-events',
-      '/api/students',
-      '/api/subjects',
-      '/api/teacher-class-subjects',
-      '/api/teachers',
-      '/api/timetable-ai',
-      '/api/transport',
-      '/api/users',
-      '/api/upload',
-      '/api/database/status'
-    ]
-  });
-});
-
 // ======================
 // ROUTE REGISTRATION
 // ======================
 
-// Authentication routes
+// Authentication & Authorization
 app.use('/api/auth', authRoutes);
-
-// Authorization routes
 app.use('/api/abac', abacRoutes);
 app.use('/api/pbac', pbacRoutes);
 app.use('/api/rbac', rbacRoutes);
 
-// Assignment routes
+// Core entities
+app.use('/api/users', userRoutes);
+app.use('/api/students', studentRoutes);
+app.use('/api/teachers', teacherRoutes);
+app.use('/api/staff', staffRoutes);
+app.use('/api/staffs', staffsRoutes);
+app.use('/api/parents', parentRoutes);
+app.use('/api/owners', ownerRoutes);
+
+// Academic management
+app.use('/api/classes', classRoutes);
+app.use('/api/sections', sectionRoutes);
+app.use('/api/subjects', subjectRoutes);
+app.use('/api/grades', gradeRoutes);
+app.use('/api/teacher-class-subjects', teacherClassSubjectRoutes);
+
+// Assignments & Assessments
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/assignment-attachments', assignmentAttachmentRoutes);
-
-// Attendance routes
 app.use('/api/attendances', attendanceRoutes);
-
-// Budget routes
-app.use('/api/budgets', budgetRoutes);
-
-// Class routes
-app.use('/api/classes', classRoutes);
-
-// Conversation routes
-app.use('/api/conversations', conversationRoutes);
-
-// CQRS routes
-app.use('/api/cqrs/students', cqrsStudentRoutes);
-app.use('/api/cqrs/teachers', cqrsTeacherRoutes);
-
-// Customer routes
-app.use('/api/customers', customerRoutes);
-app.use('/api/customer-events', customerEventRoutes);
-
-// Document routes
-app.use('/api/documents', documentRoutes);
-
-// Equipment routes
-app.use('/api/equipment', equipmentRoutes);
-
-// Event routes
-app.use('/api/events', eventRoutes);
-
-// Examination routes
 app.use('/api/examinations', examinationRoutes);
 app.use('/api/exam-timetables', examTimetableRoutes);
+app.use('/api/monthly-tests', monthlyTestRoutes);
 
-// Expense routes
-app.use('/api/expenses', expenseRoutes);
-
-// Fee routes
+// Financial management
 app.use('/api/fees', feeRoutes);
 app.use('/api/fee-items', feeItemRoutes);
-
-// File routes
-app.use('/api/files', fileRoutes);
-
-// Google Drive routes
-app.use('/api/google-drive', googleDriveRoutes);
-
-// Grade routes
-app.use('/api/grades', gradeRoutes);
-
-// Hostel routes
-app.use('/api/hostels', hostelRoutes);
-
-// Income routes
-app.use('/api/incomes', incomeRoutes);
-
-// Installment routes
+app.use('/api/payments', paymentRoutes);
 app.use('/api/installments', installmentRoutes);
-
-// Integrated Payment routes
 app.use('/api/integrated-payments', integratedPaymentRoutes);
+app.use('/api/refunds', refundRoutes);
+app.use('/api/expenses', expenseRoutes);
+app.use('/api/incomes', incomeRoutes);
+app.use('/api/budgets', budgetRoutes);
+app.use('/api/payrolls', payrollRoutes);
 
-// Inventory routes
-app.use('/api/inventory', inventoryRoutes);
-app.use('/api/inventory-suppliers', inventorySupplierRoutes);
+// School management
+app.use('/api/schools', schoolRoutes);
+app.use('/api/events', eventRoutes);
+app.use('/api/notices', noticeRoutes);
+app.use('/api/notifications', notificationRoutes);
 
-// Library routes
+// Library management
 app.use('/api/library', libraryRoutes);
 app.use('/api/library-management', libraryManagementRoutes);
 
-// Message routes
-app.use('/api/messages', messageRoutes);
-
-// Monthly Test routes
-app.use('/api/monthly-tests', monthlyTestRoutes);
-
-// Notice routes
-app.use('/api/notices', noticeRoutes);
-
-// Notification routes
-app.use('/api/notifications', notificationRoutes);
-
-// Owner routes
-app.use('/api/owners', ownerRoutes);
-
-// Parent routes
-app.use('/api/parents', parentRoutes);
-
-// Password Reset Token routes
-app.use('/api/password-reset-tokens', passwordResetTokenRoutes);
-
-// Payment routes
-app.use('/api/payments', paymentRoutes);
-
-// Payroll routes
-app.use('/api/payrolls', payrollRoutes);
-
-// Purchase Order routes
+// Inventory management
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/inventory-suppliers', inventorySupplierRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
 
-// Refund routes
-app.use('/api/refunds', refundRoutes);
-
-// School routes
-app.use('/api/schools', schoolRoutes);
-
-// Section routes
-app.use('/api/sections', sectionRoutes);
-
-// Staff routes
-app.use('/api/staff', staffRoutes);
-app.use('/api/staffs', staffsRoutes);
-
-// Student routes
-app.use('/api/students', studentRoutes);
-app.use('/api/student-events', studentEventRoutes);
-
-// Subject routes
-app.use('/api/subjects', subjectRoutes);
-
-// Teacher routes
-app.use('/api/teachers', teacherRoutes);
-app.use('/api/teacher-class-subjects', teacherClassSubjectRoutes);
-
-// Timetable AI routes
-app.use('/api/timetable-ai', timetableAIRoutes);
-
-// Transport routes
+// Equipment & Transport
+app.use('/api/equipment', equipmentRoutes);
 app.use('/api/transport', transportRoutes);
 
-// User routes
-app.use('/api/users', userRoutes);
+// Hostel management
+app.use('/api/hostels', hostelRoutes);
+
+// Customer management
+app.use('/api/customers', customerRoutes);
+app.use('/api/customer-events', customerEventRoutes);
+
+// Communication
+app.use('/api/conversations', conversationRoutes);
+app.use('/api/messages', messageRoutes);
+
+// Documents & Files
+app.use('/api/documents', documentRoutes);
+app.use('/api/files', fileRoutes);
+app.use('/api/google-drive', googleDriveRoutes);
+
+// CQRS patterns
+app.use('/api/cqrs/students', cqrsStudentRoutes);
+app.use('/api/cqrs/teachers', cqrsTeacherRoutes);
+
+// Student events
+app.use('/api/student-events', studentEventRoutes);
+
+// Password management
+app.use('/api/password-reset-tokens', passwordResetTokenRoutes);
+
+// Timetable AI
+app.use('/api/timetable-ai', timetableAIRoutes);
+
+// ======================
+// ERROR HANDLING
+// ======================
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Route not found',
+    path: req.originalUrl
+  });
+});
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('❌ Error:', err.stack);
   res.status(500).json({ 
     success: false, 
     message: 'Something went wrong!',
@@ -756,7 +430,10 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Initialize database and start server
+// ======================
+// SERVER STARTUP
+// ======================
+
 async function startServer() {
   try {
     console.log('🚀 Starting School Management API...');
@@ -765,31 +442,14 @@ async function startServer() {
     
     await initializeDatabase();
     
-    // Set server timeout to 2 minutes
-    server.timeout = 12000000; // 120 seconds
-    server.keepAliveTimeout = 12000000; // 120 seconds
-    
-    server.listen(PORT, () => {
+    app.listen(PORT, () => {
       const memUsage = process.memoryUsage();
       console.log(`🚀 School Management API is running on port ${PORT}`);
-      console.log(`📊 Memory Usage:`);
-      console.log(`   RSS: ${Math.round(memUsage.rss / 1024 / 1024)}MB`);
-      console.log(`   Heap Total: ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`);
-      console.log(`   Heap Used: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
-      console.log(`   External: ${Math.round(memUsage.external / 1024 / 1024)}MB`);
-      console.log(`⏰ Uptime: ${Math.round(process.uptime())}s`);
-      console.log(`🔧 Features: MySQL2 Database, Authentication, File Upload, Encryption`);
+      console.log(`📊 Memory Usage: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
       console.log(`💾 Database: ${dbPool ? 'Connected' : 'Not connected'}`);
       console.log(`🔐 Encryption: ${process.env.API_ENCRYPTION_KEY ? 'Enabled' : 'Disabled'}`);
-      console.log(`📡 Routes: All routes from routes folder are now registered`);
-    });
-    
-    // Handle server errors
-    server.on('error', (error) => {
-      console.error('❌ Server error:', error);
-      if (error.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${PORT} is already in use`);
-      }
+      console.log(`📡 CORS: Enabled for multiple origins`);
+      console.log(`📡 Routes: All API routes registered successfully`);
     });
     
   } catch (error) {
@@ -803,5 +463,4 @@ startServer().catch((error) => {
   process.exit(1);
 });
 
-// Export for testing
-export { app, server }; 
+export { app }; 
