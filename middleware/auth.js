@@ -104,7 +104,7 @@ export const authenticateToken = async (req, res, next) => {
     // Find user in database using MySQL
     console.log('Fetching user from database...');
     const [users] = await pool.execute(
-      'SELECT id, email, name, role, schoolId, status FROM users WHERE id = ?',
+      'SELECT id, email, role, schoolId FROM users WHERE id = ?',
       [decoded.userId]
     );
     
@@ -124,10 +124,8 @@ export const authenticateToken = async (req, res, next) => {
     req.user = {
       id: user.id.toString(),
       email: user.email,
-      name: user.name,
       role: user.role,
-      schoolId: user.schoolId ? user.schoolId.toString() : null,
-      status: user.status
+      schoolId: user.schoolId ? user.schoolId.toString() : null
     };
     
     console.log('=== authenticateToken END (User) ===');
