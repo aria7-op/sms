@@ -113,27 +113,36 @@ app.use(compression());
 
 // Enhanced CORS configuration
 app.use(cors({
-  origin: [
-    'http://localhost',
-    'http://localhost:80',
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:5173',
-    'http://localhost:8080',
-    'http://127.0.0.1',
-    'http://127.0.0.1:80',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:5173',
-    'http://khwanzay.school',
-    'https://khwanzay.school'
-  ],
-  credentials: true,
+  origin: true, // Allow all origins
+  credentials: false, // Disable credentials for wildcard
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
   allowedHeaders: ['*'],
   exposedHeaders: ['*'],
   preflightContinue: false,
   optionsSuccessStatus: 200
 }));
+
+// Additional CORS debugging middleware
+app.use((req, res, next) => {
+  console.log('🔍 CORS Debug:', {
+    origin: req.headers.origin,
+    method: req.method,
+    path: req.path
+  });
+  
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
+  res.header('Access-Control-Allow-Headers', '*');
+  res.header('Access-Control-Allow-Credentials', 'false');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    console.log('🔍 Handling OPTIONS preflight request');
+    res.status(200).end();
+    return;
+  }
+  next();
+});
 
 // Additional CORS headers for all requests
 app.use((req, res, next) => {
