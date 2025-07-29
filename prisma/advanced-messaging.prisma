@@ -1,0 +1,838 @@
+// ======================
+// ADVANCED MESSAGING SYSTEM
+// ======================
+
+enum MessageType {
+  DIRECT
+  GROUP
+  BROADCAST
+  ANNOUNCEMENT
+  SYSTEM
+  NOTIFICATION
+  ALERT
+  REMINDER
+  SCHEDULED
+  ENCRYPTED
+  VOICE
+  VIDEO
+  FILE
+  LOCATION
+  POLL
+  REACTION
+  THREAD
+  REPLY
+  FORWARD
+  ARCHIVE
+}
+
+enum MessagePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+  CRITICAL
+}
+
+enum MessageStatus {
+  DRAFT
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  PENDING
+  SCHEDULED
+  CANCELLED
+  ARCHIVED
+  DELETED
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+  CHANNEL
+  BROADCAST
+  ANNOUNCEMENT
+  SUPPORT
+  MODERATION
+}
+
+enum AttachmentType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  PDF
+  SPREADSHEET
+  PRESENTATION
+  ARCHIVE
+  LOCATION
+  CONTACT
+  CALENDAR
+  CODE
+  OTHER
+}
+
+enum EncryptionType {
+  NONE
+  AES_256
+  END_TO_END
+  ENTERPRISE
+  QUANTUM_SAFE
+}
+
+enum MessageReaction {
+  LIKE
+  LOVE
+  HAHA
+  WOW
+  SAD
+  ANGRY
+  THUMBS_UP
+  THUMBS_DOWN
+  CLAP
+  HEART
+  FIRE
+  ROCKET
+  EYES
+  PRAY
+  CELEBRATE
+}
+
+// ======================
+// CONVERSATION MANAGEMENT
+// ======================
+
+model Conversation {
+  id                BigInt           @id @default(autoincrement())
+  uuid              String           @unique @default(uuid()) @db.Uuid
+  name              String?          @db.VarChar(255)
+  description       String?          @db.Text
+  type              ConversationType @default(DIRECT)
+  isActive          Boolean          @default(true)
+  isArchived        Boolean          @default(false)
+  isPinned          Boolean          @default(false)
+  isMuted           Boolean          @default(false)
+  isEncrypted       Boolean          @default(false)
+  encryptionType    EncryptionType   @default(NONE)
+  encryptionKey     String?          @db.Text
+  lastMessageAt     DateTime?
+  lastMessageId     BigInt?
+  schoolId          BigInt?
+  createdBy         BigInt
+  updatedBy         BigInt?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  school            School?          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser     User             @relation("Conversation_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser     User?            @relation("Conversation_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  participants      ConversationParticipant[]
+  messages          Message[]
+  lastMessage       Message?         @relation("Conversation_lastMessage", fields: [lastMessageId], references: [id])
+  attachments       ConversationAttachment[]
+  reactions         MessageReaction[]
+  polls             MessagePoll[]
+  threads           MessageThread[]
+  notifications     ConversationNotification[]
+  settings          ConversationSetting[]
+  analytics         ConversationAnalytics[]
+
+  @@map("conversations")
+  @@index([type])
+  @@index([schoolId])
+  @@index([createdBy])
+  @@index([lastMessageAt])
+  @@index([isActive])
+  @@index([isArchived])
+}
+
+model ConversationParticipant {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  conversationId  BigInt
+  userId          BigInt
+  role            String       @default("MEMBER") @db.VarChar(50) // ADMIN, MODERATOR, MEMBER, GUEST
+  permissions     Json?        // Custom permissions for this participant
+  isActive        Boolean      @default(true)
+  isMuted         Boolean      @default(false)
+  isPinned        Boolean      @default(false)
+  lastReadAt      DateTime?
+  lastReadMessageId BigInt?
+  joinedAt        DateTime     @default(now())
+  leftAt          DateTime?
+  createdBy       BigInt
+  updatedBy       BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadMessage Message?     @relation("Participant_lastReadMessage", fields: [lastReadMessageId], references: [id])
+  createdByUser   User         @relation("ConversationParticipant_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser   User?        @relation("ConversationParticipant_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([conversationId, userId])
+  @@map("conversation_participants")
+  @@index([conversationId])
+  @@index([userId])
+  @@index([role])
+  @@index([isActive])
+}
+
+// ======================
+// ENHANCED MESSAGE MODEL
+// ======================
+
+model Message {
+  id                BigInt         @id @default(autoincrement())
+  uuid              String         @unique @default(uuid()) @db.Uuid
+  conversationId    BigInt?
+  senderId          BigInt
+  receiverId        BigInt?
+  replyToId         BigInt?
+  threadId          BigInt?
+  subject           String?        @db.VarChar(255)
+  content           String         @db.Text
+  contentHtml       String?        @db.Text
+  contentMarkdown   String?        @db.Text
+  contentEncrypted  String?        @db.Text
+  type              MessageType    @default(DIRECT)
+  priority          MessagePriority @default(NORMAL)
+  status            MessageStatus  @default(SENT)
+  isRead            Boolean        @default(false)
+  isEdited          Boolean        @default(false)
+  isForwarded       Boolean        @default(false)
+  isPinned          Boolean        @default(false)
+  isArchived        Boolean        @default(false)
+  isDeleted         Boolean        @default(false)
+  isEncrypted       Boolean        @default(false)
+  encryptionType    EncryptionType @default(NONE)
+  encryptionKey     String?        @db.Text
+  scheduledAt       DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  editedAt          DateTime?
+  deletedAt         DateTime?
+  schoolId          BigInt?
+  metadata          Json?
+  aiAnalysis        Json?          // AI-powered message analysis
+  sentiment         String?        @db.VarChar(50) // POSITIVE, NEGATIVE, NEUTRAL
+  language          String?        @db.VarChar(10)
+  tags              String[]       @default([])
+  mentions          BigInt[]       @default([])
+  hashtags          String[]       @default([])
+  links             String[]       @default([])
+  createdBy         BigInt
+  updatedBy         BigInt?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  // Relations
+  conversation      Conversation?  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender            User           @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver          User?          @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  replyTo           Message?       @relation("Message_replies", fields: [replyToId], references: [id])
+  replies           Message[]      @relation("Message_replies")
+  thread            MessageThread? @relation(fields: [threadId], references: [id])
+  school            School?        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser     User           @relation("Message_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser     User?          @relation("Message_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  attachments       MessageAttachment[]
+  reactions         MessageReaction[]
+  forwards          MessageForward[]
+  analytics         MessageAnalytics[]
+  notifications     MessageNotification[]
+  participants      ConversationParticipant[] @relation("Participant_lastReadMessage")
+
+  // Conversation last message relation
+  conversationLastMessage Conversation[] @relation("Conversation_lastMessage")
+
+  @@map("messages")
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([replyToId])
+  @@index([threadId])
+  @@index([type])
+  @@index([priority])
+  @@index([status])
+  @@index([isRead])
+  @@index([schoolId])
+  @@index([scheduledAt])
+  @@index([createdAt])
+}
+
+// ======================
+// MESSAGE THREADING
+// ======================
+
+model MessageThread {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  conversationId  BigInt
+  rootMessageId   BigInt
+  title           String?      @db.VarChar(255)
+  description     String?      @db.Text
+  isActive        Boolean      @default(true)
+  isPinned        Boolean      @default(false)
+  isArchived      Boolean      @default(false)
+  participantCount Int         @default(0)
+  messageCount    Int          @default(0)
+  lastMessageAt   DateTime?
+  lastMessageId   BigInt?
+  schoolId        BigInt?
+  createdBy       BigInt
+  updatedBy       BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  rootMessage     Message      @relation("Thread_rootMessage", fields: [rootMessageId], references: [id])
+  lastMessage     Message?     @relation("Thread_lastMessage", fields: [lastMessageId], references: [id])
+  messages        Message[]
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser   User         @relation("MessageThread_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser   User?        @relation("MessageThread_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("message_threads")
+  @@index([conversationId])
+  @@index([rootMessageId])
+  @@index([isActive])
+  @@index([lastMessageAt])
+}
+
+// ======================
+// MESSAGE ATTACHMENTS
+// ======================
+
+model MessageAttachment {
+  id              BigInt         @id @default(autoincrement())
+  uuid            String         @unique @default(uuid()) @db.Uuid
+  messageId       BigInt?
+  conversationId  BigInt?
+  name            String         @db.VarChar(255)
+  originalName    String         @db.VarChar(255)
+  type            AttachmentType
+  mimeType        String         @db.VarChar(100)
+  size            BigInt         @default(0)
+  path            String         @db.VarChar(500)
+  url             String?        @db.VarChar(500)
+  thumbnail       String?        @db.VarChar(500)
+  metadata        Json?
+  isEncrypted     Boolean        @default(false)
+  encryptionKey   String?        @db.Text
+  downloadCount   Int            @default(0)
+  lastDownloadedAt DateTime?
+  schoolId        BigInt?
+  createdBy       BigInt
+  updatedBy       BigInt?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  message         Message?       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  conversation    Conversation?  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  school          School?        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser   User           @relation("MessageAttachment_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser   User?          @relation("MessageAttachment_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("message_attachments")
+  @@index([messageId])
+  @@index([conversationId])
+  @@index([type])
+  @@index([mimeType])
+  @@index([schoolId])
+}
+
+// ======================
+// MESSAGE REACTIONS
+// ======================
+
+model MessageReaction {
+  id              BigInt          @id @default(autoincrement())
+  uuid            String          @unique @default(uuid()) @db.Uuid
+  messageId       BigInt?
+  conversationId  BigInt?
+  userId          BigInt
+  reaction        MessageReaction
+  emoji           String?         @db.VarChar(50)
+  customText      String?         @db.VarChar(100)
+  metadata        Json?
+  schoolId        BigInt?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  message         Message?        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  conversation    Conversation?   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school          School?         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, reaction])
+  @@unique([conversationId, userId, reaction])
+  @@map("message_reactions")
+  @@index([messageId])
+  @@index([conversationId])
+  @@index([userId])
+  @@index([reaction])
+}
+
+// ======================
+// MESSAGE FORWARDS
+// ======================
+
+model MessageForward {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  originalMessageId BigInt
+  forwardedMessageId BigInt
+  forwardedBy      BigInt
+  forwardedTo      BigInt
+  note             String?     @db.Text
+  schoolId         BigInt?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // Relations
+  originalMessage  Message      @relation("Forward_originalMessage", fields: [originalMessageId], references: [id], onDelete: Cascade)
+  forwardedMessage Message      @relation("Forward_forwardedMessage", fields: [forwardedMessageId], references: [id], onDelete: Cascade)
+  forwardedByUser  User         @relation("MessageForward_forwardedByUser", fields: [forwardedBy], references: [id], onDelete: Cascade)
+  forwardedToUser  User         @relation("MessageForward_forwardedToUser", fields: [forwardedTo], references: [id], onDelete: Cascade)
+  school           School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@map("message_forwards")
+  @@index([originalMessageId])
+  @@index([forwardedMessageId])
+  @@index([forwardedBy])
+  @@index([forwardedTo])
+}
+
+// ======================
+// MESSAGE POLLS
+// ======================
+
+model MessagePoll {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  conversationId  BigInt
+  messageId       BigInt?
+  question        String       @db.Text
+  options         Json         // Array of poll options
+  allowMultiple   Boolean      @default(false)
+  isAnonymous     Boolean      @default(false)
+  isActive        Boolean      @default(true)
+  expiresAt       DateTime?
+  totalVotes      Int          @default(0)
+  results         Json?        // Calculated poll results
+  schoolId        BigInt?
+  createdBy       BigInt
+  updatedBy       BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message         Message?     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser   User         @relation("MessagePoll_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser   User?        @relation("MessagePoll_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  votes           PollVote[]
+
+  @@map("message_polls")
+  @@index([conversationId])
+  @@index([messageId])
+  @@index([isActive])
+  @@index([expiresAt])
+}
+
+model PollVote {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  pollId          BigInt
+  userId          BigInt
+  selectedOptions  Json         // Array of selected option indices
+  schoolId        BigInt?
+  createdAt       DateTime     @default(now())
+
+  // Relations
+  poll            MessagePoll  @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+  @@map("poll_votes")
+  @@index([pollId])
+  @@index([userId])
+}
+
+// ======================
+// CONVERSATION SETTINGS
+// ======================
+
+model ConversationSetting {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  conversationId  BigInt
+  key             String       @db.VarChar(100)
+  value           String       @db.Text
+  isPublic        Boolean      @default(false)
+  schoolId        BigInt?
+  createdBy       BigInt
+  updatedBy       BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser   User         @relation("ConversationSetting_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser   User?        @relation("ConversationSetting_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([conversationId, key])
+  @@map("conversation_settings")
+  @@index([conversationId])
+  @@index([key])
+}
+
+// ======================
+// MESSAGE NOTIFICATIONS
+// ======================
+
+model MessageNotification {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  messageId       BigInt?
+  conversationId  BigInt?
+  userId          BigInt
+  type            String       @db.VarChar(50)
+  title           String       @db.VarChar(255)
+  body            String       @db.Text
+  data            Json?
+  isRead          Boolean      @default(false)
+  isDelivered     Boolean      @default(false)
+  deliveredAt     DateTime?
+  readAt          DateTime?
+  expiresAt       DateTime?
+  schoolId        BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  message         Message?     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  conversation    Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@map("message_notifications")
+  @@index([messageId])
+  @@index([conversationId])
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([isDelivered])
+}
+
+model ConversationNotification {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  conversationId  BigInt
+  userId          BigInt
+  type            String       @db.VarChar(50)
+  title           String       @db.VarChar(255)
+  body            String       @db.Text
+  data            Json?
+  isRead          Boolean      @default(false)
+  isDelivered     Boolean      @default(false)
+  deliveredAt     DateTime?
+  readAt          DateTime?
+  expiresAt       DateTime?
+  schoolId        BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@map("conversation_notifications")
+  @@index([conversationId])
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([isDelivered])
+}
+
+// ======================
+// MESSAGE ANALYTICS
+// ======================
+
+model MessageAnalytics {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  messageId       BigInt
+  userId          BigInt?
+  conversationId  BigInt?
+  type            String       @db.VarChar(50)
+  data            Json
+  schoolId        BigInt?
+  createdAt       DateTime     @default(now())
+
+  // Relations
+  message         Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user            User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation    Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@map("message_analytics")
+  @@index([messageId])
+  @@index([userId])
+  @@index([conversationId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model ConversationAnalytics {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  conversationId  BigInt
+  userId          BigInt?
+  type            String       @db.VarChar(50)
+  data            Json
+  schoolId        BigInt?
+  createdAt       DateTime     @default(now())
+
+  // Relations
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@map("conversation_analytics")
+  @@index([conversationId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ======================
+// MESSAGE TEMPLATES
+// ======================
+
+model MessageTemplate {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  name            String       @db.VarChar(255)
+  description     String?      @db.Text
+  subject         String?      @db.VarChar(255)
+  content         String       @db.Text
+  contentHtml     String?      @db.Text
+  variables       Json?        // Template variables
+  category        String       @db.VarChar(100)
+  tags            String[]     @default([])
+  isActive        Boolean      @default(true)
+  isPublic        Boolean      @default(false)
+  usageCount      Int          @default(0)
+  lastUsedAt      DateTime?
+  schoolId        BigInt?
+  createdBy       BigInt
+  updatedBy       BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser   User         @relation("MessageTemplate_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser   User?        @relation("MessageTemplate_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("message_templates")
+  @@index([name])
+  @@index([category])
+  @@index([tags])
+  @@index([isActive])
+  @@index([schoolId])
+}
+
+// ======================
+// MESSAGE SCHEDULING
+// ======================
+
+model MessageSchedule {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  name            String       @db.VarChar(255)
+  description     String?      @db.Text
+  messageData     Json         // Complete message data
+  scheduledAt     DateTime
+  timezone        String       @db.VarChar(50)
+  isRecurring     Boolean      @default(false)
+  recurrenceRule  String?      @db.Text // iCal RRULE format
+  status          String       @default("PENDING") @db.VarChar(50) // PENDING, SENT, FAILED, CANCELLED
+  sentAt          DateTime?
+  errorMessage    String?      @db.Text
+  schoolId        BigInt?
+  createdBy       BigInt
+  updatedBy       BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser   User         @relation("MessageSchedule_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser   User?        @relation("MessageSchedule_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("message_schedules")
+  @@index([scheduledAt])
+  @@index([status])
+  @@index([schoolId])
+  @@index([createdBy])
+}
+
+// ======================
+// MESSAGE ENCRYPTION
+// ======================
+
+model MessageEncryptionKey {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  conversationId  BigInt?
+  userId          BigInt
+  keyType         EncryptionType
+  publicKey       String       @db.Text
+  privateKey      String?      @db.Text
+  keyFingerprint  String       @db.VarChar(255)
+  isActive        Boolean      @default(true)
+  expiresAt       DateTime?
+  schoolId        BigInt?
+  createdBy       BigInt
+  updatedBy       BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  conversation    Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser   User         @relation("MessageEncryptionKey_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser   User?        @relation("MessageEncryptionKey_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("message_encryption_keys")
+  @@index([conversationId])
+  @@index([userId])
+  @@index([keyType])
+  @@index([isActive])
+  @@index([expiresAt])
+}
+
+// ======================
+// MESSAGE AI FEATURES
+// ======================
+
+model MessageAI {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  messageId       BigInt?
+  conversationId  BigInt?
+  type            String       @db.VarChar(50) // SENTIMENT, TRANSLATION, SUMMARIZATION, MODERATION, SUGGESTION
+  input           String       @db.Text
+  output          String       @db.Text
+  confidence      Float?
+  metadata        Json?
+  model           String       @db.VarChar(100)
+  version         String       @db.VarChar(50)
+  processingTime  Int?         // milliseconds
+  schoolId        BigInt?
+  createdBy       BigInt
+  createdAt       DateTime     @default(now())
+
+  // Relations
+  message         Message?     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  conversation    Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser   User         @relation("MessageAI_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@map("message_ai")
+  @@index([messageId])
+  @@index([conversationId])
+  @@index([type])
+  @@index([model])
+  @@index([createdAt])
+}
+
+// ======================
+// WEBHOOK INTEGRATIONS
+// ======================
+
+model MessageWebhook {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  name            String       @db.VarChar(255)
+  description     String?      @db.Text
+  url             String       @db.VarChar(500)
+  method          String       @default("POST") @db.VarChar(10)
+  headers         Json?
+  events          String[]     @default([]) // Array of event types to trigger webhook
+  isActive        Boolean      @default(true)
+  secret          String?      @db.VarChar(255)
+  lastTriggeredAt DateTime?
+  triggerCount    Int          @default(0)
+  errorCount      Int          @default(0)
+  lastError       String?      @db.Text
+  schoolId        BigInt?
+  createdBy       BigInt
+  updatedBy       BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser   User         @relation("MessageWebhook_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser   User?        @relation("MessageWebhook_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("message_webhooks")
+  @@index([events])
+  @@index([isActive])
+  @@index([schoolId])
+}
+
+// ======================
+// MESSAGE INTEGRATIONS
+// ======================
+
+model MessageIntegration {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.Uuid
+  name            String       @db.VarChar(255)
+  type            String       @db.VarChar(50) // SLACK, TEAMS, DISCORD, EMAIL, SMS, WHATSAPP
+  config          Json         // Integration configuration
+  isActive        Boolean      @default(true)
+  lastSyncAt      DateTime?
+  syncCount       Int          @default(0)
+  errorCount      Int          @default(0)
+  lastError       String?      @db.Text
+  schoolId        BigInt?
+  createdBy       BigInt
+  updatedBy       BigInt?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  school          School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser   User         @relation("MessageIntegration_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser   User?        @relation("MessageIntegration_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("message_integrations")
+  @@index([type])
+  @@index([isActive])
+  @@index([schoolId])
+} 

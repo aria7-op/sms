@@ -1,0 +1,3083 @@
+generator client {
+  provider        = "prisma-client-js"
+  binaryTargets   = ["native", "debian-openssl-1.0.x"]
+  output          = "../generated/prisma"
+  previewFeatures = ["extendedWhereUnique", "filterJson", "fullTextSearch", "orderByRelation"]
+}
+
+datasource db {
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+model Owner {
+  id                 BigInt              @id @default(autoincrement())
+  uuid               String              @unique @default(uuid()) @db.VarChar(36)
+  name               String              @db.VarChar(100)
+  email              String              @unique @db.VarChar(255)
+  emailVerified      DateTime?
+  phone              String?             @db.VarChar(20)
+  phoneVerified      DateTime?
+  password           String              @db.VarChar(255)
+  salt               String?             @db.VarChar(255)
+  lastLogin          DateTime?
+  lastIp             String?             @db.VarChar(45)
+  status             UserStatus          @default(ACTIVE)
+  timezone           String              @default("UTC") @db.VarChar(50)
+  locale             String              @default("en-US") @db.VarChar(10)
+  metadata           String?             @db.LongText
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  deletedAt          DateTime?
+  schools            School[]
+  customers          Customer[]
+  createdUsers       User[]              @relation("OwnerCreatedUsers")
+  auditLogs          AuditLog[]          @relation("Owner_auditLogs")
+  sessions           Session[]           @relation("Owner_sessions")
+  permissions        Permission[]
+  roles              Role[]
+  permissionGroups   PermissionGroup[]
+  frontendComponents FrontendComponent[]
+  groups             Group[]
+  notifications      Notification[]
+
+  @@index([email])
+  @@index([status])
+  @@map("owners")
+}
+
+model School {
+  id                        BigInt                     @id @default(autoincrement())
+  uuid                      String                     @unique @default(uuid()) @db.VarChar(36)
+  name                      String                     @db.VarChar(255)
+  shortName                 String?                    @db.VarChar(50)
+  code                      String                     @unique @db.VarChar(20)
+  motto                     String?                    @db.VarChar(255)
+  about                     String?
+  email                     String                     @unique @db.VarChar(255)
+  phone                     String                     @db.VarChar(20)
+  fax                       String?                    @db.VarChar(20)
+  website                   String?                    @db.VarChar(255)
+  establishedDate           DateTime?
+  principal                 String?                    @db.VarChar(100)
+  vicePrincipal             String?                    @db.VarChar(100)
+  country                   String                     @db.VarChar(100)
+  state                     String                     @db.VarChar(100)
+  city                      String                     @db.VarChar(100)
+  address                   String                     @db.VarChar(255)
+  postalCode                String?                    @db.VarChar(20)
+  latitude                  Float?
+  longitude                 Float?
+  logo                      String?                    @db.VarChar(255)
+  coverImage                String?                    @db.VarChar(255)
+  themeColor                String?                    @db.VarChar(20)
+  timezone                  String                     @default("UTC") @db.VarChar(50)
+  locale                    String                     @default("en-US") @db.VarChar(10)
+  currency                  String                     @default("USD") @db.VarChar(3)
+  status                    SchoolStatus               @default(ACTIVE)
+  ownerId                   BigInt
+  academicSessionId         BigInt?
+  currentTermId             BigInt?
+  createdBy                 BigInt?
+  updatedBy                 BigInt?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  deletedAt                 DateTime?
+  owner                     Owner                      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  users                     User[]
+  classes                   Class[]
+  departments               Department[]
+  subjects                  Subject[]
+  academicSessions          AcademicSession[]
+  terms                     Term[]
+  facilities                Facility[]
+  inventoryItems            InventoryItem[]
+  vehicles                  Vehicle[]
+  notices                   Notice[]
+  events                    Event[]
+  exams                     Exam[]
+  feeStructures             FeeStructure[]
+  payments                  Payment[]
+  payrolls                  Payroll[]
+  auditLogs                 AuditLog[]
+  students                  Student[]
+  teachers                  Teacher[]
+  staff                     Staff[]
+  parents                   Parent[]
+  sections                  Section[]
+  timetables                Timetable[]
+  grades                    Grade[]
+  examTimetables            ExamTimetable[]
+  attendances               Attendance[]
+  feeItems                  FeeItem[]
+  paymentItems              PaymentItem[]
+  books                     Book[]
+  bookIssues                BookIssue[]
+  inventoryCategories       InventoryCategory[]
+  inventoryLogs             InventoryLog[]
+  facilityBookings          FacilityBooking[]
+  routes                    Route[]
+  routeStops                RouteStop[]
+  trips                     Trip[]
+  studentTransports         StudentTransport[]
+  transportAttendances      TransportAttendance[]
+  messages                  Message[]
+  documents                 Document[]
+  conversations             Conversation[]
+  conversationParticipants  ConversationParticipant[]
+  messageAttachments        MessageAttachment[]
+  messageReactions          MessageReaction[]
+  messageForwards           MessageForward[]
+  messageAnalytics          MessageAnalytics[]
+  conversationAnalytics     ConversationAnalytics[]
+  messageNotifications      MessageNotification[]
+  conversationNotifications ConversationNotification[]
+  conversationSettings      ConversationSetting[]
+  messageThreads            MessageThread[]
+  messagePolls              MessagePoll[]
+  assignments               Assignment[]
+  assignmentAttachments     AssignmentAttachment[]
+  assignmentSubmissions     AssignmentSubmission[]
+  submissionAttachments     SubmissionAttachment[]
+  schoolSettings            SchoolSetting[]
+  permissions               Permission[]
+  roles                     Role[]
+  permissionGroups          PermissionGroup[]
+  frontendComponents        FrontendComponent[]
+  groups                    Group[]
+  customerEvents            CustomerEvent[]
+  studentEvents             StudentEvent[]
+  customerPipelineStages    CustomerPipelineStage[]
+  customers                 Customer[]
+  notifications             Notification[]
+  notificationTemplates     NotificationTemplate[]
+  notificationRules         NotificationRule[]
+  incomes                   Income[]
+
+  @@index([ownerId])
+  @@index([code])
+  @@index([email])
+  @@index([status])
+  @@index([country, state, city])
+  @@map("schools")
+}
+
+model User {
+  id                              BigInt                     @id @default(autoincrement())
+  uuid                            String                     @unique @default(uuid()) @db.VarChar(36)
+  username                        String                     @unique @db.VarChar(50)
+  email                           String                     @unique @db.VarChar(255)
+  emailVerified                   DateTime?
+  phone                           String?                    @db.VarChar(20)
+  phoneVerified                   DateTime?
+  password                        String                     @db.VarChar(255)
+  salt                            String?                    @db.VarChar(255)
+  firstName                       String                     @db.VarChar(50)
+  middleName                      String?                    @db.VarChar(50)
+  lastName                        String                     @db.VarChar(50)
+  displayName                     String?                    @db.VarChar(100)
+  gender                          Gender?
+  birthDate                       DateTime?
+  avatar                          String?                    @db.VarChar(255)
+  coverImage                      String?                    @db.VarChar(255)
+  bio                             String?                    @db.VarChar(255)
+  role                            UserRole
+  status                          UserStatus                 @default(ACTIVE)
+  lastLogin                       DateTime?
+  lastIp                          String?                    @db.VarChar(45)
+  timezone                        String                     @default("UTC") @db.VarChar(50)
+  locale                          String                     @default("en-US") @db.VarChar(10)
+  metadata                        String?                    @db.LongText
+  schoolId                        BigInt?
+  createdByOwnerId                BigInt
+  createdBy                       BigInt?
+  updatedBy                       BigInt?
+  createdAt                       DateTime                   @default(now())
+  updatedAt                       DateTime                   @updatedAt
+  deletedAt                       DateTime?
+  school                          School?                    @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  createdByOwner                  Owner                      @relation("OwnerCreatedUsers", fields: [createdByOwnerId], references: [id], onDelete: Cascade)
+  teacher                         Teacher?                   @relation("Teacher_user")
+  student                         Student?
+  staff                           Staff?
+  parent                          Parent?
+  sentMessages                    Message[]                  @relation("SentMessages")
+  receivedMessages                Message[]                  @relation("ReceivedMessages")
+  conversationParticipants        ConversationParticipant[]
+  messageReactions                MessageReaction[]
+  messageForwards                 MessageForward[]           @relation("MessageForward_forwardedByUser")
+  forwardedMessages               MessageForward[]           @relation("MessageForward_forwardedToUser")
+  messageAnalytics                MessageAnalytics[]
+  conversationAnalytics           ConversationAnalytics[]
+  messageNotifications            MessageNotification[]
+  conversationNotifications       ConversationNotification[]
+  conversationSettings            ConversationSetting[]      @relation("ConversationSetting_createdByUser")
+  conversationSettingsUpdated     ConversationSetting[]      @relation("ConversationSetting_updatedByUser")
+  messageAttachments              MessageAttachment[]        @relation("MessageAttachment_createdByUser")
+  messageAttachmentsUpdated       MessageAttachment[]        @relation("MessageAttachment_updatedByUser")
+  conversationsCreated            Conversation[]             @relation("Conversation_createdByUser")
+  conversationsUpdated            Conversation[]             @relation("Conversation_updatedByUser")
+  conversationParticipantsCreated ConversationParticipant[]  @relation("ConversationParticipant_createdByUser")
+  conversationParticipantsUpdated ConversationParticipant[]  @relation("ConversationParticipant_updatedByUser")
+  lastReadMessages                ConversationParticipant[]  @relation("Participant_lastReadMessage")
+  messagesCreated                 Message[]                  @relation("Message_createdByUser")
+  messagesUpdated                 Message[]                  @relation("Message_updatedByUser")
+  messageThreadsCreated           MessageThread[]            @relation("MessageThread_createdByUser")
+  messageThreadsUpdated           MessageThread[]            @relation("MessageThread_updatedByUser")
+  messagePollsCreated             MessagePoll[]              @relation("MessagePoll_createdByUser")
+  sessions                        Session[]
+  auditLogs                       AuditLog[]
+  assignmentsCreated              Assignment[]               @relation("Assignment_createdByUser")
+  assignmentsUpdated              Assignment[]               @relation("Assignment_updatedByUser")
+  assignmentsTeaching             Assignment[]               @relation("Assignment_teacher")
+  documentsUpdated                Document[]                 @relation("Document_updatedByUser")
+  documentsCreated                Document[]                 @relation("Document_createdByUser")
+  noticesCreated                  Notice[]                   @relation("Notice_createdByUser")
+  noticesUpdated                  Notice[]                   @relation("Notice_updatedByUser")
+  transportAttendancesCreated     TransportAttendance[]      @relation("TransportAttendance_createdByUser")
+  transportAttendancesUpdated     TransportAttendance[]      @relation("TransportAttendance_updatedByUser")
+  studentTransportsCreated        StudentTransport[]         @relation("StudentTransport_createdByUser")
+  studentTransportsUpdated        StudentTransport[]         @relation("StudentTransport_updatedByUser")
+  tripsCreated                    Trip[]                     @relation("Trip_createdByUser")
+  tripsUpdated                    Trip[]                     @relation("Trip_updatedByUser")
+  routesUpdated                   Route[]                    @relation("Route_updatedByUser")
+  routeStopsCreated               RouteStop[]                @relation("RouteStop_createdByUser")
+  routeStopsUpdated               RouteStop[]                @relation("RouteStop_updatedByUser")
+  facilityBookingsCreated         FacilityBooking[]          @relation("FacilityBooking_createdByUser")
+  facilityBookingsUpdated         FacilityBooking[]          @relation("FacilityBooking_updatedByUser")
+  vehiclesDriver                  Vehicle[]                  @relation("VehicleDriver")
+  vehiclesAttendant               Vehicle[]                  @relation("VehicleAttendant")
+  vehiclesCreated                 Vehicle[]                  @relation("Vehicle_createdByUser")
+  vehiclesUpdated                 Vehicle[]                  @relation("Vehicle_updatedByUser")
+  facilitiesCreated               Facility[]                 @relation("Facility_createdByUser")
+  facilitiesUpdated               Facility[]                 @relation("Facility_updatedByUser")
+  facilityBookingsBooked          FacilityBooking[]          @relation("FacilityBooking_bookedBy")
+  inventoryItemsCreated           InventoryItem[]            @relation("InventoryItem_createdByUser")
+  inventoryItemsUpdated           InventoryItem[]            @relation("InventoryItem_updatedByUser")
+  inventoryLogsCreated            InventoryLog[]             @relation("InventoryLog_createdByUser")
+  inventoryLogsUpdated            InventoryLog[]             @relation("InventoryLog_updatedByUser")
+  booksCreated                    Book[]                     @relation("Book_createdByUser")
+  booksUpdated                    Book[]                     @relation("Book_updatedByUser")
+  bookIssuesCreated               BookIssue[]                @relation("BookIssue_createdByUser")
+  bookIssuesUpdated               BookIssue[]                @relation("BookIssue_updatedByUser")
+  inventoryCategoriesCreated      InventoryCategory[]        @relation("InventoryCategory_createdByUser")
+  inventoryCategoriesUpdated      InventoryCategory[]        @relation("InventoryCategory_updatedByUser")
+  routesCreated                   Route[]                    @relation("Route_createdByUser")
+  feeStructuresCreated            FeeStructure[]             @relation("FeeStructureCreatedBy")
+  feeStructuresUpdated            FeeStructure[]             @relation("FeeStructureUpdatedBy")
+  feeItemsCreated                 FeeItem[]                  @relation("FeeItem_createdByUser")
+  feeItemsUpdated                 FeeItem[]                  @relation("FeeItem_updatedByUser")
+  paymentsCreated                 Payment[]                  @relation("PaymentCreatedBy")
+  paymentsUpdated                 Payment[]                  @relation("PaymentUpdatedBy")
+  payrollsCreated                 Payroll[]                  @relation("Payroll_createdByUser")
+  payrollsUpdated                 Payroll[]                  @relation("Payroll_updatedByUser")
+  gradesCreated                   Grade[]                    @relation("Grade_createdByUser")
+  gradesUpdated                   Grade[]                    @relation("Grade_updatedByUser")
+  examTimetablesCreated           ExamTimetable[]            @relation("ExamTimetable_createdByUser")
+  examTimetablesUpdated           ExamTimetable[]            @relation("ExamTimetable_updatedByUser")
+  attendancesCreated              Attendance[]               @relation("Attendance_createdByUser")
+  attendancesUpdated              Attendance[]               @relation("Attendance_updatedByUser")
+  userPermissions                 UserPermission[]
+  userRoleAssignments             UserRoleAssignment[]
+  componentPermissions            ComponentPermission[]
+  permissionsCreated              Permission[]               @relation("Permission_createdByUser")
+  permissionsUpdated              Permission[]               @relation("Permission_updatedByUser")
+  rolesCreated                    Role[]                     @relation("Role_createdByUser")
+  rolesUpdated                    Role[]                     @relation("Role_updatedByUser")
+  rolePermissionsCreated          RolePermission[]           @relation("RolePermission_createdByUser")
+  roleInheritancesCreated         RoleInheritance[]          @relation("RoleInheritance_createdByUser")
+  userPermissionsCreated          UserPermission[]           @relation("UserPermission_createdByUser")
+  userRoleAssignmentsAssigned     UserRoleAssignment[]       @relation("UserRoleAssignment_assignedByUser")
+  accessControlListsCreated       AccessControlList[]        @relation("AccessControlList_createdByUser")
+  permissionGroupsCreated         PermissionGroup[]          @relation("PermissionGroup_createdByUser")
+  permissionGroupsUpdated         PermissionGroup[]          @relation("PermissionGroup_updatedByUser")
+  permissionGroupItemsCreated     PermissionGroupItem[]      @relation("PermissionGroupItem_createdByUser")
+  frontendComponentsCreated       FrontendComponent[]        @relation("FrontendComponent_createdByUser")
+  frontendComponentsUpdated       FrontendComponent[]        @relation("FrontendComponent_updatedByUser")
+  componentPermissionsCreated     ComponentPermission[]      @relation("ComponentPermission_createdByUser")
+  policiesCreated                 Policy[]                   @relation("Policy_createdByUser")
+  policiesUpdated                 Policy[]                   @relation("Policy_updatedByUser")
+  policyAssignmentsAssigned       PolicyAssignment[]         @relation("PolicyAssignment_assignedByUser")
+  attributeRulesCreated           AttributeRule[]            @relation("AttributeRule_createdByUser")
+  attributeRulesUpdated           AttributeRule[]            @relation("AttributeRule_updatedByUser")
+  attributeAssignmentsAssigned    AttributeAssignment[]      @relation("AttributeAssignment_assignedByUser")
+  customerEventsCreated           CustomerEvent[]            @relation("CustomerEvent_createdByUser")
+  studentEventsCreated            StudentEvent[]             @relation("StudentEvent_createdByUser")
+  customersCreated                Customer[]                 @relation("CustomerCreatedBy")
+  customersUpdated                Customer[]                 @relation("CustomerUpdatedBy")
+  permissionAssignmentsAssigned   PermissionAssignment[]     @relation("PermissionAssignment_assignedByUser")
+  groupsCreated                   Group[]                    @relation("Group_createdByUser")
+  groupsUpdated                   Group[]                    @relation("Group_updatedByUser")
+  sentNotifications               Notification[]             @relation("Notification_sender")
+  notificationRecipients          NotificationRecipient[]
+  notificationTemplatesCreated    NotificationTemplate[]     @relation("NotificationTemplate_createdByUser")
+  notificationTemplatesUpdated    NotificationTemplate[]     @relation("NotificationTemplate_updatedByUser")
+  notificationRulesCreated        NotificationRule[]         @relation("NotificationRule_createdByUser")
+  notificationRulesUpdated        NotificationRule[]         @relation("NotificationRule_updatedByUser")
+  incomesCreated                  Income[]                   @relation("Income_createdByUser")
+  incomesUpdated                  Income[]                   @relation("Income_updatedByUser")
+  permissionAssignments           PermissionAssignment[]
+  groups                          Group[]
+
+  @@index([username])
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+  @@index([status])
+  @@index([schoolId])
+  @@index([createdByOwnerId])
+  @@map("users")
+}
+
+model AcademicSession {
+  id          BigInt    @id @default(autoincrement())
+  uuid        String    @unique @default(uuid()) @db.VarChar(36)
+  name        String    @db.VarChar(100)
+  startDate   DateTime
+  endDate     DateTime
+  isCurrent   Boolean   @default(false)
+  description String?
+  schoolId    BigInt
+  createdBy   BigInt
+  updatedBy   BigInt?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  school      School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  terms       Term[]
+
+  @@index([schoolId])
+  @@index([isCurrent])
+  @@index([startDate, endDate])
+  @@map("academic_sessions")
+}
+
+model Term {
+  id                BigInt          @id @default(autoincrement())
+  uuid              String          @unique @default(uuid()) @db.VarChar(36)
+  name              String          @db.VarChar(100)
+  type              TermType
+  startDate         DateTime
+  endDate           DateTime
+  isCurrent         Boolean         @default(false)
+  academicSessionId BigInt
+  schoolId          BigInt
+  createdBy         BigInt
+  updatedBy         BigInt?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  deletedAt         DateTime?
+  academicSession   AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  school            School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  exams             Exam[]          @relation("Term_exams")
+
+  @@index([academicSessionId])
+  @@index([schoolId])
+  @@index([isCurrent])
+  @@index([startDate, endDate])
+  @@map("terms")
+}
+
+model Department {
+  id          BigInt    @id @default(autoincrement())
+  uuid        String    @unique @default(uuid()) @db.VarChar(36)
+  name        String    @db.VarChar(100)
+  code        String    @unique @db.VarChar(20)
+  description String?
+  headId      BigInt?
+  schoolId    BigInt
+  createdBy   BigInt
+  updatedBy   BigInt?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  school      School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  subjects    Subject[]
+  staff       Staff[]
+  teachers    Teacher[]
+
+  @@index([schoolId])
+  @@index([code])
+  @@map("departments")
+}
+
+model Class {
+  id             BigInt         @id @default(autoincrement())
+  uuid           String         @unique @default(uuid()) @db.VarChar(36)
+  name           String         @db.VarChar(100)
+  code           String         @unique @db.VarChar(20)
+  level          Int
+  section        String?        @db.VarChar(10)
+  roomNumber     String?        @db.VarChar(20)
+  capacity       Int
+  classTeacherId BigInt?
+  schoolId       BigInt
+  createdBy      BigInt
+  updatedBy      BigInt?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+  school         School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classTeacher   Teacher?       @relation("ClassTeacher", fields: [classTeacherId], references: [id], onDelete: SetNull)
+  students       Student[]
+  subjects       Subject[]
+  timetables     Timetable[]
+  exams          Exam[]
+  feeStructures  FeeStructure[]
+  sections       Section[]
+  assignments    Assignment[]
+  attendances    Attendance[]
+
+  @@index([schoolId])
+  @@index([code])
+  @@index([level, section])
+  @@index([classTeacherId])
+  @@map("classes")
+}
+
+model Subject {
+  id             BigInt          @id @default(autoincrement())
+  uuid           String          @unique @default(uuid()) @db.VarChar(36)
+  name           String          @db.VarChar(100)
+  code           String          @unique @db.VarChar(20)
+  description    String?
+  creditHours    Int
+  isElective     Boolean         @default(false)
+  departmentId   BigInt?
+  schoolId       BigInt
+  createdBy      BigInt
+  updatedBy      BigInt?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+  department     Department?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  school         School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classes        Class[]
+  teachers       Teacher[]
+  timetables     Timetable[]
+  exams          Exam[]
+  assignments    Assignment[]
+  books          Book[]
+  grades         Grade[]
+  examTimetables ExamTimetable[]
+  attendances    Attendance[]
+
+  @@index([schoolId])
+  @@index([code])
+  @@index([departmentId])
+  @@map("subjects")
+}
+
+model Timetable {
+  id         BigInt    @id @default(autoincrement())
+  uuid       String    @unique @default(uuid()) @db.VarChar(36)
+  day        Int
+  period     Int
+  startTime  DateTime  @db.Time(6)
+  endTime    DateTime  @db.Time(6)
+  classId    BigInt
+  subjectId  BigInt
+  teacherId  BigInt
+  roomNumber String?   @db.VarChar(20)
+  schoolId   BigInt
+  createdBy  BigInt
+  updatedBy  BigInt?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  class      Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject    Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  school     School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, day, period])
+  @@index([classId])
+  @@index([subjectId])
+  @@index([teacherId])
+  @@index([schoolId])
+  @@index([day, period])
+  @@map("timetables")
+}
+
+model Teacher {
+  id                    BigInt       @id @default(autoincrement())
+  uuid                  String       @unique @default(uuid()) @db.VarChar(36)
+  userId                BigInt       @unique
+  employeeId            String       @unique @db.VarChar(50)
+  departmentId          BigInt?
+  qualification         String?      @db.VarChar(255)
+  specialization        String?      @db.VarChar(255)
+  joiningDate           DateTime?
+  experience            Int?         @default(0)
+  salary                Decimal?     @db.Decimal(10, 2)
+  isClassTeacher        Boolean      @default(false)
+  schoolId              BigInt
+  createdBy             BigInt
+  updatedBy             BigInt?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  deletedAt             DateTime?
+  user                  User         @relation("Teacher_user", fields: [userId], references: [id], onDelete: Cascade)
+  department            Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  school                School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classesAsClassTeacher Class[]      @relation("ClassTeacher")
+  subjects              Subject[]
+  attendances           Attendance[]
+  documents             Document[]
+
+  @@index([userId])
+  @@index([employeeId])
+  @@index([schoolId])
+  @@index([departmentId])
+  @@map("teachers")
+}
+
+model Student {
+  id                      BigInt                 @id @default(autoincrement())
+  uuid                    String                 @unique @default(uuid()) @db.VarChar(36)
+  userId                  BigInt                 @unique
+  admissionNo             String                 @unique @db.VarChar(50)
+  rollNo                  String?                @db.VarChar(20)
+  classId                 BigInt?
+  sectionId               BigInt?
+  parentId                BigInt?
+  admissionDate           DateTime?
+  bloodGroup              String?                @db.VarChar(5)
+  nationality             String?                @db.VarChar(50)
+  religion                String?                @db.VarChar(50)
+  caste                   String?                @db.VarChar(50)
+  aadharNo                String?                @db.VarChar(20)
+  bankAccountNo           String?                @db.VarChar(30)
+  bankName                String?                @db.VarChar(100)
+  ifscCode                String?                @db.VarChar(20)
+  previousSchool          String?                @db.VarChar(255)
+  schoolId                BigInt
+  createdBy               BigInt
+  updatedBy               BigInt?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  deletedAt               DateTime?
+  conversionDate          DateTime?
+  convertedFromCustomerId BigInt?
+  convertedFromCustomer   Customer?              @relation("Student_convertedFromCustomer", fields: [convertedFromCustomerId], references: [id], onDelete: SetNull)
+  user                    User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class                   Class?                 @relation(fields: [classId], references: [id], onDelete: SetNull)
+  section                 Section?               @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  parent                  Parent?                @relation(fields: [parentId], references: [id], onDelete: SetNull)
+  school                  School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  attendances             Attendance[]
+  grades                  Grade[]
+  payments                Payment[]
+  documents               Document[]
+  bookIssues              BookIssue[]
+  studentTransports       StudentTransport[]
+  assignmentSubmissions   AssignmentSubmission[]
+  events                  StudentEvent[]
+
+  @@index([userId])
+  @@index([admissionNo])
+  @@index([classId])
+  @@index([sectionId])
+  @@index([parentId])
+  @@index([schoolId])
+  @@index([convertedFromCustomerId])
+  @@map("students")
+}
+
+model Parent {
+  id           BigInt    @id @default(autoincrement())
+  uuid         String    @unique @default(uuid()) @db.VarChar(36)
+  userId       BigInt    @unique
+  occupation   String?   @db.VarChar(100)
+  annualIncome Decimal?  @db.Decimal(12, 2)
+  education    String?   @db.VarChar(100)
+  schoolId     BigInt
+  createdBy    BigInt
+  updatedBy    BigInt?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school       School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  students     Student[]
+  payments     Payment[]
+
+  @@index([userId])
+  @@index([schoolId])
+  @@map("parents")
+}
+
+model Staff {
+  id            BigInt       @id @default(autoincrement())
+  uuid          String       @unique @default(uuid()) @db.VarChar(36)
+  userId        BigInt       @unique
+  employeeId    String       @unique @db.VarChar(50)
+  departmentId  BigInt?
+  designation   String       @db.VarChar(100)
+  joiningDate   DateTime?
+  salary        Decimal?     @db.Decimal(10, 2)
+  accountNumber String?      @db.VarChar(30)
+  bankName      String?      @db.VarChar(100)
+  ifscCode      String?      @db.VarChar(20)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department    Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  school        School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  attendances   Attendance[]
+  payrolls      Payroll[]
+  documents     Document[]
+  bookIssues    BookIssue[]
+
+  @@index([userId])
+  @@index([employeeId])
+  @@index([departmentId])
+  @@index([schoolId])
+  @@map("staff")
+}
+
+model Section {
+  id         BigInt    @id @default(autoincrement())
+  uuid       String    @unique @default(uuid()) @db.VarChar(36)
+  name       String    @db.VarChar(50)
+  classId    BigInt
+  teacherId  BigInt?
+  capacity   Int
+  roomNumber String?   @db.VarChar(20)
+  schoolId   BigInt
+  createdBy  BigInt
+  updatedBy  BigInt?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+  class      Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  school     School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  students   Student[]
+
+  @@index([classId])
+  @@index([teacherId])
+  @@index([schoolId])
+  @@map("sections")
+}
+
+model Exam {
+  id           BigInt          @id @default(autoincrement())
+  uuid         String          @unique @default(uuid()) @db.VarChar(36)
+  name         String          @db.VarChar(100)
+  code         String          @unique @db.VarChar(20)
+  type         ExamType
+  startDate    DateTime
+  endDate      DateTime
+  description  String?
+  totalMarks   Decimal         @db.Decimal(5, 2)
+  passingMarks Decimal         @db.Decimal(5, 2)
+  termId       BigInt?
+  classId      BigInt?
+  subjectId    BigInt?
+  schoolId     BigInt
+  createdBy    BigInt
+  updatedBy    BigInt?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  deletedAt    DateTime?
+  term         Term?           @relation("Term_exams", fields: [termId], references: [id], onDelete: SetNull)
+  class        Class?          @relation(fields: [classId], references: [id], onDelete: SetNull)
+  subject      Subject?        @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  school       School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  grades       Grade[]
+  timetable    ExamTimetable[]
+
+  @@index([termId])
+  @@index([classId])
+  @@index([subjectId])
+  @@index([schoolId])
+  @@index([startDate, endDate])
+  @@map("exams")
+}
+
+model Grade {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.VarChar(36)
+  examId        BigInt
+  studentId     BigInt
+  subjectId     BigInt
+  marks         Decimal   @db.Decimal(5, 2)
+  grade         String?   @db.VarChar(5)
+  remarks       String?   @db.VarChar(255)
+  isAbsent      Boolean   @default(false)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  exam          Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student       Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject       Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  school        School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User      @relation("Grade_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?     @relation("Grade_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([examId, studentId, subjectId])
+  @@index([examId])
+  @@index([studentId])
+  @@index([subjectId])
+  @@index([schoolId])
+  @@map("grades")
+}
+
+model ExamTimetable {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.VarChar(36)
+  examId        BigInt
+  subjectId     BigInt
+  date          DateTime
+  startTime     DateTime  @db.Time(6)
+  endTime       DateTime  @db.Time(6)
+  roomNumber    String?   @db.VarChar(20)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  exam          Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject       Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  school        School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User      @relation("ExamTimetable_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?     @relation("ExamTimetable_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([examId, subjectId])
+  @@index([examId])
+  @@index([subjectId])
+  @@index([schoolId])
+  @@map("exam_timetables")
+}
+
+model Attendance {
+  id            BigInt           @id @default(autoincrement())
+  uuid          String           @unique @default(uuid()) @db.VarChar(36)
+  date          DateTime
+  status        AttendanceStatus
+  remarks       String?          @db.VarChar(255)
+  studentId     BigInt?
+  teacherId     BigInt?
+  staffId       BigInt?
+  classId       BigInt?
+  subjectId     BigInt?
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  deletedAt     DateTime?
+  student       Student?         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacher       Teacher?         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  staff         Staff?           @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  class         Class?           @relation(fields: [classId], references: [id], onDelete: SetNull)
+  subject       Subject?         @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  school        School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User             @relation("Attendance_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?            @relation("Attendance_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([date, studentId, classId, subjectId])
+  @@unique([date, teacherId])
+  @@unique([date, staffId])
+  @@index([studentId])
+  @@index([teacherId])
+  @@index([staffId])
+  @@index([classId])
+  @@index([subjectId])
+  @@index([schoolId])
+  @@index([date])
+  @@map("attendances")
+}
+
+model FeeStructure {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.VarChar(36)
+  name          String    @db.VarChar(100)
+  description   String?
+  classId       BigInt?
+  isDefault     Boolean   @default(false)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  class         Class?    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  school        School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User      @relation("FeeStructureCreatedBy", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?     @relation("FeeStructureUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  items         FeeItem[]
+  payments      Payment[]
+
+  @@index([classId])
+  @@index([schoolId])
+  @@index([isDefault])
+  @@map("fee_structures")
+}
+
+model FeeItem {
+  id             BigInt        @id @default(autoincrement())
+  uuid           String        @unique @default(uuid()) @db.VarChar(36)
+  feeStructureId BigInt
+  name           String        @db.VarChar(100)
+  amount         Decimal       @db.Decimal(10, 2)
+  isOptional     Boolean       @default(false)
+  dueDate        DateTime?
+  schoolId       BigInt
+  createdBy      BigInt
+  updatedBy      BigInt?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+  feeStructure   FeeStructure  @relation(fields: [feeStructureId], references: [id], onDelete: Cascade)
+  school         School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser  User          @relation("FeeItem_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser  User?         @relation("FeeItem_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  paymentItems   PaymentItem[]
+
+  @@index([feeStructureId])
+  @@index([schoolId])
+  @@map("fee_items")
+}
+
+model Payment {
+  id             BigInt        @id @default(autoincrement())
+  uuid           String        @unique @default(uuid()) @db.VarChar(36)
+  amount         Decimal       @db.Decimal(10, 2)
+  discount       Decimal       @default(0.00) @db.Decimal(10, 2)
+  fine           Decimal       @default(0.00) @db.Decimal(10, 2)
+  total          Decimal       @db.Decimal(10, 2)
+  paymentDate    DateTime
+  dueDate        DateTime?
+  status         PaymentStatus
+  method         PaymentMethod
+  transactionId  String?       @db.VarChar(100)
+  remarks        String?       @db.VarChar(255)
+  studentId      BigInt?
+  parentId       BigInt?
+  feeStructureId BigInt?
+  schoolId       BigInt
+  createdBy      BigInt
+  updatedBy      BigInt?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+  customerId     BigInt?
+  student        Student?      @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  parent         Parent?       @relation(fields: [parentId], references: [id], onDelete: SetNull)
+  customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  feeStructure   FeeStructure? @relation(fields: [feeStructureId], references: [id], onDelete: SetNull)
+  school         School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser  User          @relation("PaymentCreatedBy", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser  User?         @relation("PaymentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  items          PaymentItem[]
+
+  @@index([studentId])
+  @@index([parentId])
+  @@index([customerId])
+  @@index([feeStructureId])
+  @@index([schoolId])
+  @@index([status])
+  @@index([paymentDate])
+  @@map("payments")
+}
+
+model PaymentItem {
+  id        BigInt    @id @default(autoincrement())
+  uuid      String    @unique @default(uuid()) @db.VarChar(36)
+  paymentId BigInt
+  feeItemId BigInt
+  amount    Decimal   @db.Decimal(10, 2)
+  discount  Decimal   @default(0.00) @db.Decimal(10, 2)
+  fine      Decimal   @default(0.00) @db.Decimal(10, 2)
+  total     Decimal   @db.Decimal(10, 2)
+  schoolId  BigInt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  payment   Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  feeItem   FeeItem   @relation(fields: [feeItemId], references: [id], onDelete: Cascade)
+  school    School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([feeItemId])
+  @@index([schoolId])
+  @@map("payment_items")
+}
+
+model Payroll {
+  id            BigInt        @id @default(autoincrement())
+  uuid          String        @unique @default(uuid()) @db.VarChar(36)
+  staffId       BigInt
+  salaryMonth   DateTime
+  basicSalary   Decimal       @db.Decimal(10, 2)
+  allowances    Decimal       @db.Decimal(10, 2)
+  deductions    Decimal       @db.Decimal(10, 2)
+  tax           Decimal       @db.Decimal(10, 2)
+  bonus         Decimal       @db.Decimal(10, 2)
+  netSalary     Decimal       @db.Decimal(10, 2)
+  paymentDate   DateTime?
+  status        PaymentStatus
+  method        PaymentMethod
+  transactionId String?       @db.VarChar(100)
+  remarks       String?       @db.VarChar(255)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+  staff         Staff         @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User          @relation("Payroll_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?         @relation("Payroll_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([staffId])
+  @@index([schoolId])
+  @@index([salaryMonth])
+  @@index([status])
+  @@map("payrolls")
+}
+
+model Book {
+  id            BigInt      @id @default(autoincrement())
+  uuid          String      @unique @default(uuid()) @db.VarChar(36)
+  title         String      @db.VarChar(255)
+  author        String      @db.VarChar(100)
+  isbn          String?     @unique @db.VarChar(20)
+  publisher     String?     @db.VarChar(100)
+  edition       String?     @db.VarChar(50)
+  subjectId     BigInt?
+  quantity      Int         @default(1)
+  available     Int         @default(1)
+  shelfNumber   String?     @db.VarChar(20)
+  price         Decimal?    @db.Decimal(10, 2)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+  subject       Subject?    @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  school        School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User        @relation("Book_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?       @relation("Book_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  bookIssues    BookIssue[]
+
+  @@index([title])
+  @@index([author])
+  @@index([subjectId])
+  @@index([schoolId])
+  @@map("books")
+}
+
+model BookIssue {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.VarChar(36)
+  bookId        BigInt
+  studentId     BigInt?
+  staffId       BigInt?
+  issueDate     DateTime
+  dueDate       DateTime
+  returnDate    DateTime?
+  fineAmount    Decimal   @default(0.00) @db.Decimal(10, 2)
+  remarks       String?   @db.VarChar(255)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  status        String    @db.VarChar(20)
+  book          Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  student       Student?  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  staff         Staff?    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  school        School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User      @relation("BookIssue_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?     @relation("BookIssue_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([bookId])
+  @@index([studentId])
+  @@index([staffId])
+  @@index([schoolId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("book_issues")
+}
+
+model InventoryCategory {
+  id            BigInt          @id @default(autoincrement())
+  uuid          String          @unique @default(uuid()) @db.VarChar(36)
+  name          String          @db.VarChar(100)
+  description   String?
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  deletedAt     DateTime?
+  school        School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User            @relation("InventoryCategory_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?           @relation("InventoryCategory_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  items         InventoryItem[]
+
+  @@index([name])
+  @@index([schoolId])
+  @@map("inventory_categories")
+}
+
+model InventoryItem {
+  id            BigInt             @id @default(autoincrement())
+  uuid          String             @unique @default(uuid()) @db.VarChar(36)
+  name          String             @db.VarChar(100)
+  description   String?
+  categoryId    BigInt?
+  quantity      Int                @default(0)
+  minQuantity   Int                @default(0)
+  price         Decimal?           @db.Decimal(10, 2)
+  location      String?            @db.VarChar(100)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  deletedAt     DateTime?
+  supplier      String?            @db.VarChar(100)
+  unit          String?            @db.VarChar(20)
+  category      InventoryCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  school        School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User               @relation("InventoryItem_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?              @relation("InventoryItem_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  inventoryLogs InventoryLog[]
+
+  @@index([name])
+  @@index([categoryId])
+  @@index([schoolId])
+  @@map("inventory_items")
+}
+
+model InventoryLog {
+  id            BigInt        @id @default(autoincrement())
+  uuid          String        @unique @default(uuid()) @db.VarChar(36)
+  itemId        BigInt
+  quantity      Int
+  referenceId   BigInt?
+  referenceType String?       @db.VarChar(50)
+  remarks       String?       @db.VarChar(255)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+  type          String        @db.VarChar(20)
+  item          InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User          @relation("InventoryLog_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?         @relation("InventoryLog_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([itemId])
+  @@index([schoolId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("inventory_logs")
+}
+
+model Income {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.VarChar(36)
+  amount        Decimal   @db.Decimal(10, 2)
+  reference_id  BigInt?
+  added_by      BigInt?
+  description   String?   @db.VarChar(255)
+  source        String    @default("other") @db.VarChar(50)
+  income_date   DateTime  @default(now())
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  school        School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User      @relation("Income_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?     @relation("Income_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([schoolId])
+  @@index([income_date])
+  @@index([source])
+  @@map("incomes")
+}
+
+model Facility {
+  id            BigInt            @id @default(autoincrement())
+  uuid          String            @unique @default(uuid()) @db.VarChar(36)
+  name          String            @db.VarChar(100)
+  type          String            @db.VarChar(50)
+  capacity      Int?
+  location      String?           @db.VarChar(100)
+  description   String?
+  status        String            @db.VarChar(20)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  deletedAt     DateTime?
+  school        School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User              @relation("Facility_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?             @relation("Facility_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  bookings      FacilityBooking[]
+
+  @@index([name])
+  @@index([type])
+  @@index([schoolId])
+  @@map("facilities")
+}
+
+model FacilityBooking {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.VarChar(36)
+  facilityId    BigInt
+  bookedById    BigInt
+  startTime     DateTime
+  endTime       DateTime
+  purpose       String?   @db.VarChar(255)
+  status        String    @db.VarChar(20)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  facility      Facility  @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  bookedBy      User      @relation("FacilityBooking_bookedBy", fields: [bookedById], references: [id], onDelete: Cascade)
+  school        School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User      @relation("FacilityBooking_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?     @relation("FacilityBooking_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([facilityId])
+  @@index([bookedById])
+  @@index([schoolId])
+  @@index([startTime, endTime])
+  @@map("facility_bookings")
+}
+
+model Vehicle {
+  id             BigInt    @id @default(autoincrement())
+  uuid           String    @unique @default(uuid()) @db.VarChar(36)
+  registrationNo String    @unique @db.VarChar(20)
+  type           String    @db.VarChar(50)
+  capacity       Int
+  driverId       BigInt?
+  attendantId    BigInt?
+  status         String    @db.VarChar(20)
+  schoolId       BigInt
+  createdBy      BigInt
+  updatedBy      BigInt?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  driver         User?     @relation("VehicleDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  attendant      User?     @relation("VehicleAttendant", fields: [attendantId], references: [id], onDelete: SetNull)
+  school         School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser  User      @relation("Vehicle_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser  User?     @relation("Vehicle_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  routes         Route[]
+  trips          Trip[]
+
+  @@index([registrationNo])
+  @@index([driverId])
+  @@index([attendantId])
+  @@index([schoolId])
+  @@map("vehicles")
+}
+
+model Route {
+  id            BigInt             @id @default(autoincrement())
+  uuid          String             @unique @default(uuid()) @db.VarChar(36)
+  name          String             @db.VarChar(100)
+  startPoint    String             @db.VarChar(100)
+  endPoint      String             @db.VarChar(100)
+  distance      Decimal?           @db.Decimal(5, 2)
+  vehicleId     BigInt?
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  deletedAt     DateTime?
+  vehicle       Vehicle?           @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  school        School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User               @relation("Route_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?              @relation("Route_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  stops         RouteStop[]
+  trips         Trip[]
+  students      StudentTransport[]
+
+  @@index([name])
+  @@index([vehicleId])
+  @@index([schoolId])
+  @@map("routes")
+}
+
+model RouteStop {
+  id                BigInt             @id @default(autoincrement())
+  uuid              String             @unique @default(uuid()) @db.VarChar(36)
+  routeId           BigInt
+  name              String             @db.VarChar(100)
+  sequence          Int
+  arrivalTime       DateTime           @db.Time(6)
+  departureTime     DateTime           @db.Time(6)
+  schoolId          BigInt
+  createdBy         BigInt
+  updatedBy         BigInt?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+  route             Route              @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  school            School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser     User               @relation("RouteStop_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser     User?              @relation("RouteStop_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  studentTransports StudentTransport[]
+
+  @@unique([routeId, sequence])
+  @@index([routeId])
+  @@index([schoolId])
+  @@map("route_stops")
+}
+
+model Trip {
+  id            BigInt                @id @default(autoincrement())
+  uuid          String                @unique @default(uuid()) @db.VarChar(36)
+  routeId       BigInt
+  vehicleId     BigInt
+  tripType      String                @db.VarChar(20)
+  startTime     DateTime              @db.Time(6)
+  endTime       DateTime              @db.Time(6)
+  status        String                @db.VarChar(20)
+  tripDate      DateTime
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  deletedAt     DateTime?
+  route         Route                 @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  vehicle       Vehicle               @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  school        School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User                  @relation("Trip_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?                 @relation("Trip_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  attendances   TransportAttendance[]
+
+  @@index([routeId])
+  @@index([vehicleId])
+  @@index([schoolId])
+  @@index([tripDate])
+  @@index([status])
+  @@map("trips")
+}
+
+model StudentTransport {
+  id            BigInt                @id @default(autoincrement())
+  uuid          String                @unique @default(uuid()) @db.VarChar(36)
+  studentId     BigInt
+  routeId       BigInt
+  stopId        BigInt
+  pickupTime    DateTime              @db.Time(6)
+  dropoffTime   DateTime              @db.Time(6)
+  fee           Decimal               @db.Decimal(10, 2)
+  status        String                @db.VarChar(20)
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  deletedAt     DateTime?
+  student       Student               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  route         Route                 @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stop          RouteStop             @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  school        School                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User                  @relation("StudentTransport_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?                 @relation("StudentTransport_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  attendances   TransportAttendance[]
+
+  @@index([studentId])
+  @@index([routeId])
+  @@index([stopId])
+  @@index([schoolId])
+  @@map("student_transports")
+}
+
+model TransportAttendance {
+  id                 BigInt           @id @default(autoincrement())
+  uuid               String           @unique @default(uuid()) @db.VarChar(36)
+  studentTransportId BigInt
+  tripId             BigInt
+  date               DateTime
+  status             AttendanceStatus
+  remarks            String?          @db.VarChar(255)
+  schoolId           BigInt
+  createdBy          BigInt
+  updatedBy          BigInt?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+  studentTransport   StudentTransport @relation(fields: [studentTransportId], references: [id], onDelete: Cascade)
+  trip               Trip             @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  school             School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser      User             @relation("TransportAttendance_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser      User?            @relation("TransportAttendance_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([studentTransportId])
+  @@index([tripId])
+  @@index([schoolId])
+  @@index([date])
+  @@map("transport_attendances")
+}
+
+model Notice {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.VarChar(36)
+  title         String    @db.VarChar(255)
+  content       String
+  startDate     DateTime
+  endDate       DateTime
+  isPublished   Boolean   @default(false)
+  priority      String    @db.VarChar(20)
+  targetRoles   String?   @db.LongText
+  classIds      String?   @db.LongText
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  school        School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User      @relation("Notice_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?     @relation("Notice_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([schoolId])
+  @@index([isPublished])
+  @@index([startDate, endDate])
+  @@map("notices")
+}
+
+model Event {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.VarChar(36)
+  title         String    @db.VarChar(255)
+  description   String
+  startDateTime DateTime
+  endDateTime   DateTime
+  location      String?   @db.VarChar(100)
+  isPublished   Boolean   @default(false)
+  targetRoles   String?   @db.LongText
+  classIds      String?   @db.LongText
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  school        School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+  @@index([isPublished])
+  @@index([startDateTime, endDateTime])
+  @@map("events")
+}
+
+model Conversation {
+  id                    BigInt                     @id @default(autoincrement())
+  uuid                  String                     @unique @default(uuid()) @db.VarChar(36)
+  name                  String?                    @db.VarChar(255)
+  description           String?
+  type                  ConversationType           @default(DIRECT)
+  isActive              Boolean                    @default(true)
+  isArchived            Boolean                    @default(false)
+  isPinned              Boolean                    @default(false)
+  isMuted               Boolean                    @default(false)
+  isEncrypted           Boolean                    @default(false)
+  encryptionType        EncryptionType             @default(NONE)
+  encryptionKey         String?
+  lastMessageAt         DateTime?
+  lastMessageId         BigInt?
+  schoolId              BigInt?
+  createdBy             BigInt
+  updatedBy             BigInt?
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  deletedAt             DateTime?
+  school                School?                    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser         User                       @relation("Conversation_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser         User?                      @relation("Conversation_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  participants          ConversationParticipant[]
+  messages              Message[]
+  lastMessage           Message?                   @relation("Conversation_lastMessage", fields: [lastMessageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  polls                 MessagePoll[]
+  attachments           MessageAttachment[]
+  analytics             MessageAnalytics[]
+  threads               MessageThread[]
+  notifications         ConversationNotification[]
+  settings              ConversationSetting[]
+  conversationAnalytics ConversationAnalytics[]
+
+  @@index([type])
+  @@index([schoolId])
+  @@index([createdBy])
+  @@index([lastMessageAt])
+  @@index([isActive])
+  @@index([isArchived])
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id                BigInt       @id @default(autoincrement())
+  uuid              String       @unique @default(uuid()) @db.VarChar(36)
+  conversationId    BigInt
+  userId            BigInt
+  role              String       @default("MEMBER") @db.VarChar(50)
+  permissions       String?      @db.LongText
+  isActive          Boolean      @default(true)
+  isMuted           Boolean      @default(false)
+  isPinned          Boolean      @default(false)
+  lastReadAt        DateTime?
+  lastReadMessageId BigInt?
+  joinedAt          DateTime     @default(now())
+  leftAt            DateTime?
+  schoolId          BigInt?
+  createdBy         BigInt
+  updatedBy         BigInt?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadMessage   Message?     @relation("Participant_lastReadMessage", fields: [lastReadMessageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByUser     User         @relation("ConversationParticipant_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser     User?        @relation("ConversationParticipant_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  school            School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  lastReadBy        User[]       @relation("Participant_lastReadMessage")
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+  @@index([role])
+  @@index([isActive])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id                      BigInt                    @id @default(autoincrement())
+  uuid                    String                    @unique @default(uuid()) @db.VarChar(36)
+  senderId                BigInt
+  receiverId              BigInt?
+  subject                 String?                   @db.VarChar(255)
+  content                 String
+  isRead                  Boolean                   @default(false)
+  schoolId                BigInt?
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  deletedAt               DateTime?
+  aiAnalysis              String?                   @db.LongText
+  contentEncrypted        String?
+  contentHtml             String?
+  contentMarkdown         String?
+  conversationId          BigInt?
+  createdBy               BigInt
+  deliveredAt             DateTime?
+  editedAt                DateTime?
+  encryptionKey           String?
+  encryptionType          EncryptionType            @default(NONE)
+  hashtags                String?                   @db.LongText
+  isArchived              Boolean                   @default(false)
+  isDeleted               Boolean                   @default(false)
+  isEdited                Boolean                   @default(false)
+  isEncrypted             Boolean                   @default(false)
+  isForwarded             Boolean                   @default(false)
+  isPinned                Boolean                   @default(false)
+  language                String?                   @db.VarChar(10)
+  links                   String?                   @db.LongText
+  mentions                String?                   @db.LongText
+  metadata                String?                   @db.LongText
+  priority                MessagePriority           @default(NORMAL)
+  readAt                  DateTime?
+  replyToId               BigInt?
+  scheduledAt             DateTime?
+  sentiment               String?                   @db.VarChar(50)
+  status                  MessageStatus             @default(SENT)
+  tags                    String?                   @db.LongText
+  threadId                BigInt?
+  type                    MessageType               @default(DIRECT)
+  updatedBy               BigInt?
+  conversation            Conversation?             @relation(fields: [conversationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  sender                  User                      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver                User?                     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  replyTo                 Message?                  @relation("Message_replies", fields: [replyToId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  replies                 Message[]                 @relation("Message_replies")
+  thread                  MessageThread?            @relation(fields: [threadId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  school                  School?                   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser           User                      @relation("Message_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser           User?                     @relation("Message_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  attachments             MessageAttachment[]
+  reactions               MessageReaction[]
+  forwards                MessageForward[]
+  analytics               MessageAnalytics[]
+  notifications           MessageNotification[]
+  participants            ConversationParticipant[] @relation("Participant_lastReadMessage")
+  conversationLastMessage Conversation[]            @relation("Conversation_lastMessage")
+  threadRootMessage       MessageThread[]           @relation("Thread_rootMessage")
+  threadLastMessage       MessageThread[]           @relation("Thread_lastMessage")
+  originalForwards        MessageForward[]          @relation("Forward_originalMessage")
+  forwardedMessages       MessageForward[]          @relation("Forward_forwardedMessage")
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([replyToId])
+  @@index([threadId])
+  @@index([type])
+  @@index([priority])
+  @@index([status])
+  @@index([isRead])
+  @@index([schoolId])
+  @@index([scheduledAt])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model MessageThread {
+  id               BigInt       @id @default(autoincrement())
+  uuid             String       @unique @default(uuid()) @db.VarChar(36)
+  conversationId   BigInt
+  rootMessageId    BigInt
+  title            String?      @db.VarChar(255)
+  description      String?
+  isActive         Boolean      @default(true)
+  isPinned         Boolean      @default(false)
+  isArchived       Boolean      @default(false)
+  participantCount Int          @default(0)
+  messageCount     Int          @default(0)
+  lastMessageAt    DateTime?
+  lastMessageId    BigInt?
+  schoolId         BigInt?
+  createdBy        BigInt
+  updatedBy        BigInt?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  rootMessage      Message      @relation("Thread_rootMessage", fields: [rootMessageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  lastMessage      Message?     @relation("Thread_lastMessage", fields: [lastMessageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  messages         Message[]
+  school           School?      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser    User         @relation("MessageThread_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser    User?        @relation("MessageThread_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([conversationId])
+  @@index([rootMessageId])
+  @@index([schoolId])
+  @@index([isActive])
+  @@index([lastMessageAt])
+  @@map("message_threads")
+}
+
+model MessageAttachment {
+  id             BigInt         @id @default(autoincrement())
+  uuid           String         @unique @default(uuid()) @db.VarChar(36)
+  messageId      BigInt?
+  conversationId BigInt?
+  name           String         @db.VarChar(255)
+  originalName   String         @db.VarChar(255)
+  path           String         @db.VarChar(500)
+  url            String?        @db.VarChar(500)
+  mimeType       String         @db.VarChar(100)
+  size           Int            @default(0)
+  type           AttachmentType @default(OTHER)
+  isEncrypted    Boolean        @default(false)
+  encryptionKey  String?
+  metadata       String?        @db.LongText
+  schoolId       BigInt?
+  createdBy      BigInt
+  updatedBy      BigInt?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+  message        Message?       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  conversation   Conversation?  @relation(fields: [conversationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  school         School?        @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByUser  User           @relation("MessageAttachment_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser  User?          @relation("MessageAttachment_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([messageId])
+  @@index([conversationId])
+  @@index([schoolId])
+  @@index([type])
+  @@index([mimeType])
+  @@map("message_attachments")
+}
+
+model MessageReaction {
+  id        BigInt              @id @default(autoincrement())
+  uuid      String              @unique @default(uuid()) @db.VarChar(36)
+  messageId BigInt
+  userId    BigInt
+  reaction  MessageReactionType
+  metadata  String?             @db.LongText
+  schoolId  BigInt?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  message   Message             @relation(fields: [messageId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school    School?             @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([messageId, userId, reaction])
+  @@index([messageId])
+  @@index([userId])
+  @@index([reaction])
+  @@index([schoolId])
+  @@map("message_reactions")
+}
+
+model MessageForward {
+  id                 BigInt   @id @default(autoincrement())
+  uuid               String   @unique @default(uuid()) @db.VarChar(36)
+  originalMessageId  BigInt
+  forwardedMessageId BigInt
+  forwardedByUserId  BigInt
+  forwardedToUserId  BigInt
+  forwardedAt        DateTime @default(now())
+  metadata           String?  @db.LongText
+  schoolId           BigInt?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  messageId          BigInt
+  originalMessage    Message  @relation("Forward_originalMessage", fields: [originalMessageId], references: [id], onDelete: Cascade)
+  forwardedMessage   Message  @relation("Forward_forwardedMessage", fields: [forwardedMessageId], references: [id], onDelete: Cascade)
+  forwardedByUser    User     @relation("MessageForward_forwardedByUser", fields: [forwardedByUserId], references: [id], onDelete: Cascade)
+  forwardedToUser    User     @relation("MessageForward_forwardedToUser", fields: [forwardedToUserId], references: [id], onDelete: Cascade)
+  school             School?  @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  message            Message  @relation(fields: [messageId], references: [id])
+
+  @@index([originalMessageId])
+  @@index([forwardedMessageId])
+  @@index([forwardedByUserId])
+  @@index([forwardedToUserId])
+  @@index([schoolId])
+  @@map("message_forwards")
+}
+
+model MessagePoll {
+  id             BigInt       @id @default(autoincrement())
+  uuid           String       @unique @default(uuid()) @db.VarChar(36)
+  conversationId BigInt
+  question       String
+  options        String?      @db.LongText
+  votes          String?      @db.LongText
+  isActive       Boolean      @default(true)
+  expiresAt      DateTime?
+  schoolId       BigInt?
+  createdBy      BigInt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  school         School?      @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdByUser  User         @relation("MessagePoll_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([schoolId])
+  @@index([isActive])
+  @@index([expiresAt])
+  @@map("message_polls")
+}
+
+model ConversationSetting {
+  id             BigInt       @id @default(autoincrement())
+  uuid           String       @unique @default(uuid()) @db.VarChar(36)
+  conversationId BigInt
+  key            String       @db.VarChar(100)
+  value          String
+  metadata       String?      @db.LongText
+  schoolId       BigInt?
+  createdBy      BigInt
+  updatedBy      BigInt?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdByUser  User         @relation("ConversationSetting_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser  User?        @relation("ConversationSetting_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  school         School?      @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([conversationId, key])
+  @@index([conversationId])
+  @@index([key])
+  @@map("conversation_settings")
+}
+
+model MessageNotification {
+  id        BigInt    @id @default(autoincrement())
+  uuid      String    @unique @default(uuid()) @db.VarChar(36)
+  messageId BigInt
+  userId    BigInt
+  type      String    @db.VarChar(50)
+  title     String    @db.VarChar(255)
+  body      String
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  metadata  String?   @db.LongText
+  schoolId  BigInt?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  message   Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school    School?   @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([messageId])
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([schoolId])
+  @@map("message_notifications")
+}
+
+model ConversationNotification {
+  id             BigInt       @id @default(autoincrement())
+  uuid           String       @unique @default(uuid()) @db.VarChar(36)
+  conversationId BigInt
+  userId         BigInt
+  type           String       @db.VarChar(50)
+  title          String       @db.VarChar(255)
+  body           String
+  isRead         Boolean      @default(false)
+  readAt         DateTime?
+  metadata       String?      @db.LongText
+  schoolId       BigInt?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school         School?      @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([conversationId])
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@index([schoolId])
+  @@map("conversation_notifications")
+}
+
+model MessageAnalytics {
+  id             BigInt        @id @default(autoincrement())
+  uuid           String        @unique @default(uuid()) @db.VarChar(36)
+  messageId      BigInt
+  conversationId BigInt?
+  userId         BigInt
+  action         String        @db.VarChar(50)
+  metadata       String?       @db.LongText
+  schoolId       BigInt?
+  createdAt      DateTime      @default(now())
+  message        Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  school         School?       @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([messageId])
+  @@index([conversationId])
+  @@index([userId])
+  @@index([action])
+  @@index([schoolId])
+  @@index([createdAt])
+  @@map("message_analytics")
+}
+
+model ConversationAnalytics {
+  id             BigInt       @id @default(autoincrement())
+  uuid           String       @unique @default(uuid()) @db.VarChar(36)
+  conversationId BigInt
+  userId         BigInt
+  action         String       @db.VarChar(50)
+  metadata       String?      @db.LongText
+  schoolId       BigInt?
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  school         School?      @relation(fields: [schoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([conversationId])
+  @@index([userId])
+  @@index([action])
+  @@index([schoolId])
+  @@index([createdAt])
+  @@map("conversation_analytics")
+}
+
+model Document {
+  id            BigInt       @id @default(autoincrement())
+  uuid          String       @unique @default(uuid()) @db.VarChar(36)
+  title         String       @db.VarChar(255)
+  description   String?
+  type          DocumentType
+  path          String       @db.VarChar(255)
+  mimeType      String       @db.VarChar(100)
+  size          Int          @default(0)
+  studentId     BigInt?
+  teacherId     BigInt?
+  staffId       BigInt?
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+  customerId    BigInt?
+  student       Student?     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacher       Teacher?     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  staff         Staff?       @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  customer      Customer?    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  school        School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User         @relation("Document_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?        @relation("Document_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([title])
+  @@index([type])
+  @@index([studentId])
+  @@index([teacherId])
+  @@index([staffId])
+  @@index([customerId])
+  @@index([schoolId])
+  @@map("documents")
+}
+
+model AuditLog {
+  id         BigInt    @id @default(autoincrement())
+  uuid       String    @unique @default(uuid()) @db.VarChar(36)
+  action     String    @db.VarChar(50)
+  entityType String    @db.VarChar(50)
+  entityId   BigInt
+  oldData    String?   @db.LongText
+  newData    String?   @db.LongText
+  ipAddress  String?   @db.VarChar(45)
+  userAgent  String?   @db.VarChar(255)
+  ownerId    BigInt?
+  schoolId   BigInt?
+  userId     BigInt?
+  createdAt  DateTime  @default(now())
+  customerId BigInt?
+  owner      Owner?    @relation("Owner_auditLogs", fields: [ownerId], references: [id], onDelete: SetNull)
+  school     School?   @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([ownerId])
+  @@index([schoolId])
+  @@index([userId])
+  @@index([customerId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Session {
+  id           BigInt   @id @default(autoincrement())
+  uuid         String   @unique @default(uuid()) @db.VarChar(36)
+  token        String   @unique @db.VarChar(255)
+  ipAddress    String?  @db.VarChar(45)
+  userAgent    String?  @db.VarChar(255)
+  expiresAt    DateTime
+  ownerId      BigInt?
+  userId       BigInt?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  refreshToken String?  @unique @db.VarChar(255)
+  status       String   @default("active") @db.VarChar(20)
+  deviceType   String?  @db.VarChar(50)
+  owner        Owner?   @relation("Owner_sessions", fields: [ownerId], references: [id], onDelete: Cascade)
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([refreshToken])
+  @@index([ownerId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model SystemSetting {
+  id        BigInt    @id @default(autoincrement())
+  uuid      String    @unique @default(uuid()) @db.VarChar(36)
+  key       String    @unique @db.VarChar(100)
+  value     String
+  isPublic  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([key])
+  @@map("system_settings")
+}
+
+model SchoolSetting {
+  id        BigInt    @id @default(autoincrement())
+  uuid      String    @unique @default(uuid()) @db.VarChar(36)
+  key       String    @db.VarChar(100)
+  value     String
+  isPublic  Boolean   @default(false)
+  schoolId  BigInt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  school    School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, key])
+  @@index([key])
+  @@index([schoolId])
+  @@map("school_settings")
+}
+
+model Assignment {
+  id            BigInt                 @id @default(autoincrement())
+  uuid          String                 @unique @default(uuid()) @db.VarChar(36)
+  title         String                 @db.VarChar(255)
+  description   String
+  dueDate       DateTime
+  maxScore      Decimal                @db.Decimal(5, 2)
+  classId       BigInt?
+  subjectId     BigInt?
+  teacherId     BigInt
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  deletedAt     DateTime?
+  class         Class?                 @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject       Subject?               @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher       User                   @relation("Assignment_teacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  school        School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User                   @relation("Assignment_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?                  @relation("Assignment_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  attachments   AssignmentAttachment[]
+  submissions   AssignmentSubmission[]
+
+  @@index([classId])
+  @@index([subjectId])
+  @@index([teacherId])
+  @@index([schoolId])
+  @@index([dueDate])
+  @@map("assignments")
+}
+
+model AssignmentAttachment {
+  id           BigInt     @id @default(autoincrement())
+  uuid         String     @unique @default(uuid()) @db.VarChar(36)
+  assignmentId BigInt
+  name         String     @db.VarChar(255)
+  path         String     @db.VarChar(255)
+  mimeType     String     @db.VarChar(100)
+  size         Int        @default(0)
+  schoolId     BigInt
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  school       School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@index([schoolId])
+  @@map("assignment_attachments")
+}
+
+model AssignmentSubmission {
+  id           BigInt                 @id @default(autoincrement())
+  uuid         String                 @unique @default(uuid()) @db.VarChar(36)
+  assignmentId BigInt
+  studentId    BigInt
+  submittedAt  DateTime
+  score        Decimal?               @db.Decimal(5, 2)
+  feedback     String?
+  schoolId     BigInt
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  deletedAt    DateTime?
+  assignment   Assignment             @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student      Student                @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  school       School                 @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  attachments  SubmissionAttachment[]
+
+  @@unique([assignmentId, studentId])
+  @@index([assignmentId])
+  @@index([studentId])
+  @@index([schoolId])
+  @@map("assignment_submissions")
+}
+
+model SubmissionAttachment {
+  id           BigInt               @id @default(autoincrement())
+  uuid         String               @unique @default(uuid()) @db.VarChar(36)
+  submissionId BigInt
+  name         String               @db.VarChar(255)
+  path         String               @db.VarChar(255)
+  mimeType     String               @db.VarChar(100)
+  size         Int                  @default(0)
+  schoolId     BigInt
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  deletedAt    DateTime?
+  submission   AssignmentSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  school       School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([schoolId])
+  @@map("submission_attachments")
+}
+
+model Permission {
+  id                   BigInt                 @id @default(autoincrement())
+  uuid                 String                 @unique @default(uuid()) @db.VarChar(36)
+  name                 String                 @unique @db.VarChar(100)
+  description          String?
+  action               PermissionAction
+  resourceType         ResourceType
+  resourceId           String?                @db.VarChar(100)
+  scope                PermissionScope        @default(OWN)
+  conditions           String?                @db.LongText
+  isActive             Boolean                @default(true)
+  isSystem             Boolean                @default(false)
+  metadata             String?                @db.LongText
+  schoolId             BigInt?
+  ownerId              BigInt?
+  createdBy            BigInt?
+  updatedBy            BigInt?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  deletedAt            DateTime?
+  school               School?                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  owner                Owner?                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdByUser        User?                  @relation("Permission_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser        User?                  @relation("Permission_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  rolePermissions      RolePermission[]
+  userPermissions      UserPermission[]
+  permissionGroupItems PermissionGroupItem[]
+  assignments          PermissionAssignment[]
+
+  @@unique([action, resourceType, resourceId, scope])
+  @@index([action])
+  @@index([resourceType])
+  @@index([scope])
+  @@index([isActive])
+  @@index([schoolId])
+  @@map("permissions")
+}
+
+model Role {
+  id                    BigInt                 @id @default(autoincrement())
+  uuid                  String                 @unique @default(uuid()) @db.VarChar(36)
+  name                  String                 @db.VarChar(100)
+  description           String?
+  type                  UserRole
+  isActive              Boolean                @default(true)
+  isSystem              Boolean                @default(false)
+  isDefault             Boolean                @default(false)
+  priority              Int                    @default(0)
+  metadata              String?                @db.LongText
+  schoolId              BigInt?
+  ownerId               BigInt?
+  createdBy             BigInt?
+  updatedBy             BigInt?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+  school                School?                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  owner                 Owner?                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdByUser         User?                  @relation("Role_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser         User?                  @relation("Role_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  rolePermissions       RolePermission[]
+  inheritingRoles       RoleInheritance[]      @relation("Role_inheritingRoles")
+  parentRoles           RoleInheritance[]      @relation("Role_parentRoles")
+  userRoleAssignments   UserRoleAssignment[]
+  componentPermissions  ComponentPermission[]
+  permissionAssignments PermissionAssignment[]
+
+  @@unique([name, schoolId])
+  @@index([isActive])
+  @@index([schoolId])
+  @@map("roles")
+}
+
+model RolePermission {
+  id            BigInt     @id @default(autoincrement())
+  roleId        BigInt
+  permissionId  BigInt
+  isGranted     Boolean    @default(true)
+  conditions    String?    @db.LongText
+  expiresAt     DateTime?
+  createdBy     BigInt?
+  createdAt     DateTime   @default(now())
+  role          Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission    Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdByUser User?      @relation("RolePermission_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@index([isGranted])
+  @@map("role_permissions")
+}
+
+model RoleInheritance {
+  id               BigInt   @id @default(autoincrement())
+  inheritingRoleId BigInt
+  parentRoleId     BigInt
+  createdBy        BigInt?
+  createdAt        DateTime @default(now())
+  inheritingRole   Role     @relation("Role_inheritingRoles", fields: [inheritingRoleId], references: [id], onDelete: Cascade)
+  parentRole       Role     @relation("Role_parentRoles", fields: [parentRoleId], references: [id], onDelete: Cascade)
+  createdByUser    User?    @relation("RoleInheritance_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([inheritingRoleId, parentRoleId])
+  @@index([inheritingRoleId])
+  @@index([parentRoleId])
+  @@map("role_inheritances")
+}
+
+model UserPermission {
+  id            BigInt     @id @default(autoincrement())
+  userId        BigInt
+  permissionId  BigInt
+  isGranted     Boolean    @default(true)
+  conditions    String?    @db.LongText
+  expiresAt     DateTime?
+  createdBy     BigInt?
+  createdAt     DateTime   @default(now())
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission    Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdByUser User?      @relation("UserPermission_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@index([permissionId])
+  @@index([isGranted])
+  @@map("user_permissions")
+}
+
+model UserRoleAssignment {
+  id             BigInt    @id @default(autoincrement())
+  userId         BigInt
+  roleId         BigInt
+  isActive       Boolean   @default(true)
+  assignedAt     DateTime  @default(now())
+  expiresAt      DateTime?
+  assignedBy     BigInt?
+  metadata       String?   @db.LongText
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedByUser User?     @relation("UserRoleAssignment_assignedByUser", fields: [assignedBy], references: [id], onDelete: SetNull)
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@index([isActive])
+  @@map("user_role_assignments")
+}
+
+model AccessControlList {
+  id            BigInt           @id @default(autoincrement())
+  uuid          String           @unique @default(uuid()) @db.VarChar(36)
+  name          String           @db.VarChar(100)
+  description   String?
+  resourceType  ResourceType
+  resourceId    String           @db.VarChar(100)
+  action        PermissionAction
+  principalType String           @db.VarChar(20)
+  principalId   BigInt
+  isGranted     Boolean          @default(true)
+  conditions    String?          @db.LongText
+  expiresAt     DateTime?
+  createdBy     BigInt?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  createdByUser User?            @relation("AccessControlList_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([resourceType, resourceId, action, principalType, principalId])
+  @@index([resourceType])
+  @@index([resourceId])
+  @@index([action])
+  @@index([principalType])
+  @@index([principalId])
+  @@index([isGranted])
+  @@map("access_control_lists")
+}
+
+model PermissionGroup {
+  id                   BigInt                @id @default(autoincrement())
+  uuid                 String                @unique @default(uuid()) @db.VarChar(36)
+  name                 String                @db.VarChar(100)
+  description          String?
+  isActive             Boolean               @default(true)
+  isSystem             Boolean               @default(false)
+  metadata             String?               @db.LongText
+  schoolId             BigInt?
+  ownerId              BigInt?
+  createdBy            BigInt?
+  updatedBy            BigInt?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  deletedAt            DateTime?
+  school               School?               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  owner                Owner?                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdByUser        User?                 @relation("PermissionGroup_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser        User?                 @relation("PermissionGroup_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  permissionGroupItems PermissionGroupItem[]
+
+  @@index([isActive])
+  @@index([schoolId])
+  @@map("permission_groups")
+}
+
+model PermissionGroupItem {
+  id            BigInt          @id @default(autoincrement())
+  groupId       BigInt
+  permissionId  BigInt
+  isGranted     Boolean         @default(true)
+  conditions    String?         @db.LongText
+  createdBy     BigInt?
+  createdAt     DateTime        @default(now())
+  group         PermissionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  permission    Permission      @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdByUser User?           @relation("PermissionGroupItem_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([groupId, permissionId])
+  @@index([groupId])
+  @@index([permissionId])
+  @@map("permission_group_items")
+}
+
+model FrontendComponent {
+  id                   BigInt                @id @default(autoincrement())
+  uuid                 String                @unique @default(uuid()) @db.VarChar(36)
+  name                 String                @unique @db.VarChar(100)
+  path                 String                @db.VarChar(255)
+  component            String                @db.VarChar(100)
+  description          String?
+  category             String                @db.VarChar(50)
+  isActive             Boolean               @default(true)
+  isSystem             Boolean               @default(false)
+  metadata             String?               @db.LongText
+  schoolId             BigInt?
+  ownerId              BigInt?
+  createdBy            BigInt?
+  updatedBy            BigInt?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  deletedAt            DateTime?
+  school               School?               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  owner                Owner?                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdByUser        User?                 @relation("FrontendComponent_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser        User?                 @relation("FrontendComponent_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  componentPermissions ComponentPermission[]
+
+  @@index([path])
+  @@index([component])
+  @@index([category])
+  @@index([isActive])
+  @@index([schoolId])
+  @@map("frontend_components")
+}
+
+model ComponentPermission {
+  id            BigInt            @id @default(autoincrement())
+  componentId   BigInt
+  roleId        BigInt?
+  userId        BigInt?
+  permission    String            @db.VarChar(50)
+  isGranted     Boolean           @default(true)
+  conditions    String?           @db.LongText
+  createdBy     BigInt?
+  createdAt     DateTime          @default(now())
+  component     FrontendComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  role          Role?             @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user          User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdByUser User?             @relation("ComponentPermission_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([componentId, roleId, permission])
+  @@unique([componentId, userId, permission])
+  @@index([componentId])
+  @@index([roleId])
+  @@index([userId])
+  @@index([permission])
+  @@map("component_permissions")
+}
+
+model Policy {
+  id                BigInt             @id @default(autoincrement())
+  uuid              String             @unique @default(uuid()) @db.VarChar(36)
+  name              String             @unique @db.VarChar(100)
+  description       String?
+  isActive          Boolean            @default(true)
+  isSystem          Boolean            @default(false)
+  conditions        String             @db.LongText
+  effect            String             @default("allow")
+  metadata          String?            @db.LongText
+  createdBy         BigInt?
+  updatedBy         BigInt?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+  createdByUser     User?              @relation("Policy_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser     User?              @relation("Policy_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  policyAssignments PolicyAssignment[]
+
+  @@unique([name, deletedAt])
+  @@index([isActive])
+  @@index([isSystem])
+  @@index([createdBy])
+  @@index([updatedBy])
+  @@map("policies")
+}
+
+model PolicyAssignment {
+  id             BigInt    @id @default(autoincrement())
+  policyId       BigInt
+  principalType  String    @db.VarChar(20)
+  principalId    BigInt
+  resourceType   String?   @db.VarChar(50)
+  resourceId     String?   @db.VarChar(100)
+  isActive       Boolean   @default(true)
+  assignedBy     BigInt?
+  assignedAt     DateTime  @default(now())
+  expiresAt      DateTime?
+  metadata       String?   @db.LongText
+  policy         Policy    @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  assignedByUser User?     @relation("PolicyAssignment_assignedByUser", fields: [assignedBy], references: [id], onDelete: SetNull)
+
+  @@unique([policyId, principalType, principalId, resourceType, resourceId])
+  @@index([principalType])
+  @@index([principalId])
+  @@index([resourceType])
+  @@index([resourceId])
+  @@index([isActive])
+  @@map("policy_assignments")
+}
+
+model AttributeRule {
+  id                   BigInt                @id @default(autoincrement())
+  uuid                 String                @unique @default(uuid()) @db.VarChar(36)
+  name                 String                @unique @db.VarChar(100)
+  description          String?
+  isActive             Boolean               @default(true)
+  isSystem             Boolean               @default(false)
+  targetType           String                @db.VarChar(50)
+  attribute            String                @db.VarChar(100)
+  operator             String                @db.VarChar(20)
+  value                String                @db.VarChar(255)
+  effect               String                @default("allow")
+  metadata             String?               @db.LongText
+  createdBy            BigInt?
+  updatedBy            BigInt?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  deletedAt            DateTime?
+  createdByUser        User?                 @relation("AttributeRule_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser        User?                 @relation("AttributeRule_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  attributeAssignments AttributeAssignment[]
+
+  @@unique([name, deletedAt])
+  @@index([isActive])
+  @@index([isSystem])
+  @@index([targetType])
+  @@index([attribute])
+  @@map("attribute_rules")
+}
+
+model AttributeAssignment {
+  id              BigInt        @id @default(autoincrement())
+  attributeRuleId BigInt
+  principalType   String        @db.VarChar(20)
+  principalId     BigInt
+  resourceType    String?       @db.VarChar(50)
+  resourceId      String?       @db.VarChar(100)
+  isActive        Boolean       @default(true)
+  assignedBy      BigInt?
+  assignedAt      DateTime      @default(now())
+  expiresAt       DateTime?
+  metadata        String?       @db.LongText
+  attributeRule   AttributeRule @relation(fields: [attributeRuleId], references: [id], onDelete: Cascade)
+  assignedByUser  User?         @relation("AttributeAssignment_assignedByUser", fields: [assignedBy], references: [id], onDelete: SetNull)
+
+  @@unique([attributeRuleId, principalType, principalId, resourceType, resourceId])
+  @@index([principalType])
+  @@index([principalId])
+  @@index([resourceType])
+  @@index([resourceId])
+  @@index([isActive])
+  @@map("attribute_assignments")
+}
+
+model Customer {
+  id                BigInt                 @id @default(autoincrement())
+  uuid              String?                @unique @db.VarChar(36)
+  name              String
+  serialNumber      String                 @unique
+  email             String?                @unique
+  phone             String?
+  gender            String?                @db.VarChar(20)
+  source            String?                @db.VarChar(100)
+  purpose           String?                @db.VarChar(255)
+  department        String?                @db.VarChar(100)
+  referredTo        String?                @db.VarChar(50)
+  referredById      BigInt?
+  metadata          String?                @db.LongText
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  deletedAt         DateTime?
+  ownerId           BigInt?
+  schoolId          BigInt?
+  createdBy         BigInt?
+  updatedBy         BigInt?
+  userId            BigInt?
+  totalSpent        Decimal?               @db.Decimal(10, 2)
+  orderCount        Int?
+  type              String?
+  pipelineStageId   BigInt?
+  rermark           String?                @db.VarChar(255)
+  priority          String?                @db.VarChar(255)
+  referredBy        Customer?              @relation("CustomerReferrals", fields: [referredById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  referrals         Customer[]             @relation("CustomerReferrals")
+  owner             Owner?                 @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  school            School?                @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  createdByUser     User?                  @relation("CustomerCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser     User?                  @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  pipelineStage     CustomerPipelineStage? @relation("CustomerPipelineStageCustomers", fields: [pipelineStageId], references: [id], onDelete: SetNull)
+  payments          Payment[]
+  documents         Document[]
+  auditLogs         AuditLog[]
+  events            CustomerEvent[]
+  convertedStudents Student[]              @relation("Student_convertedFromCustomer")
+
+  @@index([schoolId])
+  @@index([ownerId])
+  @@index([serialNumber])
+  @@index([email])
+  @@index([pipelineStageId])
+  @@map("customers")
+}
+
+model CustomerPipelineStage {
+  id          BigInt     @id @default(autoincrement())
+  uuid        String     @unique @default(uuid()) @db.VarChar(36)
+  name        String     @db.VarChar(100)
+  order       Int
+  description String?    @db.VarChar(255)
+  color       String?    @db.VarChar(20)
+  schoolId    BigInt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
+  school      School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  customers   Customer[] @relation("CustomerPipelineStageCustomers")
+
+  @@unique([schoolId, name])
+  @@index([schoolId])
+  @@index([order])
+  @@map("customer_pipeline_stages")
+}
+
+model CustomerEvent {
+  id            BigInt   @id @default(autoincrement())
+  uuid          String   @unique @default(uuid()) @db.VarChar(36)
+  customerId    BigInt
+  eventType     String   @db.VarChar(100)
+  title         String   @db.VarChar(255)
+  description   String?
+  metadata      String?  @db.LongText
+  severity      String   @default("INFO") @db.VarChar(20)
+  schoolId      BigInt
+  createdBy     BigInt?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  school        School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User?    @relation("CustomerEvent_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([eventType])
+  @@index([severity])
+  @@index([schoolId])
+  @@index([createdAt])
+  @@map("customer_events")
+}
+
+model StudentEvent {
+  id            BigInt   @id @default(autoincrement())
+  uuid          String   @unique @default(uuid()) @db.VarChar(36)
+  studentId     BigInt
+  eventType     String   @db.VarChar(100)
+  title         String   @db.VarChar(255)
+  description   String?
+  metadata      String?  @db.LongText
+  severity      String   @default("INFO") @db.VarChar(20)
+  schoolId      BigInt
+  createdBy     BigInt?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  school        School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User?    @relation("StudentEvent_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([eventType])
+  @@index([severity])
+  @@index([schoolId])
+  @@index([createdAt])
+  @@map("student_events")
+}
+
+model Notification {
+  id           BigInt                   @id @default(autoincrement())
+  uuid         String                   @unique @default(uuid()) @db.VarChar(36)
+  type         String                   @db.VarChar(100)
+  title        String                   @db.VarChar(255)
+  message      String
+  summary      String?                  @db.VarChar(500)
+  priority     String                   @default("NORMAL") @db.VarChar(20)
+  status       String                   @default("PENDING") @db.VarChar(20)
+  metadata     String?                  @db.LongText
+  actions      String?                  @db.LongText
+  expiresAt    DateTime?
+  scheduledAt  DateTime?
+  entityType   String?                  @db.VarChar(50)
+  entityId     BigInt?
+  entityAction String?                  @db.VarChar(50)
+  senderId     BigInt?
+  schoolId     BigInt
+  ownerId      BigInt?
+  templateKey  String?                  @db.VarChar(100)
+  templateData String?                  @db.LongText
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  deletedAt    DateTime?
+  sender       User?                    @relation("Notification_sender", fields: [senderId], references: [id], onDelete: SetNull)
+  school       School                   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  owner        Owner?                   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  recipients   NotificationRecipient[]
+  attachments  NotificationAttachment[]
+  deliveries   NotificationDelivery[]
+
+  @@index([type])
+  @@index([priority])
+  @@index([status])
+  @@index([schoolId])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([createdAt])
+  @@index([scheduledAt])
+  @@map("notifications")
+}
+
+model NotificationRecipient {
+  id             BigInt       @id @default(autoincrement())
+  uuid           String       @unique @default(uuid()) @db.VarChar(36)
+  notificationId BigInt
+  userId         BigInt
+  channel        String       @db.VarChar(20)
+  status         String       @default("PENDING") @db.VarChar(20)
+  readAt         DateTime?
+  deliveredAt    DateTime?
+  metadata       String?      @db.LongText
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId, channel])
+  @@index([notificationId])
+  @@index([userId])
+  @@index([channel])
+  @@index([status])
+  @@map("notification_recipients")
+}
+
+model NotificationAttachment {
+  id             BigInt       @id @default(autoincrement())
+  uuid           String       @unique @default(uuid()) @db.VarChar(36)
+  notificationId BigInt
+  name           String       @db.VarChar(255)
+  url            String
+  type           String       @db.VarChar(50)
+  size           Int?
+  mimeType       String?      @db.VarChar(100)
+  description    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([type])
+  @@map("notification_attachments")
+}
+
+model NotificationDelivery {
+  id              BigInt       @id @default(autoincrement())
+  uuid            String       @unique @default(uuid()) @db.VarChar(36)
+  notificationId  BigInt
+  channel         String       @db.VarChar(20)
+  status          String       @db.VarChar(20)
+  attemptCount    Int          @default(0)
+  deliveredAt     DateTime?
+  errorMessage    String?
+  gatewayResponse String?      @db.LongText
+  metadata        String?      @db.LongText
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  notification    Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@index([channel])
+  @@index([status])
+  @@index([createdAt])
+  @@map("notification_deliveries")
+}
+
+model NotificationTemplate {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.VarChar(36)
+  key           String    @unique @db.VarChar(100)
+  name          String    @db.VarChar(255)
+  description   String?
+  type          String    @db.VarChar(50)
+  subject       String?   @db.VarChar(255)
+  body          String
+  htmlBody      String?
+  variables     String?   @db.LongText
+  isActive      Boolean   @default(true)
+  isSystem      Boolean   @default(false)
+  schoolId      BigInt?
+  createdBy     BigInt?
+  updatedBy     BigInt?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  school        School?   @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  createdByUser User?     @relation("NotificationTemplate_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?     @relation("NotificationTemplate_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([key])
+  @@index([type])
+  @@index([isActive])
+  @@index([schoolId])
+  @@map("notification_templates")
+}
+
+model NotificationRule {
+  id            BigInt    @id @default(autoincrement())
+  uuid          String    @unique @default(uuid()) @db.VarChar(36)
+  name          String    @db.VarChar(255)
+  description   String?
+  entityType    String    @db.VarChar(50)
+  eventType     String    @db.VarChar(100)
+  conditions    String?   @db.LongText
+  templateKey   String?   @db.VarChar(100)
+  channels      String?   @db.LongText
+  recipients    String?   @db.LongText
+  isActive      Boolean   @default(true)
+  isSystem      Boolean   @default(false)
+  schoolId      BigInt?
+  createdBy     BigInt?
+  updatedBy     BigInt?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  school        School?   @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  createdByUser User?     @relation("NotificationRule_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User?     @relation("NotificationRule_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([entityType])
+  @@index([eventType])
+  @@index([isActive])
+  @@index([schoolId])
+  @@map("notification_rules")
+}
+
+model PermissionAssignment {
+  id             BigInt     @id @default(autoincrement())
+  uuid           String     @unique @default(uuid()) @db.VarChar(36)
+  userId         BigInt?
+  roleId         BigInt?
+  groupId        BigInt?
+  permissionId   BigInt
+  scope          String     @default("global")
+  resource       String?
+  action         String?
+  conditions     String?    @db.LongText
+  priority       Int        @default(1)
+  isActive       Boolean    @default(true)
+  expiresAt      DateTime?
+  assignedBy     BigInt?
+  assignedAt     DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  user           User?      @relation(fields: [userId], references: [id])
+  role           Role?      @relation(fields: [roleId], references: [id])
+  group          Group?     @relation(fields: [groupId], references: [id])
+  permission     Permission @relation(fields: [permissionId], references: [id])
+  assignedByUser User?      @relation("PermissionAssignment_assignedByUser", fields: [assignedBy], references: [id], onDelete: SetNull)
+
+  @@unique([userId, roleId, groupId, permissionId, scope, resource, action])
+  @@index([userId])
+  @@index([roleId])
+  @@index([groupId])
+  @@index([permissionId])
+  @@index([scope])
+  @@index([isActive])
+  @@map("permission_assignments")
+}
+
+model Group {
+  id                    BigInt                 @id @default(autoincrement())
+  uuid                  String                 @unique @default(uuid()) @db.VarChar(36)
+  name                  String                 @unique @db.VarChar(100)
+  description           String?
+  type                  String                 @db.VarChar(50)
+  isActive              Boolean                @default(true)
+  metadata              String?                @db.LongText
+  schoolId              BigInt?
+  ownerId               BigInt?
+  createdBy             BigInt?
+  updatedBy             BigInt?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+  school                School?                @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  owner                 Owner?                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdByUser         User?                  @relation("Group_createdByUser", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser         User?                  @relation("Group_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+  users                 User[]
+  permissionAssignments PermissionAssignment[]
+
+  @@index([name])
+  @@index([type])
+  @@index([isActive])
+  @@index([schoolId])
+  @@map("groups")
+}
+
+model ClassToSubject {
+  A BigInt
+  B BigInt
+
+  @@unique([A, B], map: "_ClassToSubject_AB_unique")
+  @@index([B], map: "_ClassToSubject_B_index")
+  @@map("_ClassToSubject")
+}
+
+model GroupToUser {
+  A BigInt
+  B BigInt
+
+  @@unique([A, B], map: "_GroupToUser_AB_unique")
+  @@index([B], map: "_GroupToUser_B_index")
+  @@map("_GroupToUser")
+}
+
+model Participant_lastReadMessage {
+  A BigInt
+  B BigInt
+
+  @@unique([A, B], map: "_Participant_lastReadMessage_AB_unique")
+  @@index([B], map: "_Participant_lastReadMessage_B_index")
+  @@map("_Participant_lastReadMessage")
+}
+
+model SubjectToTeacher {
+  A BigInt
+  B BigInt
+
+  @@unique([A, B], map: "_SubjectToTeacher_AB_unique")
+  @@index([B], map: "_SubjectToTeacher_B_index")
+  @@map("_SubjectToTeacher")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  TEACHER
+  STUDENT
+  STAFF
+  PARENT
+  ACCOUNTANT
+  LIBRARIAN
+  CRM_MANAGER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+  HALF_DAY
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  PARTIALLY_PAID
+  OVERDUE
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  MOBILE_PAYMENT
+  CHECK
+  SCHOLARSHIP
+}
+
+enum ExamType {
+  MIDTERM
+  FINAL
+  QUIZ
+  ASSIGNMENT
+  PROJECT
+  PRACTICAL
+}
+
+enum TermType {
+  FIRST_TERM
+  SECOND_TERM
+  THIRD_TERM
+  SUMMER
+  WINTER
+}
+
+enum SchoolStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  GRADUATED
+  TRANSFERRED
+}
+
+enum DocumentType {
+  ID_PROOF
+  ADDRESS_PROOF
+  BIRTH_CERTIFICATE
+  TRANSFER_CERTIFICATE
+  MARKSHEET
+  PHOTOGRAPH
+  MEDICAL_CERTIFICATE
+  OTHER
+}
+
+enum PermissionAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  EXPORT
+  IMPORT
+  BULK_OPERATION
+  VIEW_REPORTS
+  MANAGE_USERS
+  MANAGE_ROLES
+  MANAGE_PERMISSIONS
+  SYSTEM_ADMIN
+}
+
+enum ResourceType {
+  STUDENT
+  TEACHER
+  CLASS
+  SUBJECT
+  EXAM
+  GRADE
+  ATTENDANCE
+  ASSIGNMENT
+  ACADEMIC_SESSION
+  TERM
+  SECTION
+  DEPARTMENT
+  PAYMENT
+  FEE_STRUCTURE
+  FEE_ITEM
+  REFUND
+  INSTALLMENT
+  PAYROLL
+  INCOME
+  BILL
+  USER
+  ROLE
+  PERMISSION
+  SCHOOL
+  OWNER
+  STAFF
+  PARENT
+  ACCOUNTANT
+  LIBRARIAN
+  BOOK
+  BOOK_ISSUE
+  BOOK_RESERVATION
+  BOOK_REVIEW
+  INVENTORY_ITEM
+  INVENTORY_CATEGORY
+  INVENTORY_SUPPLIER
+  PURCHASE_ORDER
+  INVENTORY_LOG
+  INVENTORY_MAINTENANCE
+  VEHICLE
+  ROUTE
+  TRIP
+  STUDENT_TRANSPORT
+  TRANSPORT_ATTENDANCE
+  FACILITY
+  FACILITY_BOOKING
+  NOTICE
+  EVENT
+  MESSAGE
+  NOTIFICATION
+  DOCUMENT
+  CUSTOMER
+  CUSTOMER_PIPELINE
+  SYSTEM_SETTING
+  SCHOOL_SETTING
+  AUDIT_LOG
+  FILE
+  TIMETABLE
+  TIMETABLE_VERSION
+  DASHBOARD
+  REPORTS
+  ANALYTICS
+  SETTINGS
+  PROFILE
+  NOTIFICATIONS
+  HELP
+  ABOUT
+}
+
+enum PermissionScope {
+  OWN
+  SCHOOL
+  ALL
+  CUSTOM
+}
+
+enum MessageType {
+  DIRECT
+  GROUP
+  BROADCAST
+  ANNOUNCEMENT
+  SYSTEM
+  NOTIFICATION
+  ALERT
+  REMINDER
+  SCHEDULED
+  ENCRYPTED
+  VOICE
+  VIDEO
+  FILE
+  LOCATION
+  POLL
+  REACTION
+  THREAD
+  REPLY
+  FORWARD
+  ARCHIVE
+}
+
+enum MessagePriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+  CRITICAL
+}
+
+enum MessageStatus {
+  DRAFT
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  PENDING
+  SCHEDULED
+  CANCELLED
+  ARCHIVED
+  DELETED
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+  CHANNEL
+  BROADCAST
+  ANNOUNCEMENT
+  SUPPORT
+  MODERATION
+}
+
+enum AttachmentType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  PDF
+  SPREADSHEET
+  PRESENTATION
+  ARCHIVE
+  LOCATION
+  CONTACT
+  CALENDAR
+  CODE
+  OTHER
+}
+
+enum EncryptionType {
+  NONE
+  AES_256
+  END_TO_END
+  ENTERPRISE
+  QUANTUM_SAFE
+}
+
+enum MessageReactionType {
+  LIKE
+  LOVE
+  HAHA
+  WOW
+  SAD
+  ANGRY
+  THUMBS_UP
+  THUMBS_DOWN
+  CLAP
+  HEART
+  FIRE
+  ROCKET
+  EYES
+  PRAY
+  CELEBRATE
+}

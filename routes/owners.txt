@@ -1,0 +1,52 @@
+Base URL: http://localhost:4000/api/owners
+📋 1. HEALTH CHECK & STATISTICS
+Health Check
+
+{
+GET http://localhost:4000/api/owners/health
+Headers: None required
+
+
+}
+Expected Response:
+{
+  "success": true,
+  "message": "Owners service is healthy",
+  "timestamp": "2024-01-01T12:00:00.000Z",
+  "uptime": 123.45,
+  "memory": {...}
+}
+GET http://localhost:4000/api/owners/stats
+Headers: None required
+Expected Response:
+{
+  "success": true,
+  "data": {
+    "total": 0,
+    "active": 0,
+    "inactive": 0,
+    "suspended": 0,
+    "deleted": 0,
+    "withSchools": 0,
+    "withUsers": 0,
+    "distribution": {
+      "active": 0,
+      "inactive": 0,
+      "suspended": 0
+    }
+  }
+}
+
+{
+  "name": "John Doe",
+  "email": "john.doe@example.com",
+  "phone": "+1234567890",
+  "password": "securepassword123",
+  "status": "ACTIVE",
+  "timezone": "UTC",
+  "locale": "en-US",
+  "metadata": {
+    "company": "Test Corp",
+    "notes": "Test owner"
+  }
+}
