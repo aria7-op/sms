@@ -131,78 +131,116 @@ export const getAllCustomers = async (req, res) => {
     
     const { schoolId } = req.user;
 
-    // Initialize database pool
-    const pool = await initializeDbPool();
+    // Use a timeout for database operations
+    const timeout = setTimeout(() => {
+      res.status(408).json({
+        success: false,
+        message: 'Request timeout - database operation taking too long',
+        error: 'Database timeout'
+      });
+    }, 8000000); // 8 second timeout
 
-    // Use simple SQL query instead of complex Prisma
-    let sql = 'SELECT id, name, email, phone, gender, source, purpose, department, totalSpent, orderCount, type, createdAt FROM customers WHERE schoolId = ?';
-    let params = [schoolId];
-    
-    if (search) {
-      sql += ' AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)';
-      const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm, searchTerm);
-    }
-    
-    if (type) {
-      sql += ' AND type = ?';
-      params.push(type);
-    }
-    
-    // Add sorting
-    sql += ` ORDER BY ${sortBy} ${sortOrder.toUpperCase()}`;
-    
-    // Add pagination
-    if (isPaginationRequested) {
-      const offset = (pageNum - 1) * limitNum;
-      sql += ' LIMIT ? OFFSET ?';
-      params.push(limitNum, offset);
-    }
-    
-    // Execute query
-    const [customers] = await dbPool.execute(sql, params);
-    
-    // Get total count for pagination
-    let countSql = 'SELECT COUNT(*) as total FROM customers WHERE schoolId = ?';
-    let countParams = [schoolId];
-    
-    if (search) {
-      countSql += ' AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)';
-      const searchTerm = `%${search}%`;
-      countParams.push(searchTerm, searchTerm, searchTerm);
-    }
-    
-    if (type) {
-      countSql += ' AND type = ?';
-      countParams.push(type);
-    }
-    
-    const [countResult] = await dbPool.execute(countSql, countParams);
-    const totalCount = countResult[0].total;
-    
-    // Convert BigInt to string for JSON serialization
-    const formattedCustomers = customers.map(customer => ({
-      ...customer,
-      id: customer.id.toString(),
-      schoolId: customer.schoolId ? customer.schoolId.toString() : null,
-      totalSpent: customer.totalSpent ? customer.totalSpent.toString() : null,
-      createdAt: customer.createdAt ? customer.createdAt.toISOString() : null
-    }));
+    try {
+      // Initialize database pool with timeout
+      const pool = await Promise.race([
+        initializeDbPool(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Database connection timeout')), 500000)
+        )
+      ]);
 
-    res.json({
-      success: true,
-      data: formattedCustomers,
-      pagination: isPaginationRequested ? {
-        page: pageNum,
-        limit: limitNum,
-        total: totalCount,
-        pages: Math.ceil(totalCount / limitNum)
-      } : null,
-      meta: {
-        total: totalCount,
-        count: customers.length
+      // Use simple SQL query instead of complex Prisma
+      let sql = 'SELECT id, name, email, phone, gender, source, purpose, department, totalSpent, orderCount, type, createdAt FROM customers WHERE schoolId = ?';
+      let params = [schoolId];
+      
+      if (search) {
+        sql += ' AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)';
+        const searchTerm = `%${search}%`;
+        params.push(searchTerm, searchTerm, searchTerm);
       }
-    });
+      
+      if (type) {
+        sql += ' AND type = ?';
+        params.push(type);
+      }
+      
+      // Add sorting
+      sql += ` ORDER BY ${sortBy} ${sortOrder.toUpperCase()}`;
+      
+      // Add pagination
+      if (isPaginationRequested) {
+        const offset = (pageNum - 1) * limitNum;
+        sql += ' LIMIT ? OFFSET ?';
+        params.push(limitNum, offset);
+      }
+      
+      // Execute query with timeout
+      const [customers] = await Promise.race([
+        pool.execute(sql, params),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Query timeout')), 5000)
+        )
+      ]);
+      
+      // Get total count for pagination
+      let countSql = 'SELECT COUNT(*) as total FROM customers WHERE schoolId = ?';
+      let countParams = [schoolId];
+      
+      if (search) {
+        countSql += ' AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)';
+        const searchTerm = `%${search}%`;
+        countParams.push(searchTerm, searchTerm, searchTerm);
+      }
+      
+      if (type) {
+        countSql += ' AND type = ?';
+        countParams.push(type);
+      }
+      
+      const [countResult] = await Promise.race([
+        pool.execute(countSql, countParams),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Count query timeout')), 5000)
+        )
+      ]);
+      
+      const totalCount = countResult[0].total;
+      
+      // Convert BigInt to string for JSON serialization
+      const formattedCustomers = customers.map(customer => ({
+        ...customer,
+        id: customer.id.toString(),
+        schoolId: customer.schoolId ? customer.schoolId.toString() : null,
+        totalSpent: customer.totalSpent ? customer.totalSpent.toString() : null,
+        createdAt: customer.createdAt ? customer.createdAt.toISOString() : null
+      }));
+
+      clearTimeout(timeout);
+
+      res.json({
+        success: true,
+        data: formattedCustomers,
+        pagination: isPaginationRequested ? {
+          page: pageNum,
+          limit: limitNum,
+          total: totalCount,
+          pages: Math.ceil(totalCount / limitNum)
+        } : null,
+        meta: {
+          total: totalCount,
+          count: customers.length
+        }
+      });
+
+    } catch (dbError) {
+      clearTimeout(timeout);
+      console.error('❌ Database error:', dbError);
+      res.status(500).json({
+        success: false,
+        message: 'Database operation failed',
+        error: dbError.message
+      });
+    }
 
   } catch (error) {
     console.error('❌ Failed to retrieve customers:', error);
