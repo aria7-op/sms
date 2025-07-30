@@ -142,11 +142,25 @@ router.get('/',
  * @permissions student:read
  */
 router.get('/:id',
+  (req, res, next) => {
+    console.log('=== ROUTE MATCHED: GET /:id ===');
+    console.log('URL:', req.url);
+    console.log('Params:', req.params);
+    next();
+  },
   authenticateToken,
   authorizePermissions(['student:read']),
   validateParams(idSchema),
   authorizeStudentAccess('id'),
+  (req, res, next) => {
+    console.log('=== BEFORE studentCacheMiddleware ===');
+    next();
+  },
   studentCacheMiddleware,
+  (req, res, next) => {
+    console.log('=== AFTER studentCacheMiddleware ===');
+    next();
+  },
   studentController.getStudentById.bind(studentController)
 );
 
@@ -652,6 +666,24 @@ router.post('/cache/warm',
   authorizePermissions(['system:cache_manage']),
   cacheLimiter,
   studentController.warmCache.bind(studentController)
+);
+
+// ======================
+// MAINTENANCE OPERATIONS
+// ======================
+
+/**
+ * @route   POST /api/students/cleanup-orphaned
+ * @desc    Clean up orphaned students (students with invalid school references)
+ * @access  Private (SUPER_ADMIN only)
+ * @permissions student:delete
+ */
+router.post('/cleanup-orphaned',
+  authenticateToken,
+  authorizeRoles(['SUPER_ADMIN']),
+  authorizePermissions(['student:delete']),
+  auditLog('MAINTENANCE', 'Student'),
+  studentController.cleanupOrphanedStudentsEndpoint.bind(studentController)
 );
 
 // ======================
