@@ -448,11 +448,20 @@ class StudentController {
       console.log('Search query built:', searchQuery);
 
       console.log('Step 6: Preparing final query...');
+      // Ensure we don't have conflicting user conditions
+      const cleanSearchQuery = { ...searchQuery };
+      if (cleanSearchQuery.user) {
+        // If searchQuery has user conditions, merge them properly
+        cleanSearchQuery.user = {
+          ...cleanSearchQuery.user,
+          id: { not: null } // Ensure user exists
+        };
+      }
+      
       const finalQuery = {
         where: {
-          ...searchQuery,
+          ...cleanSearchQuery,
           schoolId: BigInt(schoolId),
-          userId: { not: null },
           deletedAt: null
         },
         include: includeQuery,
@@ -484,7 +493,19 @@ class StudentController {
             ...finalQuery,
             include: includeWithoutSchool
           };
-          students = await prisma.student.findMany(fallbackQuery);
+          try {
+            students = await prisma.student.findMany(fallbackQuery);
+          } catch (fallbackError) {
+            console.error('Fallback query also failed:', fallbackError);
+            // Try with minimal includes
+            const minimalQuery = {
+              ...finalQuery,
+              include: {
+                _count: includeQuery._count
+              }
+            };
+            students = await prisma.student.findMany(minimalQuery);
+          }
         } else if (error.message.includes('user') && error.message.includes('null')) {
           console.log('Attempting to fetch students without user relation due to orphaned records');
           const { user, ...includeWithoutUser } = includeQuery;
@@ -492,7 +513,19 @@ class StudentController {
             ...finalQuery,
             include: includeWithoutUser
           };
-          students = await prisma.student.findMany(fallbackQuery);
+          try {
+            students = await prisma.student.findMany(fallbackQuery);
+          } catch (fallbackError) {
+            console.error('Fallback query also failed:', fallbackError);
+            // Try with minimal includes
+            const minimalQuery = {
+              ...finalQuery,
+              include: {
+                _count: includeQuery._count
+              }
+            };
+            students = await prisma.student.findMany(minimalQuery);
+          }
         } else {
           throw error;
         }
