@@ -1051,6 +1051,11 @@ export const authorizeTeacherAccess = (paramKey = 'id') => {
  */
 export const authorizeStudentAccess = (paramKey = 'id') => {
   return async (req, res, next) => {
+    console.log('=== authorizeStudentAccess START ===');
+    console.log('Student ID:', req.params[paramKey]);
+    console.log('User role:', req.user.role);
+    console.log('User schoolId:', req.user.schoolId);
+    
     try {
       const studentId = req.params[paramKey];
       
@@ -1068,11 +1073,13 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
 
       // Super admins can access any student
       if (req.user.role === 'SUPER_ADMIN') {
+        console.log('=== authorizeStudentAccess END: SUPER_ADMIN access granted ===');
         return next();
       }
 
       // Check if student exists and belongs to user's school
       let student;
+      console.log('Fetching student from database...');
       try {
         student = await prisma.student.findFirst({
           where: {
@@ -1087,10 +1094,12 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
             userId: true
           }
         });
+        console.log('Student found:', student ? `ID ${student.id}` : 'Not found');
       } catch (dbError) {
         console.error('Database error in authorizeStudentAccess:', dbError);
         // If there's a database error, try a simpler query
         try {
+          console.log('Trying fallback query...');
           student = await prisma.student.findFirst({
             where: {
               id: parseInt(studentId),
@@ -1103,6 +1112,7 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
               userId: true
             }
           });
+          console.log('Fallback query result:', student ? `ID ${student.id}` : 'Not found');
         } catch (fallbackError) {
           console.error('Fallback query also failed:', fallbackError);
           throw fallbackError;
@@ -1110,6 +1120,7 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
       }
 
       if (!student) {
+        console.log('=== authorizeStudentAccess END: Student not found ===');
         return res.status(404).json({
           success: false,
           error: 'Student not found',
@@ -1140,11 +1151,13 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
 
       // School admins can access any student in their school
       if (req.user.role === 'SCHOOL_ADMIN' && student.schoolId === req.user.schoolId) {
+        console.log('=== authorizeStudentAccess END: SCHOOL_ADMIN access granted ===');
         return next();
       }
 
       // Teachers can access students in their classes
       if (req.user.role === 'TEACHER') {
+        console.log('Checking teacher access...');
         // First, get the teacher record for this user
         try {
           const teacher = await prisma.teacher.findFirst({
@@ -1156,9 +1169,12 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
             select: { id: true }
           });
 
+          console.log('Teacher record found:', teacher ? `ID ${teacher.id}` : 'Not found');
+
           if (teacher) {
             // Check if teacher is assigned to the student's class
             if (student.classId) {
+              console.log('Student has classId:', student.classId);
               try {
                 const teacherClass = await prisma.teacherClass.findFirst({
                   where: {
@@ -1167,13 +1183,18 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
                   }
                 });
 
+                console.log('Teacher class assignment found:', teacherClass ? 'Yes' : 'No');
+
                 if (teacherClass) {
+                  console.log('=== authorizeStudentAccess END: TEACHER class access granted ===');
                   return next();
                 }
               } catch (teacherClassError) {
                 console.error('Error checking teacher class assignment:', teacherClassError);
                 // Continue to next check if this fails
               }
+            } else {
+              console.log('Student has no classId');
             }
           }
         } catch (teacherError) {
@@ -1183,12 +1204,16 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
         
         // Fallback: Teachers can access any student in their school
         if (student.schoolId === req.user.schoolId) {
+          console.log('=== authorizeStudentAccess END: TEACHER school access granted ===');
           return next();
         }
+        
+        console.log('=== authorizeStudentAccess END: TEACHER access denied ===');
       }
 
       // Students can access their own profile
       if (req.user.role === 'STUDENT' && student.userId === req.user.id) {
+        console.log('=== authorizeStudentAccess END: STUDENT self access granted ===');
         return next();
       }
 
@@ -1229,6 +1254,7 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
         }
       }
 
+      console.log('=== authorizeStudentAccess END: Access denied ===');
       return res.status(403).json({
         success: false,
         error: 'Access denied',
@@ -1242,6 +1268,7 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
       });
     } catch (error) {
       console.error('Student access authorization error:', error);
+      console.log('=== authorizeStudentAccess END: Error ===');
       return res.status(500).json({
         success: false,
         error: 'Authorization failed',
