@@ -2091,6 +2091,19 @@ class StudentController {
       });
     }
   }
+
+  // ======================
+  // CLEANUP ORPHANED STUDENTS
+  // ======================
+  async cleanupOrphanedStudentsEndpoint(req, res) {
+    try {
+      await cleanupOrphanedStudents();
+      return createSuccessResponse(res, 200, 'Orphaned students cleanup completed');
+    } catch (error) {
+      console.error('Error cleaning up orphaned students:', error);
+      return createErrorResponse(res, 500, 'Failed to cleanup orphaned students');
+    }
+  }
 }
 
 export default new StudentController(); 
