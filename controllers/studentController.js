@@ -101,6 +101,51 @@ const cleanupOrphanedStudents = async () => {
         console.log(`Updated ${orphanedStudents.length} orphaned students to use school ID: ${firstSchool.id}`);
       }
     }
+
+    // Find students with invalid user references
+    const orphanedUserStudents = await prisma.student.findMany({
+      where: {
+        OR: [
+          { userId: null },
+          {
+            user: null
+          }
+        ]
+      },
+      select: {
+        id: true,
+        admissionNo: true,
+        userId: true
+      }
+    });
+
+    if (orphanedUserStudents.length > 0) {
+      console.log(`Found ${orphanedUserStudents.length} students with orphaned user references:`, orphanedUserStudents);
+      
+      // Get the first available user for each orphaned student
+      const firstUser = await prisma.user.findFirst({
+        where: {
+          role: 'STUDENT'
+        },
+        select: { id: true }
+      });
+
+      if (firstUser) {
+        // Update orphaned students to use the first available user
+        await prisma.student.updateMany({
+          where: {
+            id: {
+              in: orphanedUserStudents.map(s => s.id)
+            }
+          },
+          data: {
+            userId: firstUser.id
+          }
+        });
+        
+        console.log(`Updated ${orphanedUserStudents.length} students to use user ID: ${firstUser.id}`);
+      }
+    }
   } catch (error) {
     console.error('Error cleaning up orphaned students:', error);
   }
@@ -407,6 +452,7 @@ class StudentController {
         where: {
           ...searchQuery,
           schoolId: BigInt(schoolId),
+          userId: { not: null },
           deletedAt: null
         },
         include: includeQuery,
@@ -430,13 +476,21 @@ class StudentController {
         students = await prisma.student.findMany(finalQuery);
       } catch (error) {
         console.error('Error fetching students:', error);
-        // If there's a relation error, try without school include
+        // If there's a relation error, try without problematic relations
         if (error.message.includes('school') && error.message.includes('null')) {
           console.log('Attempting to fetch students without school relation due to orphaned records');
           const { school, ...includeWithoutSchool } = includeQuery;
           const fallbackQuery = {
             ...finalQuery,
             include: includeWithoutSchool
+          };
+          students = await prisma.student.findMany(fallbackQuery);
+        } else if (error.message.includes('user') && error.message.includes('null')) {
+          console.log('Attempting to fetch students without user relation due to orphaned records');
+          const { user, ...includeWithoutUser } = includeQuery;
+          const fallbackQuery = {
+            ...finalQuery,
+            include: includeWithoutUser
           };
           students = await prisma.student.findMany(fallbackQuery);
         } else {
