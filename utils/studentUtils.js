@@ -380,7 +380,13 @@ export const buildStudentIncludeQuery = (include = []) => {
       };
     }
     if (include.includes('school')) {
-      includeQuery.school = true;
+      includeQuery.school = {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        }
+      };
     }
     if (include.includes('attendances')) {
       includeQuery.attendances = true;
