@@ -310,12 +310,30 @@ export const buildStudentIncludeQuery = (include = []) => {
       select: {
         id: true,
         uuid: true,
-        firstName: true,
-        lastName: true,
+        username: true,
         email: true,
+        emailVerified: true,
         phone: true,
+        phoneVerified: true,
+        firstName: true,
+        middleName: true,
+        lastName: true,
+        displayName: true,
+        gender: true,
+        birthDate: true,
+        avatar: true,
+        coverImage: true,
+        bio: true,
+        role: true,
         status: true,
-        createdAt: true
+        lastLogin: true,
+        lastIp: true,
+        timezone: true,
+        locale: true,
+        metadata: true,
+        schoolId: true,
+        createdAt: true,
+        updatedAt: true
       }
     };
     includeQuery.class = {
@@ -336,9 +354,19 @@ export const buildStudentIncludeQuery = (include = []) => {
         id: true,
         user: {
           select: {
+            id: true,
+            uuid: true,
+            username: true,
+            email: true,
+            phone: true,
             firstName: true,
+            middleName: true,
             lastName: true,
-            email: true
+            displayName: true,
+            gender: true,
+            role: true,
+            status: true,
+            createdAt: true
           }
         }
       }
@@ -368,20 +396,49 @@ export const buildStudentIncludeQuery = (include = []) => {
         select: {
           id: true,
           uuid: true,
-          firstName: true,
-          lastName: true,
+          username: true,
           email: true,
+          emailVerified: true,
           phone: true,
+          phoneVerified: true,
+          firstName: true,
+          middleName: true,
+          lastName: true,
+          displayName: true,
+          gender: true,
+          birthDate: true,
+          avatar: true,
+          coverImage: true,
+          bio: true,
+          role: true,
           status: true,
-          createdAt: true
+          lastLogin: true,
+          lastIp: true,
+          timezone: true,
+          locale: true,
+          metadata: true,
+          schoolId: true,
+          createdAt: true,
+          updatedAt: true
         }
       };
     }
     if (include.includes('class')) {
-      includeQuery.class = true;
+      includeQuery.class = {
+        select: {
+          id: true,
+          name: true,
+          code: true
+        }
+      };
     }
     if (include.includes('section')) {
-      includeQuery.section = true;
+      includeQuery.section = {
+        select: {
+          id: true,
+          name: true
+        }
+      };
     }
     if (include.includes('parent')) {
       includeQuery.parent = {
@@ -390,9 +447,18 @@ export const buildStudentIncludeQuery = (include = []) => {
           user: {
             select: {
               id: true,
+              uuid: true,
+              username: true,
+              email: true,
+              phone: true,
               firstName: true,
+              middleName: true,
               lastName: true,
-              email: true
+              displayName: true,
+              gender: true,
+              role: true,
+              status: true,
+              createdAt: true
             }
           }
         }
@@ -408,25 +474,66 @@ export const buildStudentIncludeQuery = (include = []) => {
       };
     }
     if (include.includes('attendances')) {
-      includeQuery.attendances = true;
+      includeQuery.attendances = {
+        select: {
+          id: true,
+          date: true,
+          status: true
+        }
+      };
     }
     if (include.includes('grades')) {
-      includeQuery.grades = true;
+      includeQuery.grades = {
+        select: {
+          id: true,
+          marks: true,
+          grade: true
+        }
+      };
     }
     if (include.includes('payments')) {
-      includeQuery.payments = true;
+      includeQuery.payments = {
+        select: {
+          id: true,
+          amount: true,
+          status: true
+        }
+      };
     }
     if (include.includes('documents')) {
-      includeQuery.documents = true;
+      includeQuery.documents = {
+        select: {
+          id: true,
+          title: true,
+          type: true
+        }
+      };
     }
     if (include.includes('bookIssues')) {
-      includeQuery.bookIssues = true;
+      includeQuery.bookIssues = {
+        select: {
+          id: true,
+          issueDate: true,
+          returnDate: true
+        }
+      };
     }
     if (include.includes('studentTransports')) {
-      includeQuery.studentTransports = true;
+      includeQuery.studentTransports = {
+        select: {
+          id: true,
+          routeId: true
+        }
+      };
     }
     if (include.includes('assignmentSubmissions')) {
-      includeQuery.assignmentSubmissions = true;
+      includeQuery.assignmentSubmissions = {
+        select: {
+          id: true,
+          submittedAt: true,
+          status: true
+        }
+      };
     }
     if (include.includes('_count')) {
       includeQuery._count = {
