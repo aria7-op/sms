@@ -1145,23 +1145,45 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
 
       // Teachers can access students in their classes
       if (req.user.role === 'TEACHER') {
-        // Check if teacher is assigned to the student's class
-        if (student.classId) {
-          try {
-            const teacherClass = await prisma.teacherClass.findFirst({
-              where: {
-                teacherId: req.user.id,
-                classId: student.classId
-              }
-            });
+        // First, get the teacher record for this user
+        try {
+          const teacher = await prisma.teacher.findFirst({
+            where: {
+              userId: req.user.id,
+              schoolId: req.user.schoolId,
+              deletedAt: null
+            },
+            select: { id: true }
+          });
 
-            if (teacherClass) {
-              return next();
+          if (teacher) {
+            // Check if teacher is assigned to the student's class
+            if (student.classId) {
+              try {
+                const teacherClass = await prisma.teacherClass.findFirst({
+                  where: {
+                    teacherId: teacher.id,
+                    classId: student.classId
+                  }
+                });
+
+                if (teacherClass) {
+                  return next();
+                }
+              } catch (teacherClassError) {
+                console.error('Error checking teacher class assignment:', teacherClassError);
+                // Continue to next check if this fails
+              }
             }
-          } catch (teacherClassError) {
-            console.error('Error checking teacher class assignment:', teacherClassError);
-            // Continue to next check if this fails
           }
+        } catch (teacherError) {
+          console.error('Error finding teacher record:', teacherError);
+          // Continue to next check if this fails
+        }
+        
+        // Fallback: Teachers can access any student in their school
+        if (student.schoolId === req.user.schoolId) {
+          return next();
         }
       }
 
