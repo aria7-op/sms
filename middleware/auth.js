@@ -83,13 +83,6 @@ export const authenticateToken = (req, res, next) => {
                   code: true
                 }
               },
-              createdByOwner: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true
-                }
-              },
               teacher: {
                 select: {
                   id: true,
@@ -194,10 +187,32 @@ export const authenticateToken = (req, res, next) => {
                 next();
               }).catch(fallbackError => {
                 console.error('=== authenticateToken FALLBACK ERROR ===', fallbackError);
-                return res.status(500).json({
-                  success: false,
-                  error: 'Authentication error',
-                  message: 'Database error during authentication'
+                
+                // Try with minimal includes - no relations at all
+                console.log('Attempting to fetch user with minimal includes...');
+                prisma.user.findUnique({
+                  where: { id: BigInt(decoded.userId || decoded.id) }
+                }).then(user => {
+                  if (!user) {
+                    console.log('=== authenticateToken ERROR: User not found ===');
+                    return res.status(401).json({
+                      success: false,
+                      error: 'Access denied',
+                      message: 'User not found'
+                    });
+                  }
+
+                  console.log('User found (minimal):', user.id, user.email);
+                  req.user = user;
+                  console.log('=== authenticateToken END (User) ===');
+                  next();
+                }).catch(minimalError => {
+                  console.error('=== authenticateToken MINIMAL ERROR ===', minimalError);
+                  return res.status(500).json({
+                    success: false,
+                    error: 'Authentication error',
+                    message: 'Database error during authentication'
+                  });
                 });
               });
             } else {
