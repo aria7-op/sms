@@ -76,12 +76,48 @@ export const authenticateToken = (req, res, next) => {
           prisma.user.findUnique({
             where: { id: BigInt(decoded.userId || decoded.id) },
             include: {
-              school: true,
-              createdByOwner: true,
-              teacher: true,
-              parent: true,
-              student: true,
-              staff: true
+              school: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true
+                }
+              },
+              createdByOwner: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true
+                }
+              },
+              teacher: {
+                select: {
+                  id: true,
+                  userId: true,
+                  schoolId: true
+                }
+              },
+              parent: {
+                select: {
+                  id: true,
+                  userId: true,
+                  schoolId: true
+                }
+              },
+              student: {
+                select: {
+                  id: true,
+                  userId: true,
+                  schoolId: true
+                }
+              },
+              staff: {
+                select: {
+                  id: true,
+                  userId: true,
+                  schoolId: true
+                }
+              }
             }
           }).then(user => {
             if (!user) {
@@ -99,11 +135,78 @@ export const authenticateToken = (req, res, next) => {
             next();
           }).catch(error => {
             console.error('=== authenticateToken DATABASE ERROR ===', error);
-            return res.status(500).json({
-              success: false,
-              error: 'Authentication error',
-              message: 'Database error during authentication'
-            });
+            
+            // If there's a relation error, try without problematic relations
+            if (error.message.includes('createdByOwner') && error.message.includes('null')) {
+              console.log('Attempting to fetch user without createdByOwner relation...');
+              prisma.user.findUnique({
+                where: { id: BigInt(decoded.userId || decoded.id) },
+                include: {
+                  school: {
+                    select: {
+                      id: true,
+                      name: true,
+                      code: true
+                    }
+                  },
+                  teacher: {
+                    select: {
+                      id: true,
+                      userId: true,
+                      schoolId: true
+                    }
+                  },
+                  parent: {
+                    select: {
+                      id: true,
+                      userId: true,
+                      schoolId: true
+                    }
+                  },
+                  student: {
+                    select: {
+                      id: true,
+                      userId: true,
+                      schoolId: true
+                    }
+                  },
+                  staff: {
+                    select: {
+                      id: true,
+                      userId: true,
+                      schoolId: true
+                    }
+                  }
+                }
+              }).then(user => {
+                if (!user) {
+                  console.log('=== authenticateToken ERROR: User not found ===');
+                  return res.status(401).json({
+                    success: false,
+                    error: 'Access denied',
+                    message: 'User not found'
+                  });
+                }
+
+                console.log('User found (fallback):', user.id, user.email);
+                req.user = user;
+                console.log('=== authenticateToken END (User) ===');
+                next();
+              }).catch(fallbackError => {
+                console.error('=== authenticateToken FALLBACK ERROR ===', fallbackError);
+                return res.status(500).json({
+                  success: false,
+                  error: 'Authentication error',
+                  message: 'Database error during authentication'
+                });
+              });
+            } else {
+              return res.status(500).json({
+                success: false,
+                error: 'Authentication error',
+                message: 'Database error during authentication'
+              });
+            }
           });
         }
       }).catch(error => {
