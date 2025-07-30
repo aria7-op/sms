@@ -422,7 +422,7 @@ class StudentController {
       console.log('Step 3: Extracting query parameters...');
       const { 
         page = 1, 
-        limit = 10, 
+        limit, 
         search = '', 
         classId, 
         sectionId, 
@@ -465,10 +465,14 @@ class StudentController {
           deletedAt: null
         },
         include: includeQuery,
-        orderBy: { [sortBy]: sortOrder },
-        skip: (parseInt(page) - 1) * parseInt(limit),
-        take: parseInt(limit)
+        orderBy: { [sortBy]: sortOrder }
       };
+
+      // Only apply pagination if limit is provided
+      if (limit) {
+        finalQuery.skip = (parseInt(page) - 1) * parseInt(limit);
+        finalQuery.take = parseInt(limit);
+      }
       
       // Convert BigInt values to strings for logging
       const logQuery = JSON.parse(JSON.stringify(finalQuery, (key, value) => {
@@ -554,35 +558,42 @@ class StudentController {
    * Get student by ID
    */
   async getStudentById(req, res) {
-    console.log('=== getStudentById START ===');
-    console.log('Student ID:', req.params.id);
-    console.log('User schoolId:', req.user.schoolId);
-    console.log('Include query:', req.query.include);
-    
     try {
       const { id } = req.params;
-      const { include = [] } = req.query;
 
       // Check cache first
-      console.log('Checking cache...');
       const cachedStudent = await getStudentFromCache(id);
       if (cachedStudent) {
-        console.log('=== getStudentById END: Cache hit ===');
         return createSuccessResponse(res, 200, 'Student fetched from cache', cachedStudent, {
           source: 'cache'
         });
       }
-      console.log('Cache miss, fetching from database...');
 
-      console.log('Building include query...');
-      let includeQuery;
-      try {
-        includeQuery = buildStudentIncludeQuery(include);
-        console.log('Include query built:', JSON.stringify(includeQuery, null, 2));
-      } catch (includeError) {
-        console.error('Error building include query:', includeError);
-        console.log('Using minimal include query...');
-        includeQuery = {
+      // Simple query without complex includes
+      const student = await prisma.student.findFirst({
+        where: {
+          id: parseInt(id),
+          schoolId: req.user.schoolId,
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          admissionNo: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          gender: true,
+          birthDate: true,
+          address: true,
+          status: true,
+          schoolId: true,
+          classId: true,
+          sectionId: true,
+          parentId: true,
+          userId: true,
+          createdAt: true,
+          updatedAt: true,
           user: {
             select: {
               id: true,
@@ -593,71 +604,20 @@ class StudentController {
               status: true
             }
           }
-        };
-      }
-
-      console.log('Executing Prisma query...');
-      let student;
-      try {
-        student = await prisma.student.findFirst({
-          where: {
-            id: parseInt(id),
-            schoolId: req.user.schoolId,
-            deletedAt: null
-          },
-          include: includeQuery
-        });
-        console.log('Prisma query completed, student found:', student ? 'Yes' : 'No');
-      } catch (prismaError) {
-        console.error('Prisma query failed:', prismaError);
-        console.log('Trying fallback query with minimal includes...');
-        
-        // Fallback to minimal query
-        student = await prisma.student.findFirst({
-          where: {
-            id: parseInt(id),
-            schoolId: req.user.schoolId,
-            deletedAt: null
-          },
-          select: {
-            id: true,
-            admissionNo: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            phone: true,
-            gender: true,
-            birthDate: true,
-            address: true,
-            status: true,
-            schoolId: true,
-            classId: true,
-            sectionId: true,
-            parentId: true,
-            userId: true,
-            createdAt: true,
-            updatedAt: true
-          }
-        });
-        console.log('Fallback query completed, student found:', student ? 'Yes' : 'No');
-      }
+        }
+      });
 
       if (!student) {
-        console.log('=== getStudentById END: Student not found ===');
         return createErrorResponse(res, 404, 'Student not found');
       }
 
       // Cache the student
-      console.log('Caching student...');
       await setStudentInCache(student);
-      console.log('Student cached successfully');
 
-      console.log('=== getStudentById END: Success ===');
       return createSuccessResponse(res, 200, 'Student fetched successfully', student, {
         source: 'database'
       });
     } catch (error) {
-      console.log('=== getStudentById END: Error ===');
       console.error('Error in getStudentById:', error);
       return handlePrismaError(res, error, 'getStudentById');
     }
