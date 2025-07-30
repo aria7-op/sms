@@ -544,7 +544,13 @@ export const buildUserIncludeQuery = (include = []) => {
   const includeQuery = {};
   
   if (include.includes('school')) {
-    includeQuery.school = true;
+    includeQuery.school = {
+      select: {
+        id: true,
+        name: true,
+        code: true,
+      }
+    };
   }
   
   // Department is linked through Staff/Teacher models, not directly to User
