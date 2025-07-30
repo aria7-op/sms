@@ -364,7 +364,18 @@ export const buildStudentIncludeQuery = (include = []) => {
   } else {
     // Custom includes
     if (include.includes('user')) {
-      includeQuery.user = true;
+      includeQuery.user = {
+        select: {
+          id: true,
+          uuid: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          status: true,
+          createdAt: true
+        }
+      };
     }
     if (include.includes('class')) {
       includeQuery.class = true;
@@ -374,8 +385,16 @@ export const buildStudentIncludeQuery = (include = []) => {
     }
     if (include.includes('parent')) {
       includeQuery.parent = {
-        include: {
-          user: true
+        select: {
+          id: true,
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true
+            }
+          }
         }
       };
     }
