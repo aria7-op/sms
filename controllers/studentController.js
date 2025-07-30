@@ -55,6 +55,57 @@ import StudentEventService from '../services/studentEventService.js';
 
 const prisma = new PrismaClient();
 
+// ======================
+// UTILITY FUNCTIONS
+// ======================
+const cleanupOrphanedStudents = async () => {
+  try {
+    // Find students with invalid school references
+    const orphanedStudents = await prisma.student.findMany({
+      where: {
+        OR: [
+          { schoolId: null },
+          {
+            school: null
+          }
+        ]
+      },
+      select: {
+        id: true,
+        admissionNo: true,
+        schoolId: true
+      }
+    });
+
+    if (orphanedStudents.length > 0) {
+      console.log(`Found ${orphanedStudents.length} orphaned students:`, orphanedStudents);
+      
+      // Get the first available school for each orphaned student
+      const firstSchool = await prisma.school.findFirst({
+        select: { id: true }
+      });
+
+      if (firstSchool) {
+        // Update orphaned students to use the first available school
+        await prisma.student.updateMany({
+          where: {
+            id: {
+              in: orphanedStudents.map(s => s.id)
+            }
+          },
+          data: {
+            schoolId: firstSchool.id
+          }
+        });
+        
+        console.log(`Updated ${orphanedStudents.length} orphaned students to use school ID: ${firstSchool.id}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error cleaning up orphaned students:', error);
+  }
+};
+
 // Utility function to convert BigInt values to strings for JSON serialization
 function convertBigInts(obj) {
   if (obj === null || obj === undefined) {
@@ -374,7 +425,24 @@ class StudentController {
       console.log('Final query prepared:', JSON.stringify(logQuery, null, 2));
 
       console.log('Step 7: Executing Prisma query...');
-      const students = await prisma.student.findMany(finalQuery);
+      let students;
+      try {
+        students = await prisma.student.findMany(finalQuery);
+      } catch (error) {
+        console.error('Error fetching students:', error);
+        // If there's a relation error, try without school include
+        if (error.message.includes('school') && error.message.includes('null')) {
+          console.log('Attempting to fetch students without school relation due to orphaned records');
+          const { school, ...includeWithoutSchool } = includeQuery;
+          const fallbackQuery = {
+            ...finalQuery,
+            include: includeWithoutSchool
+          };
+          students = await prisma.student.findMany(fallbackQuery);
+        } else {
+          throw error;
+        }
+      }
 
       console.log('Step 8: Query completed. Found students:', students.length);
       console.log('=== getStudents END ===');
