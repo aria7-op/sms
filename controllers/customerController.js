@@ -126,9 +126,11 @@ export const getAllCustomers = async (req, res) => {
       whereClause.type = type;
     }
     
+    // Note: Customer model doesn't have a 'status' field in Prisma schema
+    // Status filtering is not available for customers
     if (status) {
-      console.log('Status filter:', status);
-      whereClause.status = status;
+      console.log('Status filter requested but not available:', status);
+      // Remove status from whereClause since it doesn't exist
     }
     
     if (minValue || maxValue) {
@@ -187,20 +189,26 @@ export const getAllCustomers = async (req, res) => {
 
     const result = {
       success: true,
-      message: 'Customers retrieved successfully',
+      message: status ? 
+        'Customers retrieved successfully (status filter ignored - not available in Customer model)' : 
+        'Customers retrieved successfully',
       data: convertBigInts(patchedCustomers),
       meta: {
         total,
         filters: {
           search,
-          status,
+          status: status ? 'not_available' : undefined, // Status field doesn't exist in Customer model
           type,
           minValue: minValue ? parseFloat(minValue) : undefined,
           maxValue: maxValue ? parseFloat(maxValue) : undefined,
           dateFrom,
           dateTo,
           tags: tags ? tags.split(',') : undefined
-        }
+        },
+        availableFilters: [
+          'search', 'type', 'minValue', 'maxValue', 'dateFrom', 'dateTo', 'tags'
+        ],
+        unavailableFilters: ['status'] // Status field doesn't exist in Customer model
       }
     };
     
