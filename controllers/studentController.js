@@ -469,9 +469,26 @@ class StudentController {
       };
 
       // Only apply pagination if limit is provided
+      console.log('Step 6.1: Checking pagination parameters...');
+      console.log('Limit value:', limit, 'Type:', typeof limit);
+      console.log('Page value:', page, 'Type:', typeof page);
+      
       if (limit) {
-        finalQuery.skip = (parseInt(page) - 1) * parseInt(limit);
-        finalQuery.take = parseInt(limit);
+        const parsedLimit = parseInt(limit);
+        const parsedPage = parseInt(page);
+        const skipValue = (parsedPage - 1) * parsedLimit;
+        
+        console.log('Applying pagination:', {
+          parsedLimit,
+          parsedPage,
+          skipValue,
+          takeValue: parsedLimit
+        });
+        
+        finalQuery.skip = skipValue;
+        finalQuery.take = parsedLimit;
+      } else {
+        console.log('No limit provided - returning all students');
       }
       
       // Convert BigInt values to strings for logging
@@ -546,6 +563,14 @@ class StudentController {
       }
 
       console.log('Step 8: Query completed. Found students:', students.length);
+      console.log('Expected limit:', limit ? parseInt(limit) : 'No limit (all students)');
+      console.log('Actual returned:', students.length);
+      
+      if (limit && students.length !== parseInt(limit) && students.length > parseInt(limit)) {
+        console.log('⚠️ WARNING: Returned more students than expected!');
+        console.log('Expected:', parseInt(limit), 'Got:', students.length);
+      }
+      
       console.log('=== getStudents END ===');
       return createSuccessResponse(res, 200, 'Students fetched successfully', students);
     } catch (error) {
