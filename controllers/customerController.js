@@ -23,8 +23,54 @@ import CustomerEventService from '../services/customerEventService.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
+import mysql from 'mysql2/promise';
 
 const prisma = new PrismaClient();
+
+// Database connection for fallback queries
+let dbPool;
+
+// Initialize database connection for fallback
+async function initializeDbPool() {
+  if (!dbPool) {
+    try {
+      const dbConfig = {
+        host: process.env.DB_HOST || 'localhost',
+        port: process.env.DB_PORT || 3306,
+        user: process.env.DB_USER || 'mohammad1_ahmadi1',
+        password: process.env.DB_PASSWORD || 'mohammad112_',
+        database: process.env.DB_NAME || 'mohammad1_school',
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        acquireTimeout: 30000,
+        connectTimeout: 30000
+      };
+      
+      dbPool = mysql.createPool(dbConfig);
+      console.log('Database pool initialized for customer controller fallback');
+    } catch (error) {
+      console.error('Failed to initialize database pool:', error);
+    }
+  }
+  return dbPool;
+}
+
+// Fallback query function
+async function fallbackQuery(sql, params = []) {
+  const pool = await initializeDbPool();
+  if (!pool) {
+    throw new Error('Database not connected');
+  }
+  
+  try {
+    const [rows] = await pool.execute(sql, params);
+    return rows;
+  } catch (error) {
+    console.error('Fallback query failed:', error);
+    throw error;
+  }
+}
 
 // ======================
 // BASIC CRUD OPERATIONS
@@ -211,8 +257,8 @@ export const getAllCustomers = async (req, res) => {
       
       const sqlParams = isPaginationRequested ? [schoolId, limit, offset] : [schoolId];
       
-      customers = await query(sqlQuery, sqlParams);
-      const countResult = await query(
+      customers = await fallbackQuery(sqlQuery, sqlParams);
+      const countResult = await fallbackQuery(
         'SELECT COUNT(*) as total FROM customers WHERE schoolId = ? AND deletedAt IS NULL',
         [schoolId]
       );
@@ -3158,4 +3204,4 @@ export const getConversionRates = async (req, res) => {
       error: error.message
     });
   }
-};
+}; 
