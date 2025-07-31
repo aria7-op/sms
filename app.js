@@ -424,18 +424,44 @@ app.use((req, res, next) => {
       throw new Error('Database not connected');
     }
     
+    // Validate and sanitize parameters
+    const sanitizedParams = params.map(param => {
+      if (param === undefined || param === null) {
+        return null;
+      }
+      if (typeof param === 'number' && isNaN(param)) {
+        return null;
+      }
+      if (typeof param === 'string' && param.trim() === '') {
+        return null;
+      }
+      return param;
+    });
+    
+    // Log the query for debugging (remove in production)
+    console.log('🔍 SQL Query:', sql);
+    console.log('🔍 Parameters:', sanitizedParams);
+    
     // Add timeout to database queries
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Database query timeout')), 30000); // 30 seconds
     });
     
-    const queryPromise = dbPool.execute(sql, params);
+    const queryPromise = dbPool.execute(sql, sanitizedParams);
     
     try {
       const [rows] = await Promise.race([queryPromise, timeoutPromise]);
       return rows;
     } catch (error) {
-      console.error('Database query failed:', error.message);
+      console.error('❌ Database query failed:', error.message);
+      console.error('🔍 SQL:', sql);
+      console.error('🔍 Parameters:', sanitizedParams);
+      console.error('🔍 Error details:', {
+        code: error.code,
+        errno: error.errno,
+        sqlState: error.sqlState,
+        sqlMessage: error.sqlMessage
+      });
       throw error;
     }
   }
@@ -449,6 +475,35 @@ app.use((req, res, next) => {
       uptime: process.uptime(),
       database: dbPool ? 'Connected' : 'Not connected'
     });
+  });
+
+  // Database cleanup endpoint (temporary)
+  app.get('/api/fix-datetime', async (req, res) => {
+    try {
+      if (!dbPool) {
+        return res.status(500).json({ error: 'Database not connected' });
+      }
+      
+      // Fix invalid datetime values in customers table
+      const result = await query(`
+        UPDATE customers 
+        SET updatedAt = NOW(), createdAt = NOW() 
+        WHERE updatedAt IS NULL OR updatedAt = '0000-00-00 00:00:00' 
+           OR createdAt IS NULL OR createdAt = '0000-00-00 00:00:00'
+      `);
+      
+      res.json({
+        success: true,
+        message: 'Database datetime values fixed',
+        affectedRows: result.affectedRows
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fix datetime values',
+        error: error.message
+      });
+    }
   });
 
   // Health check endpoint
@@ -1186,12 +1241,16 @@ app.use('/api/files', filesRoutes);
         });
       }
       
+      // Ensure parameters are valid numbers
+      const limitNum = parseInt(limit) || 10;
+      const offsetNum = parseInt(offset) || 0;
+      
       const customers = await query(`
         SELECT * FROM customers 
         WHERE status IN ('LEAD', 'PROSPECT') AND deletedAt IS NULL
         ORDER BY createdAt DESC
         LIMIT ? OFFSET ?
-      `, [parseInt(limit), offset]);
+      `, [limitNum, offsetNum]);
       
       const totalResult = await query(`
         SELECT COUNT(*) as total FROM customers 
