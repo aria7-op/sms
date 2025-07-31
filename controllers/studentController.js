@@ -339,6 +339,7 @@ class StudentController {
       // Check if we should return all students (no pagination)
       const requestHost = req.get('host') || req.get('x-forwarded-host') || '';
       const shouldReturnAll = requestHost.includes('khwanzay.school') || 
+                             requestHost.includes('localhost:8081') ||
                              limit === 'all' || 
                              limit === 'unlimited' ||
                              parseInt(limit) > 10000;
