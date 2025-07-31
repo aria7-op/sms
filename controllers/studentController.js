@@ -335,7 +335,16 @@ class StudentController {
         sortBy = 'createdAt',
         sortOrder = 'desc'
       } = req.query;
+      
+      // Check if we should return all students (no pagination)
+      const requestHost = req.get('host') || req.get('x-forwarded-host') || '';
+      const shouldReturnAll = requestHost.includes('khwanzay.school') || 
+                             limit === 'all' || 
+                             limit === 'unlimited' ||
+                             parseInt(limit) > 10000;
+      
       console.log('Query parameters extracted:', { page, limit, search, classId, sectionId, status, include, sortBy, sortOrder });
+      console.log('Request host:', requestHost, 'Should return all:', shouldReturnAll);
 
       console.log('Step 4: Building include query...');
       const includeQuery = buildStudentIncludeQuery(include);
@@ -359,10 +368,16 @@ class StudentController {
           deletedAt: null
         },
         include: includeQuery,
-        orderBy: { [sortBy]: sortOrder },
-        skip: (parseInt(page) - 1) * parseInt(limit),
-        take: parseInt(limit)
+        orderBy: { [sortBy]: sortOrder }
       };
+      
+      // Only add pagination if not returning all students
+      if (!shouldReturnAll) {
+        finalQuery.skip = (parseInt(page) - 1) * parseInt(limit);
+        finalQuery.take = parseInt(limit);
+      } else {
+        console.log('Returning ALL students - pagination disabled');
+      }
       
       // Convert BigInt values to strings for logging
       const logQuery = JSON.parse(JSON.stringify(finalQuery, (key, value) => {
@@ -378,7 +393,20 @@ class StudentController {
 
       console.log('Step 8: Query completed. Found students:', students.length);
       console.log('=== getStudents END ===');
-      return createSuccessResponse(res, 200, 'Students fetched successfully', students);
+      
+      const message = shouldReturnAll ? 
+        `All ${students.length} students fetched successfully` : 
+        'Students fetched successfully';
+        
+      return createSuccessResponse(res, 200, message, students, {
+        totalCount: students.length,
+        returnedAll: shouldReturnAll,
+        pagination: shouldReturnAll ? null : {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: students.length
+        }
+      });
     } catch (error) {
       console.error('=== getStudents ERROR ===', error);
       return handlePrismaError(res, error, 'getStudents');
