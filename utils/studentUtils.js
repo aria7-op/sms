@@ -308,17 +308,41 @@ export const buildStudentIncludeQuery = (include = []) => {
   const includeQuery = {};
 
   if (include.length === 0) {
-    // Default includes
+    // Default includes - fetch all user fields
     includeQuery.user = {
       select: {
         id: true,
         uuid: true,
-        firstName: true,
-        lastName: true,
+        username: true,
         email: true,
+        emailVerified: true,
         phone: true,
+        phoneVerified: true,
+        // password: false, // Never include password for security
+        // salt: false, // Never include salt for security
+        firstName: true,
+        middleName: true,
+        lastName: true,
+        displayName: true,
+        gender: true,
+        birthDate: true,
+        avatar: true,
+        coverImage: true,
+        bio: true,
+        role: true,
         status: true,
-        createdAt: true
+        lastLogin: true,
+        lastIp: true,
+        timezone: true,
+        locale: true,
+        metadata: true,
+        schoolId: true,
+        createdByOwnerId: true,
+        createdBy: true,
+        updatedBy: true,
+        createdAt: true,
+        updatedAt: true,
+        deletedAt: true
       }
     };
     includeQuery.class = {
