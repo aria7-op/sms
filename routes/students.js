@@ -42,6 +42,31 @@ import {
 
 const router = express.Router();
 
+// Helper function to safely bind controller methods
+const safeControllerMethod = (controller, methodName) => {
+  return async (req, res, next) => {
+    try {
+      if (typeof controller[methodName] === 'function') {
+        await controller[methodName](req, res);
+      } else {
+        console.error(`Method ${methodName} not found on controller`);
+        res.status(501).json({
+          success: false,
+          error: 'Method not implemented',
+          message: `${methodName} method is not available`,
+          meta: {
+            timestamp: new Date().toISOString(),
+            method: req.method,
+            url: req.originalUrl
+          }
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
+  };
+};
+
 // ======================
 // GLOBAL MIDDLEWARE
 // ======================
@@ -68,7 +93,7 @@ router.use(roleBasedLimiter(defaultRoleLimits));
 router.get('/converted',
   authenticateToken,
   authorizePermissions(['student:read']),
-  studentController.getConvertedStudents.bind(studentController)
+  safeControllerMethod(studentController, 'getConvertedStudents')
 );
 
 /**
@@ -80,7 +105,7 @@ router.get('/converted',
 router.get('/conversion-analytics',
   authenticateToken,
   authorizePermissions(['student:read']),
-  studentController.getStudentConversionAnalytics.bind(studentController)
+  safeControllerMethod(studentController, 'getStudentConversionAnalytics')
 );
 
 /**
@@ -93,7 +118,7 @@ router.get('/conversion-analytics',
 router.get('/conversion-stats/:studentId?',
   authenticateToken,
   authorizePermissions(['student:read']),
-  studentController.getStudentConversionStats.bind(studentController)
+  safeControllerMethod(studentController, 'getStudentConversionStats')
 );
 
 // ======================
@@ -142,25 +167,11 @@ router.get('/',
  * @permissions student:read
  */
 router.get('/:id',
-  (req, res, next) => {
-    console.log('=== ROUTE MATCHED: GET /:id ===');
-    console.log('URL:', req.url);
-    console.log('Params:', req.params);
-    next();
-  },
   authenticateToken,
   authorizePermissions(['student:read']),
   validateParams(idSchema),
   authorizeStudentAccess('id'),
-  (req, res, next) => {
-    console.log('=== BEFORE studentCacheMiddleware ===');
-    next();
-  },
   studentCacheMiddleware,
-  (req, res, next) => {
-    console.log('=== AFTER studentCacheMiddleware ===');
-    next();
-  },
   studentController.getStudentById.bind(studentController)
 );
 
@@ -666,24 +677,6 @@ router.post('/cache/warm',
   authorizePermissions(['system:cache_manage']),
   cacheLimiter,
   studentController.warmCache.bind(studentController)
-);
-
-// ======================
-// MAINTENANCE OPERATIONS
-// ======================
-
-/**
- * @route   POST /api/students/cleanup-orphaned
- * @desc    Clean up orphaned students (students with invalid school references)
- * @access  Private (SUPER_ADMIN only)
- * @permissions student:delete
- */
-router.post('/cleanup-orphaned',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN']),
-  authorizePermissions(['student:delete']),
-  auditLog('MAINTENANCE', 'Student'),
-  studentController.cleanupOrphanedStudentsEndpoint.bind(studentController)
 );
 
 // ======================
