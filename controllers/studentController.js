@@ -336,16 +336,26 @@ class StudentController {
         sortOrder = 'desc'
       } = req.query;
       
-      // Check if we should return all students (no pagination)
+      // Check if limit was explicitly provided in the request
+      const hasExplicitLimit = req.query.hasOwnProperty('limit');
       const requestHost = req.get('host') || req.get('x-forwarded-host') || '';
-      const shouldReturnAll = requestHost.includes('khwanzay.school') || 
-                             requestHost.includes('localhost:8081') ||
+      
+      // Return all students if:
+      // 1. Request from specific domains AND no explicit limit provided, OR
+      // 2. Explicit limit is 'all'/'unlimited', OR  
+      // 3. Explicit limit is very large number
+      const shouldReturnAll = (!hasExplicitLimit && (requestHost.includes('khwanzay.school') || requestHost.includes('localhost:8081'))) ||
                              limit === 'all' || 
                              limit === 'unlimited' ||
                              parseInt(limit) > 10000;
       
       console.log('Query parameters extracted:', { page, limit, search, classId, sectionId, status, include, sortBy, sortOrder });
-      console.log('Request host:', requestHost, 'Should return all:', shouldReturnAll);
+      console.log('Request analysis:', { 
+        requestHost, 
+        hasExplicitLimit, 
+        limitValue: limit,
+        shouldReturnAll 
+      });
 
       console.log('Step 4: Building include query...');
       const includeQuery = buildStudentIncludeQuery(include);
@@ -396,8 +406,8 @@ class StudentController {
       console.log('=== getStudents END ===');
       
       const message = shouldReturnAll ? 
-        `All ${students.length} students fetched successfully` : 
-        'Students fetched successfully';
+        `All ${students.length} students fetched successfully (no pagination)` : 
+        `Students fetched successfully (page ${page}, showing ${students.length} students)`;
         
       return createSuccessResponse(res, 200, message, students, {
         totalCount: students.length,
@@ -405,7 +415,8 @@ class StudentController {
         pagination: shouldReturnAll ? null : {
           page: parseInt(page),
           limit: parseInt(limit),
-          total: students.length
+          returned: students.length,
+          hasExplicitLimit: hasExplicitLimit
         }
       });
     } catch (error) {
