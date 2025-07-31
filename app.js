@@ -578,7 +578,7 @@ app.use((req, res, next) => {
       }
       
       const students = await query(`
-        SELECT s.*, u.name as parentName, u.email as parentEmail 
+        SELECT s.*, CONCAT(u.firstName, ' ', u.lastName) as parentName, u.email as parentEmail 
         FROM students s 
         LEFT JOIN users u ON s.parentId = u.id 
         WHERE s.deletedAt IS NULL
@@ -641,7 +641,7 @@ app.use((req, res, next) => {
       }
       
       const teachers = await query(`
-        SELECT t.*, u.name, u.email 
+        SELECT t.*, CONCAT(u.firstName, ' ', u.lastName) as name, u.email 
         FROM teachers t 
         LEFT JOIN users u ON t.userId = u.id 
         WHERE t.deletedAt IS NULL
@@ -706,7 +706,7 @@ app.use((req, res, next) => {
       }
       
       const payments = await query(`
-        SELECT p.*, s.name as studentName, u.name as payerName
+        SELECT p.*, CONCAT(s.firstName, ' ', s.lastName) as studentName, CONCAT(u.firstName, ' ', u.lastName) as payerName
         FROM payments p 
         LEFT JOIN students s ON p.studentId = s.id
         LEFT JOIN users u ON p.payerId = u.id
