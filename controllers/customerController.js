@@ -54,7 +54,15 @@ export const getAllCustomers = async (req, res) => {
   try {
     console.log('=== getAllCustomers START ===');
     console.log('Query params:', req.query);
-    console.log('User:', req.user);
+    
+    // Convert BigInt values in user object for logging
+    const logUser = JSON.parse(JSON.stringify(req.user, (key, value) => {
+      if (typeof value === 'bigint') {
+        return value.toString();
+      }
+      return value;
+    }));
+    console.log('User:', logUser);
     
     const { 
       page, 
@@ -95,7 +103,14 @@ export const getAllCustomers = async (req, res) => {
     // Build where clause
     const whereClause = { schoolId: BigInt(schoolId) };
     
-    console.log('Where clause:', whereClause);
+    // Convert BigInt values to strings for logging
+    const logWhereClause = JSON.parse(JSON.stringify(whereClause, (key, value) => {
+      if (typeof value === 'bigint') {
+        return value.toString();
+      }
+      return value;
+    }));
+    console.log('Where clause:', logWhereClause);
     
     if (search) {
       whereClause.OR = [
@@ -148,7 +163,14 @@ export const getAllCustomers = async (req, res) => {
       queryOptions.take = limitNum;
     }
     
-    console.log('Final query options:', JSON.stringify(queryOptions, null, 2));
+    // Convert BigInt values to strings for JSON serialization
+    const logQueryOptions = JSON.parse(JSON.stringify(queryOptions, (key, value) => {
+      if (typeof value === 'bigint') {
+        return value.toString();
+      }
+      return value;
+    }));
+    console.log('Final query options:', JSON.stringify(logQueryOptions, null, 2));
     
     const [customers, total] = await Promise.all([
       prisma.customer.findMany(queryOptions),
