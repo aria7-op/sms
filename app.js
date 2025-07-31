@@ -362,7 +362,7 @@ app.use(cors({
       'https://khwanzay.school',
       'http://localhost:3000',
       'http://localhost:3001',
-      'http://localhost:5173',
+      'http://localhost:8081',
       process.env.FRONTEND_URL,
       process.env.DOMAIN_URL
     ].filter(Boolean);
