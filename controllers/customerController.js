@@ -23,64 +23,8 @@ import CustomerEventService from '../services/customerEventService.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
-import mysql from 'mysql2/promise';
 
 const prisma = new PrismaClient();
-
-// Database connection pool
-let dbPool;
-
-// Initialize database pool
-async function initializeDbPool() {
-  if (dbPool) return dbPool;
-  
-  try {
-    let dbConfig;
-    
-    // Try to parse DATABASE_URL first
-    if (process.env.DATABASE_URL) {
-      // Remove mysql:// prefix
-      const cleanUrl = process.env.DATABASE_URL.replace('mysql://', '');
-      
-      // Split into parts
-      const [credentials, hostAndDb] = cleanUrl.split('@');
-      const [user, password] = credentials.split(':');
-      const [host, database] = hostAndDb.split('/');
-      
-      dbConfig = {
-        host: host.split(':')[0],
-        port: host.split(':')[1] || 3306,
-        user: user,
-        password: password,
-        database: database
-      };
-    } else {
-      dbConfig = {
-        host: process.env.DB_HOST || 'localhost',
-        port: process.env.DB_PORT || 3306,
-        user: process.env.DB_USER || 'mohammad1_ahmadi1',
-        password: process.env.DB_PASSWORD || 'mohammad112_',
-        database: process.env.DB_NAME || 'mohammad1_school'
-      };
-    }
-    
-    dbPool = mysql.createPool({
-      host: dbConfig.host,
-      port: dbConfig.port,
-      user: dbConfig.user,
-      password: dbConfig.password,
-      database: dbConfig.database,
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0
-    });
-    
-    return dbPool;
-  } catch (error) {
-    console.error('Failed to initialize database pool:', error);
-    throw error;
-  }
-}
 
 // ======================
 // BASIC CRUD OPERATIONS
@@ -108,6 +52,10 @@ function convertBigInts(obj) {
 
 export const getAllCustomers = async (req, res) => {
   try {
+    console.log('=== getAllCustomers START ===');
+    console.log('Query params:', req.query);
+    console.log('User:', req.user);
+    
     const { 
       page, 
       limit, 
@@ -130,124 +78,143 @@ export const getAllCustomers = async (req, res) => {
     const limitNum = limit ? parseInt(limit) : 10;
     
     const { schoolId } = req.user;
+    
+    console.log('SchoolId from user:', schoolId);
+    console.log('SchoolId type:', typeof schoolId);
 
-    // Use a timeout for database operations
-    const timeout = setTimeout(() => {
-      res.status(408).json({
+    // Validate schoolId
+    if (!schoolId) {
+      console.error('No schoolId found in user object');
+      return res.status(400).json({
         success: false,
-        message: 'Request timeout - database operation taking too long',
-        error: 'Database timeout'
-      });
-    }, 8000000); // 8 second timeout
-
-    try {
-      // Initialize database pool with timeout
-      const pool = await Promise.race([
-        initializeDbPool(),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Database connection timeout')), 500000)
-        )
-      ]);
-
-      // Use simple SQL query instead of complex Prisma
-      let sql = 'SELECT id, name, email, phone, gender, source, purpose, department, totalSpent, orderCount, type, createdAt FROM customers WHERE schoolId = ?';
-      let params = [schoolId];
-      
-      if (search) {
-        sql += ' AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)';
-        const searchTerm = `%${search}%`;
-        params.push(searchTerm, searchTerm, searchTerm);
-      }
-      
-      if (type) {
-        sql += ' AND type = ?';
-        params.push(type);
-      }
-      
-      // Add sorting
-      sql += ` ORDER BY ${sortBy} ${sortOrder.toUpperCase()}`;
-      
-      // Add pagination
-      if (isPaginationRequested) {
-        const offset = (pageNum - 1) * limitNum;
-        sql += ' LIMIT ? OFFSET ?';
-        params.push(limitNum, offset);
-      }
-      
-      // Execute query with timeout
-      const [customers] = await Promise.race([
-        pool.execute(sql, params),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Query timeout')), 5000)
-        )
-      ]);
-      
-      // Get total count for pagination
-      let countSql = 'SELECT COUNT(*) as total FROM customers WHERE schoolId = ?';
-      let countParams = [schoolId];
-      
-      if (search) {
-        countSql += ' AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)';
-        const searchTerm = `%${search}%`;
-        countParams.push(searchTerm, searchTerm, searchTerm);
-      }
-      
-      if (type) {
-        countSql += ' AND type = ?';
-        countParams.push(type);
-      }
-      
-      const [countResult] = await Promise.race([
-        pool.execute(countSql, countParams),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Count query timeout')), 5000)
-        )
-      ]);
-      
-      const totalCount = countResult[0].total;
-      
-      // Convert BigInt to string for JSON serialization
-      const formattedCustomers = customers.map(customer => ({
-        ...customer,
-        id: customer.id.toString(),
-        schoolId: customer.schoolId ? customer.schoolId.toString() : null,
-        totalSpent: customer.totalSpent ? customer.totalSpent.toString() : null,
-        createdAt: customer.createdAt ? customer.createdAt.toISOString() : null
-      }));
-
-      clearTimeout(timeout);
-
-      res.json({
-        success: true,
-        data: formattedCustomers,
-        pagination: isPaginationRequested ? {
-          page: pageNum,
-          limit: limitNum,
-          total: totalCount,
-          pages: Math.ceil(totalCount / limitNum)
-        } : null,
-        meta: {
-          total: totalCount,
-          count: customers.length
-        }
-      });
-
-    } catch (dbError) {
-      clearTimeout(timeout);
-      console.error('❌ Database error:', dbError);
-      res.status(500).json({
-        success: false,
-        message: 'Database operation failed',
-        error: dbError.message
+        message: 'School ID is required',
+        error: 'MISSING_SCHOOL_ID'
       });
     }
 
+    // Build where clause
+    const whereClause = { schoolId: BigInt(schoolId) };
+    
+    console.log('Where clause:', whereClause);
+    
+    if (search) {
+      whereClause.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+    
+    if (type) {
+      console.log('Type filter:', type);
+      whereClause.type = type;
+    }
+    
+    if (status) {
+      console.log('Status filter:', status);
+      whereClause.status = status;
+    }
+    
+    if (minValue || maxValue) {
+      whereClause.totalSpent = {};
+      if (minValue) whereClause.totalSpent.gte = parseFloat(minValue);
+      if (maxValue) whereClause.totalSpent.lte = parseFloat(maxValue);
+    }
+    if (dateFrom || dateTo) {
+      whereClause.createdAt = {};
+      if (dateFrom) whereClause.createdAt.gte = new Date(dateFrom);
+      if (dateTo) whereClause.createdAt.lte = new Date(dateTo);
+    }
+
+    // Build include clause
+    const includeClause = {};
+    if (include) {
+      const includes = include.split(',');
+      if (includes.includes('user')) includeClause.user = true;
+      if (includes.includes('school')) includeClause.school = true;
+    }
+
+    // Build query options
+    const queryOptions = {
+      where: whereClause,
+      include: includeClause,
+      orderBy: { [sortBy]: sortOrder.toLowerCase() }
+    };
+    
+    // Only apply pagination if requested
+    if (isPaginationRequested) {
+      queryOptions.skip = (pageNum - 1) * limitNum;
+      queryOptions.take = limitNum;
+    }
+    
+    console.log('Final query options:', JSON.stringify(queryOptions, null, 2));
+    
+    const [customers, total] = await Promise.all([
+      prisma.customer.findMany(queryOptions),
+      prisma.customer.count({ where: whereClause })
+    ]);
+    
+    console.log('Query results:', { customersCount: customers.length, total });
+
+    // Patch: Map null uuid to empty string for compatibility
+    const patchedCustomers = customers.map(c => ({
+      ...c,
+      uuid: c.uuid === null ? '' : c.uuid
+    }));
+
+    const result = {
+      success: true,
+      message: 'Customers retrieved successfully',
+      data: convertBigInts(patchedCustomers),
+      meta: {
+        total,
+        filters: {
+          search,
+          status,
+          type,
+          minValue: minValue ? parseFloat(minValue) : undefined,
+          maxValue: maxValue ? parseFloat(maxValue) : undefined,
+          dateFrom,
+          dateTo,
+          tags: tags ? tags.split(',') : undefined
+        }
+      }
+    };
+    
+    // Only include pagination info if pagination was requested
+    if (isPaginationRequested) {
+      result.pagination = {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum)
+      };
+    }
+
+    logger.info(`Retrieved ${customers.length} customers`);
+    res.json(result);
   } catch (error) {
-    console.error('❌ Failed to retrieve customers:', error);
-    res.status(500).json({
-      success: false,
+    console.error('=== getAllCustomers ERROR ===');
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      errno: error.errno,
+      sqlState: error.sqlState,
+      sqlMessage: error.sqlMessage,
+      stack: error.stack
+    });
+    
+    res.status(500).json({ 
+      success: false, 
       message: 'Failed to retrieve customers',
-      error: error.message
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? {
+        code: error.code,
+        errno: error.errno,
+        sqlState: error.sqlState,
+        sqlMessage: error.sqlMessage
+      } : undefined
     });
   }
 };
