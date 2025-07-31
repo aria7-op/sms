@@ -33,8 +33,8 @@ import assignmentsRoutes from './routes/assignments.js';
 import libraryRoutes from './routes/libraryRoutes.js';
 // import inventoryRoutes from './routes/inventory.js';
 // import transportRoutes from './routes/transportRoutes.js';
-import hostelRoutes from './routes/hostelRoutes.js';
-import equipmentRoutes from './routes/equipmentRoutes.js';
+// import hostelRoutes from './routes/hostelRoutes.js';
+// import equipmentRoutes from './routes/equipmentRoutes.js';
 import authRoutes from './routes/auth.js';
 import notificationsRoutes from './routes/notifications.js';
 import documentsRoutes from './routes/documents.js';
@@ -116,11 +116,7 @@ import filesRoutes from './routes/files.js';
         connectionLimit: 10,
         queueLimit: 0,
         acquireTimeout: 30000, // 30 seconds
-        timeout: 30000, // 30 seconds
-        reconnect: true,
-        connectTimeout: 30000, // 30 seconds for initial connection
-        acquireTimeoutMillis: 30000, // 30 seconds for acquiring connection
-        timeoutMillis: 30000 // 30 seconds for query timeout
+        connectTimeout: 30000 // 30 seconds for initial connection
       };
       
       console.log('🔧 Connection options:', {
@@ -157,11 +153,7 @@ import filesRoutes from './routes/files.js';
               connectionLimit: 10,
               queueLimit: 0,
               acquireTimeout: 30000, // 30 seconds
-              timeout: 30000, // 30 seconds
-              reconnect: true,
-              connectTimeout: 30000, // 30 seconds for initial connection
-              acquireTimeoutMillis: 30000, // 30 seconds for acquiring connection
-              timeoutMillis: 30000 // 30 seconds for query timeout
+              connectTimeout: 30000 // 30 seconds for initial connection
             });
             
             const connection = await dbPool.getConnection();
@@ -354,29 +346,68 @@ import filesRoutes from './routes/files.js';
     }
   });
 
-  // Enable CORS for frontend
+  // Enhanced CORS configuration for frontend
 app.use(cors({
-  origin: true, // Allow all origins
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Allow all origins in development
+    if (process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    
+    // Production: Allow specific domains
+    const allowedOrigins = [
+      'https://khwanzay.school',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:5173',
+      process.env.FRONTEND_URL,
+      process.env.DOMAIN_URL
+    ].filter(Boolean);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(null, true); // Allow all for now, remove this in production
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-client-version', 'x-device-type', 'x-request-id', 'x-request-timestamp']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With', 
+    'x-client-version', 
+    'x-device-type', 
+    'x-request-id', 
+    'x-request-timestamp',
+    'Accept',
+    'Origin',
+    'X-Forwarded-For'
+  ],
+  exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
+  maxAge: 86400 // 24 hours
 }));
 
-// Additional CORS headers for preflight requests
+// Ensure CORS headers are always set, even on errors
 app.use((req, res, next) => {
-  // Always set CORS headers
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-client-version, x-device-type, x-request-id, x-request-timestamp');
+  // Set CORS headers for all responses
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.header('Access-Control-Allow-Credentials', 'true');
-    
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-      return res.status(200).end();
-    } else {
-      next();
-    }
-  });
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-client-version, x-device-type, x-request-id, x-request-timestamp, Accept, Origin, X-Forwarded-For');
+  
+  // Handle preflight requests immediately
+  if (req.method === 'OPTIONS') {
+    res.header('Access-Control-Max-Age', '86400');
+    return res.status(200).end();
+  }
+  
+  next();
+});
 
   // File upload configuration
   const storage = multer.memoryStorage();
