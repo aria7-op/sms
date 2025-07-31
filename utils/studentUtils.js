@@ -84,7 +84,10 @@ export const StudentSearchSchema = z.object({
   admissionDateFrom: z.string().datetime().optional(),
   admissionDateTo: z.string().datetime().optional(),
   page: z.string().transform(val => parseInt(val) || 1).optional(),
-  limit: z.string().transform(val => parseInt(val) || 10).optional(),
+  limit: z.string().transform(val => {
+    if (val === 'all' || val === 'unlimited') return val;
+    return parseInt(val) || 10;
+  }).optional(),
   include: z.string().optional(),
   sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).optional()
@@ -310,30 +313,12 @@ export const buildStudentIncludeQuery = (include = []) => {
       select: {
         id: true,
         uuid: true,
-        username: true,
-        email: true,
-        emailVerified: true,
-        phone: true,
-        phoneVerified: true,
         firstName: true,
-        middleName: true,
         lastName: true,
-        displayName: true,
-        gender: true,
-        birthDate: true,
-        avatar: true,
-        coverImage: true,
-        bio: true,
-        role: true,
+        email: true,
+        phone: true,
         status: true,
-        lastLogin: true,
-        lastIp: true,
-        timezone: true,
-        locale: true,
-        metadata: true,
-        schoolId: true,
-        createdAt: true,
-        updatedAt: true
+        createdAt: true
       }
     };
     includeQuery.class = {
@@ -354,19 +339,9 @@ export const buildStudentIncludeQuery = (include = []) => {
         id: true,
         user: {
           select: {
-            id: true,
-            uuid: true,
-            username: true,
-            email: true,
-            phone: true,
             firstName: true,
-            middleName: true,
             lastName: true,
-            displayName: true,
-            gender: true,
-            role: true,
-            status: true,
-            createdAt: true
+            email: true
           }
         }
       }
@@ -392,148 +367,44 @@ export const buildStudentIncludeQuery = (include = []) => {
   } else {
     // Custom includes
     if (include.includes('user')) {
-      includeQuery.user = {
-        select: {
-          id: true,
-          uuid: true,
-          username: true,
-          email: true,
-          emailVerified: true,
-          phone: true,
-          phoneVerified: true,
-          firstName: true,
-          middleName: true,
-          lastName: true,
-          displayName: true,
-          gender: true,
-          birthDate: true,
-          avatar: true,
-          coverImage: true,
-          bio: true,
-          role: true,
-          status: true,
-          lastLogin: true,
-          lastIp: true,
-          timezone: true,
-          locale: true,
-          metadata: true,
-          schoolId: true,
-          createdAt: true,
-          updatedAt: true
-        }
-      };
+      includeQuery.user = true;
     }
     if (include.includes('class')) {
-      includeQuery.class = {
-        select: {
-          id: true,
-          name: true,
-          code: true
-        }
-      };
+      includeQuery.class = true;
     }
     if (include.includes('section')) {
-      includeQuery.section = {
-        select: {
-          id: true,
-          name: true
-        }
-      };
+      includeQuery.section = true;
     }
     if (include.includes('parent')) {
       includeQuery.parent = {
-        select: {
-          id: true,
-          user: {
-            select: {
-              id: true,
-              uuid: true,
-              username: true,
-              email: true,
-              phone: true,
-              firstName: true,
-              middleName: true,
-              lastName: true,
-              displayName: true,
-              gender: true,
-              role: true,
-              status: true,
-              createdAt: true
-            }
-          }
+        include: {
+          user: true
         }
       };
     }
     if (include.includes('school')) {
-      includeQuery.school = {
-        select: {
-          id: true,
-          name: true,
-          code: true,
-        }
-      };
+      includeQuery.school = true;
     }
     if (include.includes('attendances')) {
-      includeQuery.attendances = {
-        select: {
-          id: true,
-          date: true,
-          status: true
-        }
-      };
+      includeQuery.attendances = true;
     }
     if (include.includes('grades')) {
-      includeQuery.grades = {
-        select: {
-          id: true,
-          marks: true,
-          grade: true
-        }
-      };
+      includeQuery.grades = true;
     }
     if (include.includes('payments')) {
-      includeQuery.payments = {
-        select: {
-          id: true,
-          amount: true,
-          status: true
-        }
-      };
+      includeQuery.payments = true;
     }
     if (include.includes('documents')) {
-      includeQuery.documents = {
-        select: {
-          id: true,
-          title: true,
-          type: true
-        }
-      };
+      includeQuery.documents = true;
     }
     if (include.includes('bookIssues')) {
-      includeQuery.bookIssues = {
-        select: {
-          id: true,
-          issueDate: true,
-          returnDate: true
-        }
-      };
+      includeQuery.bookIssues = true;
     }
     if (include.includes('studentTransports')) {
-      includeQuery.studentTransports = {
-        select: {
-          id: true,
-          routeId: true
-        }
-      };
+      includeQuery.studentTransports = true;
     }
     if (include.includes('assignmentSubmissions')) {
-      includeQuery.assignmentSubmissions = {
-        select: {
-          id: true,
-          submittedAt: true,
-          status: true
-        }
-      };
+      includeQuery.assignmentSubmissions = true;
     }
     if (include.includes('_count')) {
       includeQuery._count = {
