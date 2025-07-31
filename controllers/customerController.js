@@ -100,22 +100,9 @@ export const getAllCustomers = async (req, res) => {
       });
     }
 
-    // Build where clause
+    // Build where clause - simple filter without datetime constraints
     const whereClause = { 
-      schoolId: BigInt(schoolId),
-      // Filter out records with invalid datetime values
-      AND: [
-        {
-          updatedAt: {
-            not: null
-          }
-        },
-        {
-          createdAt: {
-            not: null
-          }
-        }
-      ]
+      schoolId: BigInt(schoolId)
     };
     
     // Convert BigInt values to strings for logging
@@ -189,30 +176,10 @@ export const getAllCustomers = async (req, res) => {
     }));
     console.log('Final query options:', JSON.stringify(logQueryOptions, null, 2));
     
-    let customers, total;
-    
-    try {
-      [customers, total] = await Promise.all([
-        prisma.customer.findMany(queryOptions),
-        prisma.customer.count({ where: whereClause })
-      ]);
-    } catch (datetimeError) {
-      console.error('Datetime error, trying without datetime filters:', datetimeError.message);
-      
-      // Fallback: try without datetime filters
-      const fallbackWhereClause = { schoolId: BigInt(schoolId) };
-      const fallbackQueryOptions = {
-        ...queryOptions,
-        where: fallbackWhereClause
-      };
-      
-      [customers, total] = await Promise.all([
-        prisma.customer.findMany(fallbackQueryOptions),
-        prisma.customer.count({ where: fallbackWhereClause })
-      ]);
-      
-      console.log('Fallback query successful, found customers:', customers.length);
-    }
+    const [customers, total] = await Promise.all([
+      prisma.customer.findMany(queryOptions),
+      prisma.customer.count({ where: whereClause })
+    ]);
     
     console.log('Query results:', { customersCount: customers.length, total });
 
