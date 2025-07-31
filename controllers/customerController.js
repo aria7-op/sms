@@ -154,12 +154,19 @@ export const getAllCustomers = async (req, res) => {
       if (includes.includes('school')) includeClause.school = true;
     }
 
-    // Build query options
+    // Build query options - avoid datetime fields in orderBy
     const queryOptions = {
       where: whereClause,
-      include: includeClause,
-      orderBy: { [sortBy]: sortOrder.toLowerCase() }
+      include: includeClause
     };
+    
+    // Only add orderBy if it's not a datetime field
+    if (sortBy !== 'createdAt' && sortBy !== 'updatedAt') {
+      queryOptions.orderBy = { [sortBy]: sortOrder.toLowerCase() };
+    } else {
+      // Default to id ordering to avoid datetime issues
+      queryOptions.orderBy = { id: 'desc' };
+    }
     
     // Only apply pagination if requested
     if (isPaginationRequested) {
@@ -176,10 +183,43 @@ export const getAllCustomers = async (req, res) => {
     }));
     console.log('Final query options:', JSON.stringify(logQueryOptions, null, 2));
     
-    const [customers, total] = await Promise.all([
-      prisma.customer.findMany(queryOptions),
-      prisma.customer.count({ where: whereClause })
-    ]);
+    let customers, total;
+    
+    try {
+      // Try Prisma first
+      [customers, total] = await Promise.all([
+        prisma.customer.findMany(queryOptions),
+        prisma.customer.count({ where: whereClause })
+      ]);
+    } catch (prismaError) {
+      console.error('Prisma error, using raw SQL fallback:', prismaError.message);
+      
+      // Fallback to raw SQL to avoid datetime issues
+      const offset = isPaginationRequested ? (pageNum - 1) * limitNum : 0;
+      const limit = isPaginationRequested ? limitNum : 1000;
+      
+      const sqlQuery = `
+        SELECT id, uuid, name, serialNumber, email, phone, gender, source, purpose, 
+               department, referredTo, referredById, metadata, ownerId, schoolId, 
+               createdBy, updatedBy, userId, totalSpent, orderCount, type, 
+               pipelineStageId, rermark, priority
+        FROM customers 
+        WHERE schoolId = ? AND deletedAt IS NULL
+        ORDER BY id DESC
+        ${isPaginationRequested ? 'LIMIT ? OFFSET ?' : ''}
+      `;
+      
+      const sqlParams = isPaginationRequested ? [schoolId, limit, offset] : [schoolId];
+      
+      customers = await query(sqlQuery, sqlParams);
+      const countResult = await query(
+        'SELECT COUNT(*) as total FROM customers WHERE schoolId = ? AND deletedAt IS NULL',
+        [schoolId]
+      );
+      total = countResult[0].total;
+      
+      console.log('Raw SQL fallback successful, found customers:', customers.length);
+    }
     
     console.log('Query results:', { customersCount: customers.length, total });
 
