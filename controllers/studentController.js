@@ -55,102 +55,6 @@ import StudentEventService from '../services/studentEventService.js';
 
 const prisma = new PrismaClient();
 
-// ======================
-// UTILITY FUNCTIONS
-// ======================
-const cleanupOrphanedStudents = async () => {
-  try {
-    // Find students with invalid school references
-    const orphanedStudents = await prisma.student.findMany({
-      where: {
-        OR: [
-          { schoolId: null },
-          {
-            school: null
-          }
-        ]
-      },
-      select: {
-        id: true,
-        admissionNo: true,
-        schoolId: true
-      }
-    });
-
-    if (orphanedStudents.length > 0) {
-      console.log(`Found ${orphanedStudents.length} orphaned students:`, orphanedStudents);
-      
-      // Get the first available school for each orphaned student
-      const firstSchool = await prisma.school.findFirst({
-        select: { id: true }
-      });
-
-      if (firstSchool) {
-        // Update orphaned students to use the first available school
-        await prisma.student.updateMany({
-          where: {
-            id: {
-              in: orphanedStudents.map(s => s.id)
-            }
-          },
-          data: {
-            schoolId: firstSchool.id
-          }
-        });
-        
-        console.log(`Updated ${orphanedStudents.length} orphaned students to use school ID: ${firstSchool.id}`);
-      }
-    }
-
-    // Find students with invalid user references
-    const orphanedUserStudents = await prisma.student.findMany({
-      where: {
-        OR: [
-          { userId: null },
-          {
-            user: null
-          }
-        ]
-      },
-      select: {
-        id: true,
-        admissionNo: true,
-        userId: true
-      }
-    });
-
-    if (orphanedUserStudents.length > 0) {
-      console.log(`Found ${orphanedUserStudents.length} students with orphaned user references:`, orphanedUserStudents);
-      
-      // Get the first available user for each orphaned student
-      const firstUser = await prisma.user.findFirst({
-        where: {
-          role: 'STUDENT'
-        },
-        select: { id: true }
-      });
-
-      if (firstUser) {
-        // Update orphaned students to use the first available user
-        await prisma.student.updateMany({
-          where: {
-            id: {
-              in: orphanedUserStudents.map(s => s.id)
-            }
-          },
-          data: {
-            userId: firstUser.id
-          }
-        });
-        
-        console.log(`Updated ${orphanedUserStudents.length} students to use user ID: ${firstUser.id}`);
-      }
-    }
-  } catch (error) {
-    console.error('Error cleaning up orphaned students:', error);
-  }
-};
-
 // Utility function to convert BigInt values to strings for JSON serialization
 function convertBigInts(obj) {
   if (obj === null || obj === undefined) {
@@ -422,7 +326,7 @@ class StudentController {
       console.log('Step 3: Extracting query parameters...');
       const { 
         page = 1, 
-        limit, 
+        limit = 10, 
         search = '', 
         classId, 
         sectionId, 
@@ -448,48 +352,17 @@ class StudentController {
       console.log('Search query built:', searchQuery);
 
       console.log('Step 6: Preparing final query...');
-      // Ensure we don't have conflicting user conditions
-      const cleanSearchQuery = { ...searchQuery };
-      if (cleanSearchQuery.user) {
-        // If searchQuery has user conditions, merge them properly
-        cleanSearchQuery.user = {
-          ...cleanSearchQuery.user,
-          id: { not: null } // Ensure user exists
-        };
-      }
-      
       const finalQuery = {
         where: {
-          ...cleanSearchQuery,
+          ...searchQuery,
           schoolId: BigInt(schoolId),
           deletedAt: null
         },
         include: includeQuery,
-        orderBy: { [sortBy]: sortOrder }
+        orderBy: { [sortBy]: sortOrder },
+        skip: (parseInt(page) - 1) * parseInt(limit),
+        take: parseInt(limit)
       };
-
-      // Only apply pagination if limit is provided
-      console.log('Step 6.1: Checking pagination parameters...');
-      console.log('Limit value:', limit, 'Type:', typeof limit);
-      console.log('Page value:', page, 'Type:', typeof page);
-      
-      if (limit) {
-        const parsedLimit = parseInt(limit);
-        const parsedPage = parseInt(page);
-        const skipValue = (parsedPage - 1) * parsedLimit;
-        
-        console.log('Applying pagination:', {
-          parsedLimit,
-          parsedPage,
-          skipValue,
-          takeValue: parsedLimit
-        });
-        
-        finalQuery.skip = skipValue;
-        finalQuery.take = parsedLimit;
-      } else {
-        console.log('No limit provided - returning all students');
-      }
       
       // Convert BigInt values to strings for logging
       const logQuery = JSON.parse(JSON.stringify(finalQuery, (key, value) => {
@@ -501,76 +374,9 @@ class StudentController {
       console.log('Final query prepared:', JSON.stringify(logQuery, null, 2));
 
       console.log('Step 7: Executing Prisma query...');
-      let students;
-      try {
-        students = await prisma.student.findMany(finalQuery);
-      } catch (error) {
-        console.error('Error fetching students:', error);
-        // If there's a relation error, try without problematic relations
-        if (error.message.includes('school') && error.message.includes('null')) {
-          console.log('Attempting to fetch students without school relation due to orphaned records');
-          const { school, ...includeWithoutSchool } = includeQuery;
-          const fallbackQuery = {
-            ...finalQuery,
-            include: includeWithoutSchool
-          };
-          try {
-            students = await prisma.student.findMany(fallbackQuery);
-          } catch (fallbackError) {
-            console.error('Fallback query also failed:', fallbackError);
-            // Try with minimal includes
-            const minimalQuery = {
-              ...finalQuery,
-              include: {
-                _count: includeQuery._count
-              }
-            };
-            students = await prisma.student.findMany(minimalQuery);
-          }
-        } else if (error.message.includes('user') && error.message.includes('null')) {
-          console.log('Attempting to fetch students without user relation due to orphaned records');
-          const { user, ...includeWithoutUser } = includeQuery;
-          const fallbackQuery = {
-            ...finalQuery,
-            include: includeWithoutUser
-          };
-          try {
-            students = await prisma.student.findMany(fallbackQuery);
-          } catch (fallbackError) {
-            console.error('Fallback query also failed:', fallbackError);
-            // Try with minimal includes
-            const minimalQuery = {
-              ...finalQuery,
-              include: {
-                _count: includeQuery._count
-              }
-            };
-            students = await prisma.student.findMany(minimalQuery);
-          }
-        } else if (error.message.includes('school.users.phone') || error.message.includes('column') && error.message.includes('does not exist')) {
-          console.log('Attempting to fetch students with minimal includes due to database schema mismatch');
-          // Try with minimal includes to avoid schema issues
-          const minimalQuery = {
-            ...finalQuery,
-            include: {
-              _count: includeQuery._count
-            }
-          };
-          students = await prisma.student.findMany(minimalQuery);
-        } else {
-          throw error;
-        }
-      }
+      const students = await prisma.student.findMany(finalQuery);
 
       console.log('Step 8: Query completed. Found students:', students.length);
-      console.log('Expected limit:', limit ? parseInt(limit) : 'No limit (all students)');
-      console.log('Actual returned:', students.length);
-      
-      if (limit && students.length !== parseInt(limit) && students.length > parseInt(limit)) {
-        console.log('⚠️ WARNING: Returned more students than expected!');
-        console.log('Expected:', parseInt(limit), 'Got:', students.length);
-      }
-      
       console.log('=== getStudents END ===');
       return createSuccessResponse(res, 200, 'Students fetched successfully', students);
     } catch (error) {
@@ -585,6 +391,7 @@ class StudentController {
   async getStudentById(req, res) {
     try {
       const { id } = req.params;
+      const { include = [] } = req.query;
 
       // Check cache first
       const cachedStudent = await getStudentFromCache(id);
@@ -594,42 +401,15 @@ class StudentController {
         });
       }
 
-      // Simple query without complex includes
+      const includeQuery = buildStudentIncludeQuery(include);
+
       const student = await prisma.student.findFirst({
         where: {
           id: parseInt(id),
           schoolId: req.user.schoolId,
           deletedAt: null
         },
-        select: {
-          id: true,
-          admissionNo: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          phone: true,
-          gender: true,
-          birthDate: true,
-          address: true,
-          status: true,
-          schoolId: true,
-          classId: true,
-          sectionId: true,
-          parentId: true,
-          userId: true,
-          createdAt: true,
-          updatedAt: true,
-          user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-              phone: true,
-              status: true
-            }
-          }
-        }
+        include: includeQuery
       });
 
       if (!student) {
@@ -643,7 +423,6 @@ class StudentController {
         source: 'database'
       });
     } catch (error) {
-      console.error('Error in getStudentById:', error);
       return handlePrismaError(res, error, 'getStudentById');
     }
   }
@@ -2242,19 +2021,6 @@ class StudentController {
         message: 'Failed to fetch student conversion stats',
         error: error.message
       });
-    }
-  }
-
-  // ======================
-  // CLEANUP ORPHANED STUDENTS
-  // ======================
-  async cleanupOrphanedStudentsEndpoint(req, res) {
-    try {
-      await cleanupOrphanedStudents();
-      return createSuccessResponse(res, 200, 'Orphaned students cleanup completed');
-    } catch (error) {
-      console.error('Error cleaning up orphaned students:', error);
-      return createErrorResponse(res, 500, 'Failed to cleanup orphaned students');
     }
   }
 }
