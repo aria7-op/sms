@@ -363,9 +363,38 @@ export const buildStudentIncludeQuery = (include = []) => {
         id: true,
         user: {
           select: {
+            id: true,
+            uuid: true,
+            username: true,
+            email: true,
+            emailVerified: true,
+            phone: true,
+            phoneVerified: true,
+            // password: false, // Never include password for security
+            // salt: false, // Never include salt for security
             firstName: true,
+            middleName: true,
             lastName: true,
-            email: true
+            displayName: true,
+            gender: true,
+            birthDate: true,
+            avatar: true,
+            coverImage: true,
+            bio: true,
+            role: true,
+            status: true,
+            lastLogin: true,
+            lastIp: true,
+            timezone: true,
+            locale: true,
+            metadata: true,
+            schoolId: true,
+            createdByOwnerId: true,
+            createdBy: true,
+            updatedBy: true,
+            createdAt: true,
+            updatedAt: true,
+            deletedAt: true
           }
         }
       }
