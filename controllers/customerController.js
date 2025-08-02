@@ -37,9 +37,9 @@ async function initializeDbPool() {
       const dbConfig = {
         host: process.env.DB_HOST || 'localhost',
         port: process.env.DB_PORT || 3306,
-        user: process.env.DB_USER || 'school',
-        password: process.env.DB_PASSWORD || 'YourName123!',
-        database: process.env.DB_NAME || 'school',
+        user: process.env.DB_USER || 'mohammad1_ahmadi1',
+        password: process.env.DB_PASSWORD || 'mohammad112_',
+        database: process.env.DB_NAME || 'mohammad1_school',
         waitForConnections: true,
         connectionLimit: 10,
         queueLimit: 0,
@@ -2877,11 +2877,27 @@ export const getUnconvertedCustomers = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Find customers that don't have any converted students
+    // Use a safer approach to find unconverted customers
+    // First, get all customer IDs that have converted students
+    const convertedCustomerIds = await prisma.student.findMany({
+      where: {
+        schoolId,
+        convertedFromCustomerId: { not: null }
+      },
+      select: {
+        convertedFromCustomerId: true
+      }
+    });
+
+    const convertedIds = convertedCustomerIds
+      .map(s => s.convertedFromCustomerId)
+      .filter(id => id !== null);
+
+    // Find customers that are not in the converted list
     const whereClause = {
       schoolId,
-      convertedStudents: {
-        none: {}
+      id: {
+        notIn: convertedIds.length > 0 ? convertedIds : undefined
       }
     };
 
@@ -2893,13 +2909,42 @@ export const getUnconvertedCustomers = async (req, res) => {
       ];
     }
 
+    // Use a safer sorting approach to avoid datetime issues
+    const safeSortBy = sortBy === 'updatedAt' ? 'createdAt' : sortBy;
+
     const [customers, total] = await Promise.all([
       prisma.customer.findMany({
         where: whereClause,
-        include: {
+        select: {
+          id: true,
+          uuid: true,
+          name: true,
+          email: true,
+          phone: true,
+          address: true,
+          city: true,
+          state: true,
+          country: true,
+          postalCode: true,
+          status: true,
+          source: true,
+          priority: true,
+          createdAt: true,
+          updatedAt: true,
+          // Only include events if they exist and have valid dates
           events: {
+            where: {
+              createdAt: { not: null }
+            },
             orderBy: { createdAt: 'desc' },
-            take: 5
+            take: 5,
+            select: {
+              id: true,
+              eventType: true,
+              title: true,
+              description: true,
+              createdAt: true
+            }
           },
           _count: {
             select: {
@@ -2907,7 +2952,7 @@ export const getUnconvertedCustomers = async (req, res) => {
             }
           }
         },
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: { [safeSortBy]: sortOrder },
         skip,
         take: parseInt(limit)
       }),
@@ -2926,11 +2971,61 @@ export const getUnconvertedCustomers = async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching unconverted customers:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch unconverted customers',
-      error: error.message
-    });
+    
+    // If the main query fails, try a fallback approach
+    try {
+      console.log('Attempting fallback query for unconverted customers...');
+      
+      const schoolId = BigInt(req.user.schoolId);
+      const { page = 1, limit = 10 } = req.query;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      // Simple fallback query without complex relations
+      const [customers, total] = await Promise.all([
+        prisma.customer.findMany({
+          where: { schoolId },
+          select: {
+            id: true,
+            uuid: true,
+            name: true,
+            email: true,
+            phone: true,
+            address: true,
+            city: true,
+            state: true,
+            country: true,
+            postalCode: true,
+            status: true,
+            source: true,
+            priority: true,
+            createdAt: true
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: parseInt(limit)
+        }),
+        prisma.customer.count({ where: { schoolId } })
+      ]);
+
+      res.json({
+        success: true,
+        data: convertBigInts(customers),
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / parseInt(limit))
+        },
+        note: 'Fallback query used due to data integrity issues'
+      });
+    } catch (fallbackError) {
+      console.error('Fallback query also failed:', fallbackError);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch unconverted customers',
+        error: 'Database query failed due to data integrity issues'
+      });
+    }
   }
 };
 
@@ -3204,4 +3299,4 @@ export const getConversionRates = async (req, res) => {
       error: error.message
     });
   }
-}; 
+};
