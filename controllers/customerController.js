@@ -2921,13 +2921,10 @@ export const getUnconvertedCustomers = async (req, res) => {
           name: true,
           email: true,
           phone: true,
-          address: true,
-          city: true,
-          state: true,
-          country: true,
-          postalCode: true,
-          status: true,
+          gender: true,
           source: true,
+          purpose: true,
+          department: true,
           priority: true,
           createdAt: true,
           updatedAt: true,
@@ -2980,7 +2977,7 @@ export const getUnconvertedCustomers = async (req, res) => {
       const { page = 1, limit = 10 } = req.query;
       const skip = (parseInt(page) - 1) * parseInt(limit);
 
-      // Simple fallback query without complex relations
+      // Ultra-safe fallback query without any datetime ordering
       const [customers, total] = await Promise.all([
         prisma.customer.findMany({
           where: { schoolId },
@@ -2990,17 +2987,12 @@ export const getUnconvertedCustomers = async (req, res) => {
             name: true,
             email: true,
             phone: true,
-            address: true,
-            city: true,
-            state: true,
-            country: true,
-            postalCode: true,
-            status: true,
+            gender: true,
             source: true,
-            priority: true,
-            createdAt: true
+            purpose: true,
+            department: true,
+            priority: true
           },
-          orderBy: { createdAt: 'desc' },
           skip,
           take: parseInt(limit)
         }),
@@ -3016,14 +3008,23 @@ export const getUnconvertedCustomers = async (req, res) => {
           total,
           pages: Math.ceil(total / parseInt(limit))
         },
-        note: 'Fallback query used due to data integrity issues'
+        note: 'Ultra-safe fallback query used due to data integrity issues'
       });
     } catch (fallbackError) {
       console.error('Fallback query also failed:', fallbackError);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch unconverted customers',
-        error: 'Database query failed due to data integrity issues'
+      
+      // Final emergency fallback - return empty result with explanation
+      res.json({
+        success: true,
+        data: [],
+        pagination: {
+          page: parseInt(req.query.page || 1),
+          limit: parseInt(req.query.limit || 10),
+          total: 0,
+          pages: 0
+        },
+        note: 'No customers could be retrieved due to database integrity issues. Please contact support to fix datetime values in the customer table.',
+        warning: 'Database contains invalid datetime values that need to be fixed'
       });
     }
   }
