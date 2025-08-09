@@ -71,6 +71,10 @@ import timetableAIRoutes from './routes/timetableAIRoutes.js';
 import transportRoutes from './routes/transportRoutes.js';
 import userRoutes from './routes/users.js';
 
+// Import controllers and middleware
+import feeController from './controllers/feeController.js';
+import { authenticateToken } from './middleware/auth.js';
+
 dotenv.config();
 
 const app = express();
@@ -655,6 +659,23 @@ app.use('/api/expenses', expenseRoutes);
 // Fee routes
 app.use('/api/fees', feeRoutes);
 app.use('/api/fee-items', feeItemRoutes);
+
+// Fee-structures endpoint compatibility - direct call to fee controller
+app.get('/api/fee-structures', authenticateToken, async (req, res) => {
+  try {
+    console.log('🔍 Fee-structures endpoint called for user:', req.user?.email);
+    await feeController.getFeeStructures(req, res);
+  } catch (error) {
+    console.error('❌ Fee-structures endpoint error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to fetch fee structures',
+        error: error.message 
+      });
+    }
+  }
+});
 
 // File routes
 app.use('/api/files', fileRoutes);
