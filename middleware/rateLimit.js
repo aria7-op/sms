@@ -610,6 +610,129 @@ const gradeSearchLimiter = rateLimit({
 });
 
 /**
+ * Exam search rate limiter
+ */
+const examSearchLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 30, // limit each user to 30 exam searches per minute
+  message: {
+    success: false,
+    error: 'Too many exam search requests',
+    message: 'Too many exam search requests, please try again later.',
+    meta: {
+      timestamp: new Date().toISOString(),
+      statusCode: 429,
+      retryAfter: '1 minute'
+    }
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: undefined, // Using built-in memory store
+  keyGenerator: (req) => {
+    return req.user ? `user:${req.user.id}` : req.ip;
+  }
+});
+
+/**
+ * Class creation rate limiter
+ */
+const classCreateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 20, // limit each user to 20 class creations per hour
+  message: {
+    success: false,
+    error: 'Too many class creation requests',
+    message: 'Too many class creation requests, please try again later.',
+    meta: {
+      timestamp: new Date().toISOString(),
+      statusCode: 429,
+      retryAfter: '1 hour'
+    }
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: undefined, // Using built-in memory store
+  keyGenerator: (req) => {
+    return req.user ? `user:${req.user.id}` : req.ip;
+  },
+  skip: (req) => req.user?.role === 'admin' // Skip for admins
+});
+
+/**
+ * Class search rate limiter
+ */
+const classSearchLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 30, // limit each user to 30 search requests per minute
+  message: {
+    success: false,
+    error: 'Too many search requests',
+    message: 'Too many search requests, please try again later.',
+    meta: {
+      timestamp: new Date().toISOString(),
+      statusCode: 429,
+      retryAfter: '1 minute'
+    }
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: undefined, // Using built-in memory store
+  keyGenerator: (req) => {
+    return req.user ? `user:${req.user.id}` : req.ip;
+  }
+});
+
+/**
+ * Class bulk operations rate limiter
+ */
+const classBulkLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 10, // limit each user to 10 bulk operations per 5 minutes
+  message: {
+    success: false,
+    error: 'Too many bulk operation requests',
+    message: 'Too many bulk operation requests, please try again later.',
+    meta: {
+      timestamp: new Date().toISOString(),
+      statusCode: 429,
+      retryAfter: '5 minutes'
+    }
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: undefined, // Using built-in memory store
+  keyGenerator: (req) => {
+    return req.user ? `user:${req.user.id}` : req.ip;
+  },
+  skip: (req) => req.user?.role === 'admin'
+});
+
+/**
+ * Class analytics rate limiter
+ */
+const classAnalyticsLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 20, // limit each user to 20 analytics requests per 5 minutes
+  message: {
+    success: false,
+    error: 'Too many analytics requests',
+    message: 'Too many analytics requests, please try again later.',
+    meta: {
+      timestamp: new Date().toISOString(),
+      statusCode: 429,
+      retryAfter: '5 minutes'
+    }
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: undefined, // Using built-in memory store
+  keyGenerator: (req) => {
+    return req.user ? `user:${req.user.id}` : req.ip;
+  },
+  skip: (req) => req.user?.role === 'admin'
+});
+
+/**
  * Exam timetable search rate limiter
  */
 const examTimetableSearchLimiter = rateLimit({
@@ -827,6 +950,11 @@ export {
   staffSearchLimiter,
   parentSearchLimiter,
   gradeSearchLimiter,
+  examSearchLimiter,
+  classCreateLimiter,
+  classSearchLimiter,
+  classBulkLimiter,
+  classAnalyticsLimiter,
   examTimetableSearchLimiter,
   rateLimitMonitor,
   getRateLimitInfo,
