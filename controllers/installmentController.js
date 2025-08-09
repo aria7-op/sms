@@ -119,6 +119,42 @@ class InstallmentController {
     }
 
     /**
+     * Get all installments
+     */
+    async getAllInstallments(req, res) {
+        try {
+            const { schoolId } = req.user;
+            const { page = 1, limit = 10, status, paymentId, studentId } = req.query;
+
+            // Build filters
+            const filters = {
+                schoolId: parseInt(schoolId),
+                page: parseInt(page),
+                limit: parseInt(limit)
+            };
+
+            if (status) filters.status = status;
+            if (paymentId) filters.paymentId = parseInt(paymentId);
+            if (studentId) filters.studentId = parseInt(studentId);
+
+            const result = await this.installmentModel.getAll(filters);
+
+            return res.status(200).json({
+                success: true,
+                data: result.data || [],
+                meta: result.meta || {}
+            });
+
+        } catch (error) {
+            console.error('❌ Get installments error:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to get installments: ' + error.message
+            });
+        }
+    }
+
+    /**
      * Get installments by payment ID
      */
     async getInstallmentsByPayment(req, res) {
