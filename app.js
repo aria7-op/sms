@@ -44,6 +44,7 @@ import notificationsRoutes from './routes/notifications.js';
 import documentsRoutes from './routes/documents.js';
 import filesRoutes from './routes/files.js';
 import { authenticateToken } from './middleware/auth.js';
+import feeController from './controllers/feeController.js';
 
   dotenv.config();
 
@@ -664,7 +665,21 @@ app.use('/api/grades', gradesRoutes);
 app.use('/api/attendances', attendancesRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/fees', feesRoutes);
-app.use('/api/fee-structures', feesRoutes); // Alias for frontend compatibility
+
+// Fee-structures endpoint compatibility - direct call to fee controller
+app.get('/api/fee-structures', authenticateToken, async (req, res) => {
+  try {
+    // Call the fee controller's getFeeStructures method directly
+    await feeController.getFeeStructures(req, res);
+  } catch (error) {
+    console.error('❌ Fee-structures endpoint error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to fetch fee structures',
+      error: error.message 
+    });
+  }
+});
 app.use('/api/expenses', expensesRoutes);
 app.use('/api/incomes', incomesRoutes);
 app.use('/api/budgets', budgetsRoutes);
