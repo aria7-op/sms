@@ -547,6 +547,14 @@ class PaymentController {
       const { id } = req.params;
       const { schoolId } = req.user;
 
+      // Validate that id is a valid number that can be converted to BigInt
+      if (!id || isNaN(id) || !Number.isInteger(Number(id))) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Invalid payment ID. ID must be a valid integer.' 
+        });
+      }
+
       const payment = await prisma.payment.findFirst({
         where: { id: BigInt(id), schoolId, deletedAt: null },
                   include: {
