@@ -669,15 +669,19 @@ app.use('/api/fees', feesRoutes);
 // Fee-structures endpoint compatibility - direct call to fee controller
 app.get('/api/fee-structures', authenticateToken, async (req, res) => {
   try {
+    console.log('🔍 Fee-structures endpoint called for user:', req.user?.email);
     // Call the fee controller's getFeeStructures method directly
     await feeController.getFeeStructures(req, res);
   } catch (error) {
     console.error('❌ Fee-structures endpoint error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to fetch fee structures',
-      error: error.message 
-    });
+    // Only send response if not already sent by the controller
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to fetch fee structures',
+        error: error.message 
+      });
+    }
   }
 });
 app.use('/api/expenses', expensesRoutes);
