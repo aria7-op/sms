@@ -20,7 +20,7 @@ import {
   classSearchLimiter,
   classBulkLimiter,
   classAnalyticsLimiter
-} from '../middleware/rateLimiter.js';
+} from '../middleware/rateLimit.js';
 import { auditLog } from '../middleware/audit.js';
 import { z } from 'zod';
 
