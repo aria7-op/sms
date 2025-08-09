@@ -162,7 +162,7 @@ class FeeController {
           include: {
             school: { select: { id: true, name: true } },
             class: { select: { id: true, name: true } },
-            _count: { select: { items: true, assignments: true } }
+            _count: { select: { items: true, payments: true } }
           },
           orderBy: { [sortBy]: sortOrder },
           skip: parseInt(skip),
@@ -210,12 +210,6 @@ class FeeController {
           items: {
             where: { deletedAt: null },
             orderBy: { createdAt: 'asc' }
-          },
-          assignments: {
-            include: {
-              class: true,
-              student: true
-            }
           },
           createdByUser: {
             select: { id: true, firstName: true, lastName: true }
@@ -941,7 +935,7 @@ class FeeController {
             orderBy: { createdAt: 'asc' }
           },
           _count: {
-            select: { assignments: true }
+            select: { payments: true }
           }
         }
       });
@@ -1475,3 +1469,4 @@ class FeeController {
 
 // Export as a singleton instance
 export default new FeeController();
+
