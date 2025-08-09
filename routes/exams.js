@@ -51,13 +51,13 @@ const ExamCreateSchema = z.object({
 const ExamUpdateSchema = ExamCreateSchema.partial().omit({ code: true });
 
 const ExamSearchSchema = z.object({
-  page: z.number().int().min(1).default(1),
-  limit: z.number().int().min(1).max(100).default(20),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().optional(),
   type: z.enum(['MIDTERM', 'FINAL', 'QUIZ', 'ASSIGNMENT', 'PROJECT', 'PRACTICAL']).optional(),
-  classId: z.number().int().positive().optional(),
-  subjectId: z.number().int().positive().optional(),
-  termId: z.number().int().positive().optional(),
+  classId: z.coerce.number().int().positive().optional(),
+  subjectId: z.coerce.number().int().positive().optional(),
+  termId: z.coerce.number().int().positive().optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   include: z.string().optional(),
