@@ -2,8 +2,18 @@ import { PrismaClient } from '../generated/prisma/client.js';
 const prisma = new PrismaClient();
 
 export const getAllBudgets = async (req, res) => {
-  const budgets = await prisma.budget.findMany();
-  res.json(budgets);
+  try {
+    if (!prisma || !prisma.budget) {
+      console.log('⚠️ Budget model not available in Prisma schema');
+      return res.json({ success: true, data: [], message: 'Budget model not configured' });
+    }
+    
+    const budgets = await prisma.budget.findMany();
+    res.json({ success: true, data: budgets });
+  } catch (error) {
+    console.error('❌ Get budgets error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch budgets', error: error.message });
+  }
 };
 
 export const getBudgetById = async (req, res) => {
