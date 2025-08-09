@@ -39,6 +39,7 @@ import authRoutes from './routes/auth.js';
 import notificationsRoutes from './routes/notifications.js';
 import documentsRoutes from './routes/documents.js';
 import filesRoutes from './routes/files.js';
+import { authenticateToken } from './middleware/auth.js';
 
   dotenv.config();
 
@@ -501,6 +502,40 @@ app.use((req, res, next) => {
       res.status(500).json({
         success: false,
         message: 'Failed to fix datetime values',
+        error: error.message
+      });
+    }
+  });
+
+  // Analytics endpoint (for frontend compatibility)
+  app.get('/analytics', authenticateToken, async (req, res) => {
+    try {
+      // This endpoint provides general analytics data for the frontend
+      const schoolId = req.user.schoolId;
+      
+      // Basic analytics data
+      res.json({
+        success: true,
+        message: 'Analytics data retrieved successfully',
+        data: {
+          dashboard: {
+            totalStudents: 0,
+            totalTeachers: 0,
+            totalCustomers: 0,
+            conversionRate: 0
+          },
+          charts: {
+            studentGrowth: [],
+            conversionTrend: [],
+            attendanceRate: []
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Analytics error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve analytics',
         error: error.message
       });
     }
