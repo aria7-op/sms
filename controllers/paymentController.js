@@ -855,7 +855,13 @@ class PaymentController {
               user: { select: { firstName: true, lastName: true } }
             } 
           },
-            parent: { select: { firstName: true, lastName: true } }
+            parent: { 
+              select: { 
+                id: true, 
+                uuid: true, 
+                user: { select: { firstName: true, lastName: true } }
+              } 
+            }
           }
         })
       ]);
@@ -900,7 +906,13 @@ class PaymentController {
               user: { select: { firstName: true, lastName: true } }
             } 
           },
-          parent: { select: { firstName: true, lastName: true, uuid: true } },
+                      parent: { 
+              select: { 
+                id: true, 
+                uuid: true, 
+                user: { select: { firstName: true, lastName: true } }
+              } 
+            },
           feeStructure: { select: { name: true } },
           items: { include: { feeItem: true } },
           refunds: true,
@@ -914,7 +926,7 @@ class PaymentController {
         const csvData = payments.map(payment => ({
           'Receipt Number': payment.receiptNumber,
           'Student': payment.student ? `${payment.student.user.firstName} ${payment.student.user.lastName}` : 'N/A',
-          'Parent': payment.parent ? `${payment.parent.firstName} ${payment.parent.lastName}` : 'N/A',
+          'Parent': payment.parent && payment.parent.user ? `${payment.parent.user.firstName} ${payment.parent.user.lastName}` : 'N/A',
           'Amount': payment.amount,
           'Total': payment.total,
           'Status': payment.status,
