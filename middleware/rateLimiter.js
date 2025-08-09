@@ -634,6 +634,31 @@ const examSearchLimiter = rateLimit({
 });
 
 /**
+ * Class creation rate limiter
+ */
+const classCreateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 20, // limit each user to 20 class creations per hour
+  message: {
+    success: false,
+    error: 'Too many class creation requests',
+    message: 'Too many class creation requests, please try again later.',
+    meta: {
+      timestamp: new Date().toISOString(),
+      statusCode: 429,
+      retryAfter: '1 hour'
+    }
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: undefined, // Using built-in memory store
+  keyGenerator: (req) => {
+    return req.user ? `user:${req.user.id}` : req.ip;
+  },
+  skip: (req) => req.user?.role === 'admin' // Skip for admins
+});
+
+/**
  * Class search rate limiter
  */
 const classSearchLimiter = rateLimit({
@@ -926,6 +951,7 @@ export {
   parentSearchLimiter,
   gradeSearchLimiter,
   examSearchLimiter,
+  classCreateLimiter,
   classSearchLimiter,
   classBulkLimiter,
   classAnalyticsLimiter,
