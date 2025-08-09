@@ -31,6 +31,7 @@ import equipmentRoutes from './routes/equipmentRoutes.js';
 import eventRoutes from './routes/events.js';
 import examTimetableRoutes from './routes/examTimetables.js';
 import examinationRoutes from './routes/examinations.js';
+import examRoutes from './routes/exams.js';
 import expenseRoutes from './routes/expenses.js';
 import feeItemRoutes from './routes/feeItem.js';
 import feeRoutes from './routes/fees.js';
@@ -652,6 +653,7 @@ app.use('/api/events', eventRoutes);
 // Examination routes
 app.use('/api/examinations', examinationRoutes);
 app.use('/api/exam-timetables', examTimetableRoutes);
+app.use('/api/exams', examRoutes);
 
 // Expense routes
 app.use('/api/expenses', expenseRoutes);
