@@ -26,7 +26,7 @@ import {
   roleBasedLimiter,
   defaultRoleLimits,
   examSearchLimiter
-} from '../middleware/rateLimiter.js';
+} from '../middleware/rateLimit.js';
 
 const router = express.Router();
 
