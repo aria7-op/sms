@@ -947,7 +947,7 @@ class PaymentController {
             totalPayments: payments.length,
             totalAmount: payments.reduce((sum, p) => sum + parseFloat(p.total), 0),
             paidAmount: payments.filter(p => p.status === 'PAID').reduce((sum, p) => sum + parseFloat(p.total), 0),
-            pendingAmount: payments.filter(p => p.status === 'PENDING').reduce((sum, p) => sum + parseFloat(p.total), 0)
+            pendingAmount: payments.filter(p => p.status === 'UNPAID').reduce((sum, p) => sum + parseFloat(p.total), 0)
           }
         });
       }
@@ -1380,7 +1380,7 @@ class PaymentController {
         prisma.payment.count({
           where: {
             schoolId: BigInt(schoolId),
-            status: 'PENDING',
+            status: 'UNPAID',
             deletedAt: null
           }
         }),
@@ -1409,7 +1409,7 @@ class PaymentController {
         prisma.payment.aggregate({
           where: {
             schoolId: BigInt(schoolId),
-            status: 'PENDING',
+            status: 'UNPAID',
             deletedAt: null
           },
           _sum: { total: true }
