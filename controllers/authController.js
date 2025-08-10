@@ -2,9 +2,43 @@ import { PrismaClient } from '../generated/prisma/client.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import staffStore from '../store/staffStore.js';
+import crypto from 'crypto';
 const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+
+// ======================
+// UTILITY FUNCTIONS
+// ======================
+
+/**
+ * Generate a secure random token
+ */
+function generateResetToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+/**
+ * Generate a temporary password
+ */
+function generateTempPassword(length = 12) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  let password = '';
+  for (let i = 0; i < length; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+}
+
+/**
+ * Hash password with bcrypt
+ */
+async function hashPassword(password) {
+  const saltRounds = 12;
+  const salt = await bcrypt.genSalt(saltRounds);
+  const hashedPassword = await bcrypt.hash(password, salt);
+  return { hashedPassword, salt };
+}
 
 export const register = async (req, res) => {
   const { name, email, password, role, schoolId, created_by_owner_id, relational_id } = req.body;
@@ -118,3 +152,214 @@ export const loginTest = async (req, res) => {
   const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
   res.json({ token });
 };
+
+// ======================
+// PASSWORD RESET METHODS
+// ======================
+
+/**
+ * Forgot Password - Request password reset
+ */
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found with this email'
+      });
+    }
+
+    // Generate reset token
+    const resetToken = generateResetToken();
+    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
+
+    // Store reset token in user metadata
+    const metadata = user.metadata || {};
+    metadata.resetToken = resetToken;
+    metadata.resetTokenExpiry = resetTokenExpiry.toISOString();
+
+    // Update user with reset token
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        metadata: metadata
+      }
+    });
+
+    // In production, send email here
+    // For now, return the token directly
+    res.json({
+      success: true,
+      message: 'Password reset token generated successfully',
+      data: {
+        resetToken: resetToken,
+        expiresAt: resetTokenExpiry,
+        email: user.email
+      }
+    });
+
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Reset Password - Use reset token to set new password
+ */
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, resetToken, newPassword } = req.body;
+
+    if (!email || !resetToken || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email, reset token, and new password are required'
+      });
+    }
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if reset token exists and is valid
+    const metadata = user.metadata || {};
+    if (!metadata.resetToken || metadata.resetToken !== resetToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid reset token'
+      });
+    }
+
+    // Check if token is expired
+    if (new Date(metadata.resetTokenExpiry) < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reset token has expired'
+      });
+    }
+
+    // Hash new password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update password and clear reset token
+    const updatedMetadata = { ...metadata };
+    delete updatedMetadata.resetToken;
+    delete updatedMetadata.resetTokenExpiry;
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        metadata: updatedMetadata
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully'
+    });
+
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Admin Reset Password - Admin can reset any user's password
+ */
+export const adminResetPassword = async (req, res) => {
+  try {
+    const { userId, newPassword } = req.body;
+    const adminUser = req.user; // From auth middleware
+
+    // Check if admin has permission
+    if (!adminUser || !['SUPER_ADMIN', 'OWNER'].includes(adminUser.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
+      });
+    }
+
+    if (!userId || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID and new password are required'
+      });
+    }
+
+    // Find user by ID
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Hash new password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update password
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword
+      }
+    });
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully by admin',
+      data: {
+        userId: userId,
+        email: user.email
+      }
+    });
+
+  } catch (error) {
+    console.error('Admin reset password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
