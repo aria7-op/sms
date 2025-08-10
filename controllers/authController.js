@@ -3,9 +3,10 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import staffStore from '../store/staffStore.js';
 import crypto from 'crypto';
+import { safeResponse } from '../utils/jsonHelpers.js';
 const prisma = new PrismaClient();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'd3d396366d5d7b3ba7192922ad7b987274df547f4eb435c996fad48e6251cb8';
 
 // ======================
 // UTILITY FUNCTIONS
@@ -115,7 +116,20 @@ export const loginDb = async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { email },
       include: {
-        school: true
+        school: {
+          select: {
+            id: true,
+            name: true,
+            shortName: true,
+            code: true,
+            logo: true,
+            themeColor: true,
+            timezone: true,
+            locale: true,
+            currency: true,
+            status: true
+          }
+        }
       }
     });
 
@@ -124,11 +138,11 @@ export const loginDb = async (req, res) => {
     }
 
     // Debug: Log user object to see what we're getting
-    const userForLogging = {
+    const userForLogging = safeResponse({
       ...user,
       id: user.id ? user.id.toString() : null,
       schoolId: user.schoolId ? user.schoolId.toString() : null
-    };
+    });
     console.log('User found:', JSON.stringify(userForLogging, null, 2));
 
     // Check if user is active
@@ -167,7 +181,8 @@ export const loginDb = async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    res.json({ 
+    // Serialize the response to handle any remaining BigInt values
+    const responseData = safeResponse({
       success: true,
       token,
       user: {
@@ -176,9 +191,12 @@ export const loginDb = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
-        schoolId: user.schoolId ? user.schoolId.toString() : null
+        schoolId: user.schoolId ? user.schoolId.toString() : null,
+        school: user.school
       }
     });
+
+    res.json(responseData);
 
   } catch (error) {
     console.error('Login error:', error);
@@ -406,7 +424,3 @@ export const adminResetPassword = async (req, res) => {
     });
   }
 };
-
-
-
-
