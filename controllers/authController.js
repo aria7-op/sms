@@ -124,7 +124,12 @@ export const loginDb = async (req, res) => {
     }
 
     // Debug: Log user object to see what we're getting
-    console.log('User found:', JSON.stringify(user, null, 2));
+    const userForLogging = {
+      ...user,
+      id: user.id ? user.id.toString() : null,
+      schoolId: user.schoolId ? user.schoolId.toString() : null
+    };
+    console.log('User found:', JSON.stringify(userForLogging, null, 2));
 
     // Check if user is active
     if (user.status !== 'ACTIVE') {
@@ -401,6 +406,7 @@ export const adminResetPassword = async (req, res) => {
     });
   }
 };
+
 
 
 
