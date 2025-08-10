@@ -42,17 +42,23 @@ async function hashPassword(password) {
 
 export const register = async (req, res) => {
   const { name, email, password, role, schoolId, created_by_owner_id, relational_id } = req.body;
-  if (!schoolId) return res.status(400).json({ error: 'schoolId is required' });
-  if (!relational_id) return res.status(400).json({ error: 'relational_id is required' });
+  
+  // For SUPER_ADMIN, schoolId and relational_id are optional
+  if (role !== 'SUPER_ADMIN') {
+    if (!schoolId) return res.status(400).json({ error: 'schoolId is required' });
+    if (!relational_id) return res.status(400).json({ error: 'relational_id is required' });
+  }
 
   // Map numeric or string role to enum string
   const roleMap = {
     '1': 'TEACHER',
     '2': 'STUDENT',
     '3': 'STAFF',
+    '4': 'SUPER_ADMIN',
     TEACHER: 'TEACHER',
     STUDENT: 'STUDENT',
-    STAFF: 'STAFF'
+    STAFF: 'STAFF',
+    SUPER_ADMIN: 'SUPER_ADMIN'
   };
   const mappedRole = roleMap[role];
   if (!mappedRole) return res.status(400).json({ error: 'Invalid role value' });
@@ -62,9 +68,26 @@ export const register = async (req, res) => {
   if (existingUser) return res.status(400).json({ error: 'Email already in use' });
 
   const hashedPassword = await bcrypt.hash(password, 10);
+  
+  // Prepare user data
+  const userData = {
+    name,
+    email,
+    password: hashedPassword,
+    role: mappedRole
+  };
+
+  // Add optional fields for non-SUPER_ADMIN users
+  if (mappedRole !== 'SUPER_ADMIN') {
+    userData.schoolId = BigInt(schoolId);
+    userData.created_by_owner_id = BigInt(created_by_owner_id);
+    userData.relational_id = BigInt(relational_id);
+  }
+
   const user = await prisma.user.create({
-    data: { name, email, password: hashedPassword, role: mappedRole, schoolId: BigInt(schoolId), created_by_owner_id: BigInt(created_by_owner_id), relational_id: BigInt(relational_id) }
+    data: userData
   });
+  
   res.status(201).json({ id: user.id.toString(), email: user.email });
 };
 
@@ -362,4 +385,5 @@ export const adminResetPassword = async (req, res) => {
     });
   }
 };
+
 
