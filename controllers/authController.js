@@ -123,6 +123,9 @@ export const loginDb = async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    // Debug: Log user object to see what we're getting
+    console.log('User found:', JSON.stringify(user, null, 2));
+
     // Check if user is active
     if (user.status !== 'ACTIVE') {
       return res.status(401).json({ error: 'User account is not active' });
@@ -134,14 +137,26 @@ export const loginDb = async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    // Check if required fields exist
+    if (!user.id) {
+      console.error('User ID is null:', user);
+      return res.status(500).json({ error: 'User record is corrupted - missing ID' });
+    }
+
+    if (!user.firstName || !user.lastName) {
+      console.error('User name fields are missing:', user);
+      return res.status(500).json({ error: 'User record is corrupted - missing name fields' });
+    }
+
     // Generate JWT token
     const token = jwt.sign(
       { 
         userId: user.id.toString(), 
         email: user.email, 
         role: user.role,
-        name: user.name,
-        schoolId: user.schoolId.toString()
+        firstName: user.firstName,
+        lastName: user.lastName,
+        schoolId: user.schoolId ? user.schoolId.toString() : null
       }, 
       JWT_SECRET, 
       { expiresIn: '7d' }
@@ -153,9 +168,10 @@ export const loginDb = async (req, res) => {
       user: {
         id: user.id.toString(),
         email: user.email,
-        name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
         role: user.role,
-        schoolId: user.schoolId.toString()
+        schoolId: user.schoolId ? user.schoolId.toString() : null
       }
     });
 
@@ -385,5 +401,6 @@ export const adminResetPassword = async (req, res) => {
     });
   }
 };
+
 
 
