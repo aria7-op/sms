@@ -66,27 +66,11 @@ export const validateInstallmentData = (data) => {
 // Receipt number generation
 export const generateReceiptNumber = async (schoolId) => {
   const year = new Date().getFullYear();
-  const prefix = `RCP-${year}-`;
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000);
   
-  // Get the last receipt number for this school and year using transactionId as fallback
-  const lastPayment = await prisma.payment.findFirst({
-    where: {
-      schoolId: BigInt(schoolId),
-      transactionId: { startsWith: prefix },
-      deletedAt: null
-    },
-    orderBy: { transactionId: 'desc' }
-  });
-
-  let sequence = 1;
-  if (lastPayment && lastPayment.transactionId) {
-    const lastSequence = parseInt(lastPayment.transactionId.split('-')[2]);
-    if (!isNaN(lastSequence)) {
-      sequence = lastSequence + 1;
-    }
-  }
-
-  return `${prefix}${sequence.toString().padStart(6, '0')}`;
+  // Generate a unique transaction ID without querying the database
+  return `RCP-${year}-${timestamp}-${random}`;
 };
 
 // Fine calculation
