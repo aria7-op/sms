@@ -1,645 +1,265 @@
+import Joi from 'joi';
 import { PrismaClient } from '../generated/prisma/client.js';
-import logger from '../config/logger.js';
-import { createAuditLog } from '../utils/auditLogger.js';
+const prisma = new PrismaClient();
 
-class Payment {
-    constructor() {
-        this.prisma = new PrismaClient();
+// Payment validation schemas
+const paymentSchema = Joi.object({
+  amount: Joi.number().positive().required(),
+  discount: Joi.number().min(0).default(0),
+  fine: Joi.number().min(0).default(0),
+  total: Joi.number().positive().required(),
+  paymentDate: Joi.date().required(),
+  dueDate: Joi.date().optional(),
+  status: Joi.string().valid('PAID', 'UNPAID', 'PARTIALLY_PAID', 'OVERDUE', 'CANCELLED', 'REFUNDED', 'PENDING', 'FAILED', 'PROCESSING', 'DISPUTED', 'VOIDED').required(),
+  method: Joi.string().valid('CASH', 'CARD', 'BANK_TRANSFER', 'MOBILE_PAYMENT', 'CHECK', 'SCHOLARSHIP', 'CRYPTO', 'DIGITAL_WALLET', 'INSTALLMENT', 'GRANT').required(),
+  type: Joi.string().valid('TUITION_FEE', 'TRANSPORT_FEE', 'LIBRARY_FEE', 'LABORATORY_FEE', 'SPORTS_FEE', 'EXAM_FEE', 'UNIFORM_FEE', 'MEAL_FEE', 'HOSTEL_FEE', 'OTHER').optional(),
+  gateway: Joi.string().valid('STRIPE', 'PAYPAL', 'SQUARE', 'RAZORPAY', 'PAYTM', 'CASHFREE', 'CUSTOM').optional(),
+  transactionId: Joi.string().max(100).optional(),
+  gatewayTransactionId: Joi.string().max(255).optional(),
+  remarks: Joi.string().max(255).optional(),
+  metadata: Joi.object().optional(),
+  isRecurring: Joi.boolean().default(false),
+  recurringFrequency: Joi.string().valid('daily', 'weekly', 'monthly', 'yearly').optional(),
+  nextPaymentDate: Joi.date().optional(),
+  studentId: Joi.number().optional(),
+  parentId: Joi.number().optional(),
+  feeStructureId: Joi.number().optional(),
+  items: Joi.array().items(Joi.object({
+    feeItemId: Joi.number().required(),
+    amount: Joi.number().positive().required(),
+    discount: Joi.number().min(0).default(0),
+    fine: Joi.number().min(0).default(0),
+    total: Joi.number().positive().required(),
+    description: Joi.string().max(255).optional()
+  })).optional()
+});
+
+const refundSchema = Joi.object({
+  paymentId: Joi.number().required(),
+  amount: Joi.number().positive().required(),
+  reason: Joi.string().max(255).required(),
+  remarks: Joi.string().max(255).optional()
+});
+
+const installmentSchema = Joi.object({
+  paymentId: Joi.number().required(),
+  installmentNumber: Joi.number().positive().required(),
+  amount: Joi.number().positive().required(),
+  dueDate: Joi.date().required(),
+  remarks: Joi.string().max(255).optional()
+});
+
+// Validation functions
+export const validatePaymentData = (data, isUpdate = false) => {
+  const schema = isUpdate ? paymentSchema.fork(['amount', 'total', 'paymentDate', 'status', 'method'], (schema) => schema.optional()) : paymentSchema;
+  return schema.validate(data);
+};
+
+export const validateRefundData = (data) => {
+  return refundSchema.validate(data);
+};
+
+export const validateInstallmentData = (data) => {
+  return installmentSchema.validate(data);
+};
+
+// Receipt number generation
+export const generateReceiptNumber = async (schoolId) => {
+  const year = new Date().getFullYear();
+  const prefix = `RCP-${year}-`;
+  
+  // Get the last receipt number for this school and year using transactionId as fallback
+  const lastPayment = await prisma.payment.findFirst({
+    where: {
+      schoolId: BigInt(schoolId),
+      transactionId: { startsWith: prefix },
+      deletedAt: null
+    },
+    orderBy: { transactionId: 'desc' }
+  });
+
+  let sequence = 1;
+  if (lastPayment && lastPayment.transactionId) {
+    const lastSequence = parseInt(lastPayment.transactionId.split('-')[2]);
+    if (!isNaN(lastSequence)) {
+      sequence = lastSequence + 1;
     }
+  }
 
-    /**
-     * Create a new payment
-     */
-    async create(data) {
-        try {
-            // Calculate total if not provided
-            const total = data.total || (data.amount - data.discount + data.fine);
+  return `${prefix}${sequence.toString().padStart(6, '0')}`;
+};
 
-            const payment = await this.prisma.payment.create({
-                data: {
-                    amount: data.amount,
-                    discount: data.discount || 0,
-                    fine: data.fine || 0,
-                    total: total,
-                    paymentDate: data.paymentDate || new Date(),
-                    dueDate: data.dueDate,
-                    status: data.status,
-                    method: data.method,
-                    type: data.type,
-                    gateway: data.gateway,
-                    transactionId: data.transactionId,
-                    gatewayTransactionId: data.gatewayTransactionId,
-                    transactionId: data.transactionId,
-                    remarks: data.remarks,
-                    metadata: data.metadata,
-                    isRecurring: data.isRecurring || false,
-                    recurringFrequency: data.recurringFrequency,
-                    nextPaymentDate: data.nextPaymentDate,
-                    studentId: data.studentId ? BigInt(data.studentId) : null,
-                    parentId: data.parentId ? BigInt(data.parentId) : null,
-                    feeStructureId: data.feeStructureId ? BigInt(data.feeStructureId) : null,
-                    schoolId: BigInt(data.schoolId),
-                    createdBy: BigInt(data.createdBy),
-                    items: data.items ? {
-                        createMany: {
-                            data: data.items.map(item => ({
-                                name: item.name,
-                                amount: item.amount,
-                                description: item.description,
-                                feeItemId: item.feeItemId ? BigInt(item.feeItemId) : null,
-                                schoolId: BigInt(data.schoolId)
-                            }))
-                        }
-                    } : undefined
-                },
-                include: {
-                    student: {
-                        select: {
-                            id: true,
-                            name: true,
-                            rollNumber: true
-                        }
-                    },
-                    parent: {
-                        select: {
-                            id: true,
-                            name: true
-                        }
-                    },
-                    feeStructure: {
-                        select: {
-                            id: true,
-                            name: true
-                        }
-                    },
-                    school: {
-                        select: {
-                            id: true,
-                            name: true
-                        }
-                    },
-                    items: true
-                }
-            });
+// Fine calculation
+export const calculateFines = async (dueDate, amount) => {
+  const today = new Date();
+  const due = new Date(dueDate);
+  
+  if (today <= due) return 0;
+  
+  const daysLate = Math.ceil((today - due) / (1000 * 60 * 60 * 24));
+  const fineRate = 0.01; // 1% per day
+  const fine = amount * fineRate * daysLate;
+  
+  return Math.min(fine, amount * 0.5); // Cap at 50% of amount
+};
 
-            // Create audit log
-            await createAuditLog({
-                action: 'CREATE',
-                entity: 'PAYMENT',
-                entityId: payment.id.toString(),
-                details: `Payment created with amount ${payment.amount}`,
-                userId: data.createdBy,
-                schoolId: data.schoolId
-            });
+// Payment log creation
+export const createPaymentLog = async (paymentId, action, oldValue, newValue, ipAddress, userAgent, schoolId, userId) => {
+  try {
+    await prisma.paymentLog.create({
+      data: {
+        paymentId: BigInt(paymentId),
+        action,
+        oldValue: oldValue ? JSON.parse(JSON.stringify(oldValue, (key, value) =>
+          typeof value === 'bigint' ? value.toString() : value
+        )) : null,
+        newValue: newValue ? JSON.parse(JSON.stringify(newValue, (key, value) =>
+          typeof value === 'bigint' ? value.toString() : value
+        )) : null,
+        ipAddress,
+        userAgent,
+        schoolId: BigInt(schoolId),
+        createdBy: userId ? BigInt(userId) : null
+      }
+    });
+  } catch (error) {
+    console.error('Error creating payment log:', error);
+  }
+};
 
-            return {
-                success: true,
-                data: payment
-            };
+// Payment calculations
+export const calculatePaymentTotal = (amount, discount = 0, fine = 0) => {
+  return amount - discount + fine;
+};
 
-        } catch (error) {
-            logger.error(`Error creating payment: ${error.message}`);
-            throw new Error(`Failed to create payment: ${error.message}`);
-        }
+export const calculateInstallmentAmount = (totalAmount, numberOfInstallments) => {
+  const baseAmount = Math.floor(totalAmount / numberOfInstallments);
+  const remainder = totalAmount % numberOfInstallments;
+  
+  const installments = [];
+  for (let i = 0; i < numberOfInstallments; i++) {
+    installments.push(baseAmount + (i < remainder ? 1 : 0));
+  }
+  
+  return installments;
+};
+
+// Payment status helpers
+export const isPaymentOverdue = (dueDate) => {
+  return new Date() > new Date(dueDate);
+};
+
+export const canRefundPayment = (payment) => {
+  return payment.status === 'PAID' && parseFloat(payment.total) > 0;
+};
+
+export const canCancelPayment = (payment) => {
+  return ['PENDING', 'PROCESSING'].includes(payment.status);
+};
+
+// Date utilities
+export const addDays = (date, days) => {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+};
+
+export const addMonths = (date, months) => {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
+};
+
+export const addYears = (date, years) => {
+  const result = new Date(date);
+  result.setFullYear(result.getFullYear() + years);
+  return result;
+};
+
+// Recurring payment calculation
+export const calculateNextPaymentDate = (currentDate, frequency) => {
+  switch (frequency) {
+    case 'daily':
+      return addDays(currentDate, 1);
+    case 'weekly':
+      return addDays(currentDate, 7);
+    case 'monthly':
+      return addMonths(currentDate, 1);
+    case 'yearly':
+      return addYears(currentDate, 1);
+    default:
+      return currentDate;
+  }
+};
+
+// Payment summary calculations
+export const calculatePaymentSummary = (payments) => {
+  return payments.reduce((summary, payment) => {
+    const amount = parseFloat(payment.total);
+    
+    summary.totalPayments++;
+    summary.totalAmount += amount;
+    
+    switch (payment.status) {
+      case 'PAID':
+        summary.paidAmount += amount;
+        summary.paidCount++;
+        break;
+      case 'PENDING':
+        summary.pendingAmount += amount;
+        summary.pendingCount++;
+        break;
+      case 'OVERDUE':
+        summary.overdueAmount += amount;
+        summary.overdueCount++;
+        break;
+      case 'PARTIALLY_PAID':
+        summary.partialAmount += amount;
+        summary.partialCount++;
+        break;
+      case 'CANCELLED':
+        summary.cancelledAmount += amount;
+        summary.cancelledCount++;
+        break;
+      case 'REFUNDED':
+        summary.refundedAmount += amount;
+        summary.refundedCount++;
+        break;
     }
+    
+    return summary;
+  }, {
+    totalPayments: 0,
+    totalAmount: 0,
+    paidAmount: 0,
+    paidCount: 0,
+    pendingAmount: 0,
+    pendingCount: 0,
+    overdueAmount: 0,
+    overdueCount: 0,
+    partialAmount: 0,
+    partialCount: 0,
+    cancelledAmount: 0,
+    cancelledCount: 0,
+    refundedAmount: 0,
+    refundedCount: 0
+  });
+};
 
-    /**
-     * Get payment by ID
-     */
-    async getById(id, userId, schoolId, userRole) {
-        try {
-            const payment = await this.prisma.payment.findFirst({
-                where: {
-                    id: BigInt(id),
-                    schoolId: BigInt(schoolId),
-                    deletedAt: null
-                },
-                include: {
-                    student: {
-                        select: {
-                            id: true,
-                            name: true,
-                            rollNumber: true,
-                            class: {
-                                select: {
-                                    id: true,
-                                    name: true
-                                }
-                            }
-                        }
-                    },
-                    parent: {
-                        select: {
-                            id: true,
-                            name: true
-                        }
-                    },
-                    feeStructure: {
-                        select: {
-                            id: true,
-                            name: true
-                        }
-                    },
-                    school: {
-                        select: {
-                            id: true,
-                            name: true
-                        }
-                    },
-                    items: true,
-                    refunds: true,
-                    installments: true,
-                    paymentLogs: true
-                }
-            });
-
-            if (!payment) {
-                throw new Error('Payment not found');
-            }
-
-            // Check access permissions based on user role
-            if (userRole === 'STUDENT') {
-                // Students can only access their own payments
-                if (payment.studentId && payment.student.userId !== BigInt(userId)) {
-                    throw new Error('Access denied');
-                }
-            } else if (userRole === 'PARENT') {
-                // Parents can only access payments for their children
-                const parent = await this.prisma.parent.findFirst({
-                    where: { userId: BigInt(userId) },
-                    include: { children: true }
-                });
-                
-                if (!parent || (payment.studentId && !parent.children.some(child => child.id === payment.studentId))) {
-                    throw new Error('Access denied');
-                }
-            }
-
-            return {
-                success: true,
-                data: payment
-            };
-
-        } catch (error) {
-            logger.error(`Error getting payment: ${error.message}`);
-            throw new Error(`Failed to get payment: ${error.message}`);
-        }
-    }
-
-    /**
-     * Get all payments with filtering
-     */
-    async getAll(filters = {}) {
-        try {
-            const {
-                page = 1,
-                limit = 10,
-                studentId,
-                parentId,
-                feeStructureId,
-                status,
-                method,
-                type,
-                gateway,
-                minAmount,
-                maxAmount,
-                startDate,
-                endDate,
-                search,
-                sortBy = 'paymentDate',
-                sortOrder = 'desc',
-                schoolId
-            } = filters;
-
-            const where = {
-                schoolId: BigInt(schoolId),
-                deletedAt: null,
-                ...(studentId && { studentId: BigInt(studentId) }),
-                ...(parentId && { parentId: BigInt(parentId) }),
-                ...(feeStructureId && { feeStructureId: BigInt(feeStructureId) }),
-                ...(status && { status }),
-                ...(method && { method }),
-                ...(type && { type }),
-                ...(gateway && { gateway }),
-                ...(minAmount && { amount: { gte: parseFloat(minAmount) } }),
-                ...(maxAmount && { amount: { lte: parseFloat(maxAmount) } }),
-                ...(startDate && endDate && {
-                    paymentDate: {
-                        gte: new Date(startDate),
-                        lte: new Date(endDate)
-                    }
-                }),
-                ...(search && {
-                    OR: [
-                        { transactionId: { contains: search, mode: 'insensitive' } },
-                        { transactionId: { contains: search, mode: 'insensitive' } },
-                        { gatewayTransactionId: { contains: search, mode: 'insensitive' } },
-                        { student: { name: { contains: search, mode: 'insensitive' } } },
-                        { parent: { name: { contains: search, mode: 'insensitive' } } }
-                    ]
-                })
-            };
-
-            const [payments, total] = await Promise.all([
-                this.prisma.payment.findMany({
-                    where,
-                    include: {
-                        student: {
-                            select: {
-                                id: true,
-                                name: true,
-                                rollNumber: true
-                            }
-                        },
-                        parent: {
-                            select: {
-                                id: true,
-                                name: true
-                            }
-                        },
-                        feeStructure: {
-                            select: {
-                                id: true,
-                                name: true
-                            }
-                        }
-                    },
-                    orderBy: {
-                        [sortBy]: sortOrder
-                    },
-                    skip: (page - 1) * limit,
-                    take: limit
-                }),
-                this.prisma.payment.count({ where })
-            ]);
-
-            const totalPages = Math.ceil(total / limit);
-
-            return {
-                success: true,
-                data: payments,
-                pagination: {
-                    page,
-                    limit,
-                    total,
-                    totalPages
-                }
-            };
-
-        } catch (error) {
-            logger.error(`Error getting all payments: ${error.message}`);
-            throw new Error(`Failed to get payments: ${error.message}`);
-        }
-    }
-
-    /**
-     * Update payment
-     */
-    async update(id, updateData, userId, schoolId) {
-        try {
-            // Check if payment exists and user has access
-            const existingPayment = await this.prisma.payment.findFirst({
-                where: {
-                    id: BigInt(id),
-                    schoolId: BigInt(schoolId),
-                    deletedAt: null
-                }
-            });
-
-            if (!existingPayment) {
-                throw new Error('Payment not found');
-            }
-
-            // Only allow updating certain fields
-            const allowedFields = [
-                'status', 'remarks', 'metadata', 'gatewayTransactionId', 
-                'transactionId', 'nextPaymentDate', 'isRecurring', 'recurringFrequency'
-            ];
-            
-            const updatePayload = {};
-            for (const field of allowedFields) {
-                if (updateData[field] !== undefined) {
-                    updatePayload[field] = updateData[field];
-                }
-            }
-
-            const updatedPayment = await this.prisma.payment.update({
-                where: { id: BigInt(id) },
-                data: {
-                    ...updatePayload,
-                    updatedBy: BigInt(userId),
-                    updatedAt: new Date()
-                },
-                include: {
-                    student: {
-                        select: {
-                            id: true,
-                            name: true
-                        }
-                    },
-                    parent: {
-                        select: {
-                            id: true,
-                            name: true
-                        }
-                    }
-                }
-            });
-
-            // Create audit log
-            await createAuditLog({
-                action: 'UPDATE',
-                entity: 'PAYMENT',
-                entityId: updatedPayment.id.toString(),
-                details: `Payment updated`,
-                userId: userId,
-                schoolId: schoolId
-            });
-
-            return {
-                success: true,
-                data: updatedPayment
-            };
-
-        } catch (error) {
-            logger.error(`Error updating payment: ${error.message}`);
-            throw new Error(`Failed to update payment: ${error.message}`);
-        }
-    }
-
-    /**
-     * Delete payment (soft delete)
-     */
-    async delete(id, userId, schoolId) {
-        try {
-            // Check if payment exists and user has access
-            const existingPayment = await this.prisma.payment.findFirst({
-                where: {
-                    id: BigInt(id),
-                    schoolId: BigInt(schoolId),
-                    deletedAt: null
-                }
-            });
-
-            if (!existingPayment) {
-                throw new Error('Payment not found');
-            }
-
-            await this.prisma.payment.update({
-                where: { id: BigInt(id) },
-                data: {
-                    deletedAt: new Date(),
-                    updatedBy: BigInt(userId)
-                }
-            });
-
-            // Create audit log
-            await createAuditLog({
-                action: 'DELETE',
-                entity: 'PAYMENT',
-                entityId: id.toString(),
-                details: `Payment deleted`,
-                userId: userId,
-                schoolId: schoolId
-            });
-
-            return {
-                success: true,
-                message: 'Payment deleted successfully'
-            };
-
-        } catch (error) {
-            logger.error(`Error deleting payment: ${error.message}`);
-            throw new Error(`Failed to delete payment: ${error.message}`);
-        }
-    }
-
-    /**
-     * Get payment statistics
-     */
-    async getStatistics(schoolId, filters = {}) {
-        try {
-            const { startDate, endDate, status, method, type } = filters;
-
-            const where = {
-                schoolId: BigInt(schoolId),
-                deletedAt: null,
-                ...(startDate && endDate && {
-                    paymentDate: {
-                        gte: new Date(startDate),
-                        lte: new Date(endDate)
-                    }
-                }),
-                ...(status && { status }),
-                ...(method && { method }),
-                ...(type && { type })
-            };
-
-            const [
-                totalPayments,
-                totalAmount,
-                paymentsByStatus,
-                paymentsByMethod,
-                recentPayments
-            ] = await Promise.all([
-                this.prisma.payment.count({ where }),
-                this.prisma.payment.aggregate({
-                    where,
-                    _sum: { amount: true }
-                }),
-                this.prisma.payment.groupBy({
-                    by: ['status'],
-                    where,
-                    _count: { id: true },
-                    _sum: { amount: true }
-                }),
-                this.prisma.payment.groupBy({
-                    by: ['method'],
-                    where,
-                    _count: { id: true },
-                    _sum: { amount: true }
-                }),
-                this.prisma.payment.findMany({
-                    where,
-                    include: {
-                        student: {
-                            select: {
-                                name: true
-                            }
-                        }
-                    },
-                    orderBy: { paymentDate: 'desc' },
-                    take: 10
-                })
-            ]);
-
-            return {
-                success: true,
-                data: {
-                    totalPayments,
-                    totalAmount: totalAmount._sum.amount || 0,
-                    averageAmount: totalPayments > 0 ? (totalAmount._sum.amount || 0) / totalPayments : 0,
-                    paymentsByStatus,
-                    paymentsByMethod,
-                    recentPayments
-                }
-            };
-
-        } catch (error) {
-            logger.error(`Error getting payment statistics: ${error.message}`);
-            throw new Error(`Failed to get statistics: ${error.message}`);
-        }
-    }
-
-    /**
-     * Process payment webhook
-     */
-    async processWebhook(data) {
-        try {
-            // Validate webhook data
-            if (!data.gateway || !data.gatewayTransactionId || !data.status) {
-                throw new Error('Invalid webhook data');
-            }
-
-            // Find payment by gateway transaction ID
-            const payment = await this.prisma.payment.findFirst({
-                where: {
-                    gatewayTransactionId: data.gatewayTransactionId,
-                    gateway: data.gateway
-                }
-            });
-
-            if (!payment) {
-                throw new Error('Payment not found');
-            }
-
-            // Update payment status
-            const updatedPayment = await this.prisma.payment.update({
-                where: { id: payment.id },
-                data: {
-                    status: data.status,
-                    metadata: data.metadata || payment.metadata,
-                    updatedAt: new Date()
-                }
-            });
-
-            // Create payment log
-            await this.prisma.paymentLog.create({
-                data: {
-                    paymentId: payment.id,
-                    status: data.status,
-                    details: data.message || 'Payment status updated via webhook',
-                    metadata: data.metadata
-                }
-            });
-
-            return {
-                success: true,
-                data: updatedPayment
-            };
-
-        } catch (error) {
-            logger.error(`Error processing payment webhook: ${error.message}`);
-            throw new Error(`Failed to process webhook: ${error.message}`);
-        }
-    }
-
-    /**
-     * Generate payment receipt
-     */
-    async generateReceipt(id, userId, schoolId) {
-        try {
-            const payment = await this.getById(id, userId, schoolId);
-            
-            // In a real implementation, you would generate a PDF or other format
-            // Here we just return the payment data in a receipt-like format
-            return {
-                success: true,
-                data: {
-                    transactionId: payment.data.transactionId,
-                    date: payment.data.paymentDate,
-                    amount: payment.data.amount,
-                    discount: payment.data.discount,
-                    fine: payment.data.fine,
-                    total: payment.data.total,
-                    student: payment.data.student,
-                    items: payment.data.items,
-                    school: payment.data.school
-                }
-            };
-
-        } catch (error) {
-            logger.error(`Error generating payment receipt: ${error.message}`);
-            throw new Error(`Failed to generate receipt: ${error.message}`);
-        }
-    }
-
-    /**
-     * Search payments
-     */
-    async searchPayments(schoolId, searchTerm, filters = {}) {
-        try {
-            const { page = 1, limit = 10, sortBy = 'paymentDate', sortOrder = 'desc' } = filters;
-
-            const where = {
-                schoolId: BigInt(schoolId),
-                deletedAt: null,
-                OR: [
-                    { transactionId: { contains: searchTerm, mode: 'insensitive' } },
-                    { transactionId: { contains: searchTerm, mode: 'insensitive' } },
-                    { gatewayTransactionId: { contains: searchTerm, mode: 'insensitive' } },
-                    { student: { name: { contains: searchTerm, mode: 'insensitive' } } },
-                    { student: { rollNumber: { contains: searchTerm, mode: 'insensitive' } } },
-                    { parent: { name: { contains: searchTerm, mode: 'insensitive' } } }
-                ]
-            };
-
-            const [payments, total] = await Promise.all([
-                this.prisma.payment.findMany({
-                    where,
-                    include: {
-                        student: {
-                            select: {
-                                id: true,
-                                name: true,
-                                rollNumber: true
-                            }
-                        },
-                        parent: {
-                            select: {
-                                id: true,
-                                name: true
-                            }
-                        }
-                    },
-                    orderBy: {
-                        [sortBy]: sortOrder
-                    },
-                    skip: (page - 1) * limit,
-                    take: limit
-                }),
-                this.prisma.payment.count({ where })
-            ]);
-
-            const totalPages = Math.ceil(total / limit);
-
-            return {
-                success: true,
-                data: payments,
-                pagination: {
-                    page,
-                    limit,
-                    total,
-                    totalPages
-                }
-            };
-
-        } catch (error) {
-            logger.error(`Error searching payments: ${error.message}`);
-            throw new Error(`Failed to search payments: ${error.message}`);
-        }
-    }
-}
-
-export default Payment;
+// Payment method validation
+export const validatePaymentMethod = (method, gateway) => {
+  const methodGatewayMap = {
+    'CARD': ['STRIPE', 'PAYPAL', 'SQUARE'],
+    'MOBILE_PAYMENT': ['PAYTM', 'CASHFREE'],
+    'BANK_TRANSFER': ['CUSTOM'],
+    'CRYPTO': ['CUSTOM'],
+    'DIGITAL_WALLET': ['CUSTOM']
+  };
+  
+  if (methodGatewayMap[method]) {
+    return methodGatewayMap[method].includes(gateway);
+  }
+  
+  return true; // CASH, CHECK, SCHOLARSHIP don't need gateway validation
+};
 
