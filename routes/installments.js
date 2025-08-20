@@ -12,7 +12,7 @@ router.use(authenticateToken);
 
 // Installment CRUD Operations
 router.post('/', 
-  authorizeRoles(['ADMIN', 'OWNER']),
+  authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
   installmentController.createInstallment.bind(installmentController)
 );
 
@@ -27,23 +27,23 @@ router.get('/:id',
 );
 
 router.put('/:id', 
-  authorizeRoles(['ADMIN', 'OWNER']),
+  authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
   installmentController.updateInstallment.bind(installmentController)
 );
 
 router.delete('/:id', 
-  authorizeRoles(['ADMIN', 'OWNER']),
+  authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
   installmentController.deleteInstallment.bind(installmentController)
 );
 
 // Payment Status Operations
 router.patch('/:id/pay', 
-  authorizeRoles(['ADMIN', 'OWNER']),
+  authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
   installmentController.markAsPaid.bind(installmentController)
 );
 
 router.patch('/:id/overdue', 
-  authorizeRoles(['ADMIN', 'OWNER']),
+  authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
   installmentController.markAsOverdue.bind(installmentController)
 );
 
@@ -55,7 +55,7 @@ router.get('/payment/:paymentId',
 
 // Bulk Operations
 router.post('/bulk/create', 
-  authorizeRoles(['ADMIN', 'OWNER']),
+  authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
   installmentController.bulkCreateInstallments.bind(installmentController)
 );
 
@@ -67,12 +67,12 @@ router.get('/search/:searchTerm',
 
 // Dashboard and Reporting
 router.get('/statistics', 
-  authorizeRoles(['ADMIN', 'OWNER']),
+  authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
   installmentController.getInstallmentStatistics.bind(installmentController)
 );
 
 router.get('/dashboard/summary', 
-  authorizeRoles(['ADMIN', 'OWNER']),
+  authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
   installmentController.getDashboardSummary.bind(installmentController)
 );
 
