@@ -15,7 +15,7 @@ class FileGenerationService {
       // Ensure upload directory exists
       await fs.ensureDir(this.uploadDir);
 
-      const filename = `receipt-${payment.receiptNumber}-${Date.now()}.pdf`;
+              const filename = `receipt-${payment.transactionId || payment.id}-${Date.now()}.pdf`;
       const filePath = path.join(this.uploadDir, filename);
       
       const doc = new PDFDocument({
@@ -49,7 +49,7 @@ class FileGenerationService {
          .moveDown();
 
       const receiptData = [
-        ['Receipt Number:', payment.receiptNumber],
+                    ['Receipt Number:', payment.transactionId || payment.id],
         ['Date:', new Date(payment.paymentDate).toLocaleDateString()],
         ['Payment Method:', payment.method],
         ['Payment Type:', payment.type],
@@ -213,7 +213,7 @@ class FileGenerationService {
         ['Due Date:', bill.dueDate ? new Date(bill.dueDate).toLocaleDateString() : 'N/A'],
         ['Status:', bill.status],
         ['Total Amount:', `$${bill.totalAmount}`],
-        ['Payment Receipt:', payment.receiptNumber]
+                    ['Payment Receipt:', payment.transactionId || payment.id]
       ];
 
       invoiceData.forEach(([label, value]) => {
@@ -313,10 +313,10 @@ class FileGenerationService {
       const receiptFile = await this.generateReceiptPDF(payment, bill, school, student, parent);
       files.push({
         ...receiptFile,
-        originalName: `Receipt-${payment.receiptNumber}.pdf`,
+                    originalName: `Receipt-${payment.transactionId || payment.id}.pdf`,
         fileType: 'pdf',
         entityType: 'bill',
-        description: `Receipt for payment ${payment.receiptNumber}`,
+                    description: `Receipt for payment ${payment.transactionId || payment.id}`,
         tags: ['payment', 'receipt', 'pdf']
       });
 
