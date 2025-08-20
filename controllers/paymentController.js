@@ -68,24 +68,11 @@ const upload = multer({
 // Generate bill number
 const generateBillNumber = async (schoolId) => {
   const year = new Date().getFullYear();
-  const prefix = `BILL-${year}-`;
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000);
   
-  const lastBill = await prisma.bill.findFirst({
-    where: {
-      schoolId: BigInt(schoolId),
-      billNumber: { startsWith: prefix },
-      deletedAt: null
-    },
-    orderBy: { billNumber: 'desc' }
-  });
-
-  let sequence = 1;
-  if (lastBill && lastBill.billNumber) {
-    const lastSequence = parseInt(lastBill.billNumber.split('-')[2]);
-    sequence = lastSequence + 1;
-  }
-
-  return `${prefix}${sequence.toString().padStart(6, '0')}`;
+  // Generate a unique bill number without querying the database
+  return `BILL-${year}-${timestamp}-${random}`;
 };
 
 class PaymentController {
