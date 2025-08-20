@@ -120,7 +120,7 @@ router.get('/reports', authenticateToken, async (req, res) => {
 });
 
 // Generate Finance Report endpoint
-router.post('/reports/generate', authenticateToken, authorizeRoles(['ACCOUNTANT', 'SCHOOL_ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+router.post('/reports/generate', authenticateToken, authorizeRoles(['ACCOUNTANT', 'SCHOOL_ADMIN', 'SUPER_ADMIN', 'TEACHER']), async (req, res) => {
   try {
     const { reportType, startDate, endDate, format = 'json' } = req.body;
 
