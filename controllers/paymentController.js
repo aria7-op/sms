@@ -129,7 +129,7 @@ class PaymentController {
 
           // Prepare the create data with nested items if provided
           // Filter out fields that don't exist in the database
-          const { type, receiptNumber, ...filteredPaymentData } = paymentData;
+          const { type, receiptNumber, isRecurring, recurringFrequency, nextPaymentDate, ...filteredPaymentData } = paymentData;
           
           const createData = {
             ...filteredPaymentData,
@@ -1083,7 +1083,7 @@ class PaymentController {
           }
 
           // Filter out fields that don't exist in the database
-          const { type, receiptNumber, ...filteredPaymentData } = value;
+          const { type, receiptNumber, isRecurring, recurringFrequency, nextPaymentDate, ...filteredPaymentData } = value;
           const payment = { ...filteredPaymentData, schoolId, createdBy: userId };
           payment.transactionId = await generateReceiptNumber(schoolId);
 
