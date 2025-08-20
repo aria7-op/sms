@@ -262,4 +262,3 @@ export const validatePaymentMethod = (method, gateway) => {
   
   return true; // CASH, CHECK, SCHOLARSHIP don't need gateway validation
 };
-
