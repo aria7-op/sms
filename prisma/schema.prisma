@@ -859,9 +859,7 @@ model Payment {
   dueDate        DateTime?
   status         PaymentStatus
   method         PaymentMethod
-  type           String?       @db.VarChar(50)
   transactionId  String?       @db.VarChar(100)
-  receiptNumber  String?       @db.VarChar(50)
   remarks        String?       @db.VarChar(255)
   studentId      BigInt?
   parentId       BigInt?
@@ -889,7 +887,6 @@ model Payment {
   @@index([schoolId])
   @@index([status])
   @@index([paymentDate])
-  @@index([receiptNumber])
   @@map("payments")
 }
 
@@ -3084,4 +3081,5 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
+
 
