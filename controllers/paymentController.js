@@ -110,7 +110,7 @@ class PaymentController {
           paymentData.createdBy = userId;
 
           // Generate receipt number
-          paymentData.receiptNumber = await generateReceiptNumber(schoolId);
+          paymentData.transactionId = await generateReceiptNumber(schoolId);
 
           // Calculate fines if overdue
           if (paymentData.dueDate && new Date() > new Date(paymentData.dueDate)) {
@@ -128,11 +128,14 @@ class PaymentController {
           }
 
           // Prepare the create data with nested items if provided
+          // Filter out fields that don't exist in the database
+          const { type, receiptNumber, ...filteredPaymentData } = paymentData;
+          
           const createData = {
-            ...paymentData,
-            studentId: paymentData.studentId ? BigInt(paymentData.studentId) : null,
-            parentId: paymentData.parentId ? BigInt(paymentData.parentId) : null,
-            feeStructureId: paymentData.feeStructureId ? BigInt(paymentData.feeStructureId) : null,
+            ...filteredPaymentData,
+            studentId: filteredPaymentData.studentId ? BigInt(filteredPaymentData.studentId) : null,
+            parentId: filteredPaymentData.parentId ? BigInt(filteredPaymentData.parentId) : null,
+            feeStructureId: filteredPaymentData.feeStructureId ? BigInt(filteredPaymentData.feeStructureId) : null,
             schoolId: BigInt(schoolId),
             createdBy: BigInt(userId),
             ...(items && items.length > 0 && {
@@ -176,7 +179,7 @@ class PaymentController {
               paymentId: payment.id,
               totalAmount: payment.total,
               status: payment.status === 'PAID' ? 'PAID' : 'ISSUED',
-              description: `Bill for payment ${payment.receiptNumber}`,
+              description: `Bill for payment ${payment.transactionId || payment.id}`,
               remarks: payment.remarks,
               schoolId: BigInt(schoolId),
               createdBy: BigInt(userId)
@@ -185,11 +188,10 @@ class PaymentController {
               payment: {
                 select: {
                   id: true,
-                  receiptNumber: true,
+                  transactionId: true,
                   amount: true,
                   total: true,
                   method: true,
-                  type: true,
                   status: true,
                   paymentDate: true
                 }
@@ -237,7 +239,7 @@ class PaymentController {
                   fileType: path.extname(file.originalname).toLowerCase().substring(1),
                   entityType: 'bill',
                   entityId: bill.id,
-                  description: `File uploaded with payment ${payment.receiptNumber}`,
+                  description: `File uploaded with payment ${payment.transactionId || payment.id}`,
                   tags: ['payment', 'bill'],
                   isPublic: false,
                   schoolId: BigInt(schoolId),
@@ -273,7 +275,7 @@ class PaymentController {
                     fileType: 'xlsx',
                     entityType: 'bill',
                     entityId: bill.id,
-                    description: `Excel bill generated from Google Drive template for payment ${payment.receiptNumber}`,
+                    description: `Excel bill generated from Google Drive template for payment ${payment.transactionId || payment.id}`,
                     tags: ['payment', 'bill', 'excel', 'google-drive'],
                     isPublic: false,
                     schoolId: BigInt(schoolId),
@@ -476,7 +478,6 @@ class PaymentController {
       // Apply filters
       if (status) where.status = status;
       if (method) where.method = method;
-      if (type) where.type = type;
       if (studentId) where.studentId = BigInt(studentId);
       if (parentId) where.parentId = BigInt(parentId);
       if (startDate || endDate) {
@@ -492,7 +493,7 @@ class PaymentController {
       if (search) {
         where.OR = [
           { transactionId: { contains: search, mode: 'insensitive' } },
-          { receiptNumber: { contains: search, mode: 'insensitive' } },
+          { transactionId: { contains: search, mode: 'insensitive' } },
           { remarks: { contains: search, mode: 'insensitive' } }
         ];
       }
@@ -924,7 +925,7 @@ class PaymentController {
       if (format === 'csv') {
         // Generate CSV report
         const csvData = payments.map(payment => ({
-          'Receipt Number': payment.receiptNumber,
+          'Receipt Number': payment.transactionId || payment.id,
           'Student': payment.student ? `${payment.student.user.firstName} ${payment.student.user.lastName}` : 'N/A',
           'Parent': payment.parent && payment.parent.user ? `${payment.parent.user.firstName} ${payment.parent.user.lastName}` : 'N/A',
           'Amount': payment.amount,
@@ -1081,8 +1082,10 @@ class PaymentController {
             continue;
           }
 
-          const payment = { ...value, schoolId, createdBy: userId };
-          payment.receiptNumber = await generateReceiptNumber(schoolId);
+          // Filter out fields that don't exist in the database
+          const { type, receiptNumber, ...filteredPaymentData } = value;
+          const payment = { ...filteredPaymentData, schoolId, createdBy: userId };
+          payment.transactionId = await generateReceiptNumber(schoolId);
 
           const createdPayment = await prisma.payment.create({
             data: payment,
