@@ -173,9 +173,9 @@ model User {
   phoneVerified                   DateTime?
   password                        String                     @db.VarChar(255)
   salt                            String?                    @db.VarChar(255)
-  f_name                          String?                    @db.VarChar(50)
-  m_name                          String?                    @db.VarChar(50)
-  l_name                          String?                    @db.VarChar(50)
+  firstName                       String                     @db.VarChar(50)
+  middleName                      String?                    @db.VarChar(50)
+  lastName                        String                     @db.VarChar(50)
   displayName                     String?                    @db.VarChar(100)
   gender                          Gender?
   birthDate                       DateTime?
@@ -3084,3 +3084,4 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
+
