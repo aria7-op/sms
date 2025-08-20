@@ -16,7 +16,7 @@ const paymentSchema = Joi.object({
   gateway: Joi.string().valid('STRIPE', 'PAYPAL', 'SQUARE', 'RAZORPAY', 'PAYTM', 'CASHFREE', 'CUSTOM').optional(),
   transactionId: Joi.string().max(100).optional(),
   gatewayTransactionId: Joi.string().max(255).optional(),
-  receiptNumber: Joi.string().max(50).optional(),
+      transactionId: Joi.string().max(100).optional(),
   remarks: Joi.string().max(255).optional(),
   metadata: Joi.object().optional(),
   isRecurring: Joi.boolean().default(false),
@@ -69,20 +69,22 @@ export const generateReceiptNumber = async (schoolId) => {
   const year = new Date().getFullYear();
   const prefix = `RCP-${year}-`;
   
-  // Get the last receipt number for this school and year
+  // Get the last receipt number for this school and year using transactionId as fallback
   const lastPayment = await prisma.payment.findFirst({
     where: {
       schoolId: BigInt(schoolId),
-      receiptNumber: { startsWith: prefix },
+      transactionId: { startsWith: prefix },
       deletedAt: null
     },
-    orderBy: { receiptNumber: 'desc' }
+    orderBy: { transactionId: 'desc' }
   });
 
   let sequence = 1;
-  if (lastPayment && lastPayment.receiptNumber) {
-    const lastSequence = parseInt(lastPayment.receiptNumber.split('-')[2]);
-    sequence = lastSequence + 1;
+  if (lastPayment && lastPayment.transactionId) {
+    const lastSequence = parseInt(lastPayment.transactionId.split('-')[2]);
+    if (!isNaN(lastSequence)) {
+      sequence = lastSequence + 1;
+    }
   }
 
   return `${prefix}${sequence.toString().padStart(6, '0')}`;
