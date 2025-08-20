@@ -136,8 +136,6 @@ class PaymentController {
             })
           };
 
-          console.log('Prisma client:', prisma);
-          console.log('Prisma client type:', typeof prisma);
           const payment = await prisma.payment.create({
             data: createData,
             include: {
