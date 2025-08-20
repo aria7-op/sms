@@ -99,9 +99,9 @@ class PaymentController {
           // Generate receipt number
           paymentData.transactionId = await generateReceiptNumber(schoolId);
 
-          // Calculate fines if overdue
-          if (paymentData.dueDate && new Date() > new Date(paymentData.dueDate)) {
-            paymentData.fine = await calculateFines(paymentData.dueDate, paymentData.amount);
+          // Set default fine to 0 if not provided
+          if (!paymentData.fine) {
+            paymentData.fine = 0;
           }
 
           // Process payment through gateway if applicable
