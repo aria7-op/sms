@@ -15,10 +15,10 @@ router.use(authenticateToken);
 /**
  * @route   POST /api/integrated-payments/create-with-installments
  * @desc    Create payment with installments
- * @access  Private (Admin, Owner)
+ * @access  Private (Admin, Owner, Teacher)
  */
 router.post('/create-with-installments', 
-    authorizeRoles(['ADMIN', 'OWNER']),
+    authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
     integratedPaymentController.createPaymentWithInstallments.bind(integratedPaymentController)
 );
 
@@ -35,60 +35,59 @@ router.get('/:paymentId/complete-details',
 /**
  * @route   POST /api/integrated-payments/:paymentId/refund
  * @desc    Process refund for payment
- * @access  Private (Admin, Owner)
+ * @access  Private (Admin, Owner, Teacher)
  */
 router.post('/:paymentId/refund', 
-    authorizeRoles(['ADMIN', 'OWNER']),
+    authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
     integratedPaymentController.processRefund.bind(integratedPaymentController)
 );
 
 /**
  * @route   PATCH /api/integrated-payments/installments/:installmentId/pay
  * @desc    Mark installment as paid and update payment status
- * @access  Private (Admin, Owner)
+ * @access  Private (Admin, Owner, Teacher)
  */
 router.patch('/installments/:installmentId/pay', 
-    authorizeRoles(['ADMIN', 'OWNER']),
+    authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
     integratedPaymentController.payInstallment.bind(integratedPaymentController)
 );
 
 /**
  * @route   GET /api/integrated-payments/analytics
- * @desc    Get comprehensive payment analytics
- * @access  Private (Admin, Owner)
+ * @access  Private (Admin, Owner, Teacher)
  */
 router.get('/analytics', 
-    authorizeRoles(['ADMIN', 'OWNER']),
+    authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
     integratedPaymentController.getPaymentAnalytics.bind(integratedPaymentController)
 );
 
 /**
  * @route   GET /api/integrated-payments/dashboard
  * @desc    Get payment dashboard with all related data
- * @access  Private (Admin, Owner)
+ * @access  Private (Admin, Owner, Teacher)
  */
 router.get('/dashboard', 
-    authorizeRoles(['ADMIN', 'OWNER']),
+    authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
     integratedPaymentController.getPaymentDashboard.bind(integratedPaymentController)
 );
 
 /**
  * @route   GET /api/integrated-payments/report/generate
  * @desc    Generate comprehensive payment report
- * @access  Private (Admin, Owner)
+ * @access  Private (Admin, Owner, Teacher)
  */
 router.get('/report/generate', 
-    authorizeRoles(['ADMIN', 'OWNER']),
+    authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
     integratedPaymentController.generatePaymentReport.bind(integratedPaymentController)
 );
 
 /**
  * @route   POST /api/integrated-payments/bulk-operations
  * @desc    Bulk operations for payments
- * @access  Private (Admin, Owner)
+ * @access  Private (Admin, Owner, Teacher)
  */
 router.post('/bulk-operations', 
-    authorizeRoles(['ADMIN', 'OWNER']),
+    authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
     integratedPaymentController.bulkPaymentOperations.bind(integratedPaymentController)
 );
 
