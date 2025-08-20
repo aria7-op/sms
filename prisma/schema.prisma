@@ -859,6 +859,7 @@ model Payment {
   dueDate        DateTime?
   status         PaymentStatus
   method         PaymentMethod
+  type           String?       @db.VarChar(50)
   transactionId  String?       @db.VarChar(100)
   remarks        String?       @db.VarChar(255)
   studentId      BigInt?
@@ -3081,5 +3082,3 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
-
-
