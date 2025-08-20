@@ -1,4 +1,6 @@
 import { PrismaClient } from '../generated/prisma/index.js';
+
+// Initialize Prisma client
 const prisma = new PrismaClient();
 import { validatePaymentData, validateRefundData, createPaymentLog, generateReceiptNumber } from '../utils/paymentUtils.js';
 
