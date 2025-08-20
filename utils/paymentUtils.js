@@ -12,7 +12,6 @@ const paymentSchema = Joi.object({
   dueDate: Joi.date().optional(),
   status: Joi.string().valid('PAID', 'UNPAID', 'PARTIALLY_PAID', 'OVERDUE', 'CANCELLED', 'REFUNDED', 'PENDING', 'FAILED', 'PROCESSING', 'DISPUTED', 'VOIDED').required(),
   method: Joi.string().valid('CASH', 'CARD', 'BANK_TRANSFER', 'MOBILE_PAYMENT', 'CHECK', 'SCHOLARSHIP', 'CRYPTO', 'DIGITAL_WALLET', 'INSTALLMENT', 'GRANT').required(),
-  type: Joi.string().valid('TUITION_FEE', 'TRANSPORT_FEE', 'LIBRARY_FEE', 'LABORATORY_FEE', 'SPORTS_FEE', 'EXAM_FEE', 'UNIFORM_FEE', 'MEAL_FEE', 'HOSTEL_FEE', 'OTHER').optional(),
   gateway: Joi.string().valid('STRIPE', 'PAYPAL', 'SQUARE', 'RAZORPAY', 'PAYTM', 'CASHFREE', 'CUSTOM').optional(),
   transactionId: Joi.string().max(100).optional(),
   gatewayTransactionId: Joi.string().max(255).optional(),
