@@ -1,6 +1,6 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 const prisma = new PrismaClient();
-import { validatePaymentData, validateRefundData, createPaymentLog, generateReceiptNumber, calculateFines } from '../utils/paymentUtils.js';
+import { validatePaymentData, validateRefundData, createPaymentLog, generateReceiptNumber } from '../utils/paymentUtils.js';
 
 // BigInt conversion utility
 function convertBigInts(obj) {
@@ -513,9 +513,48 @@ class PaymentController {
         prisma.payment.count({ where })
       ]);
 
+      // Convert BigInt values to strings for JSON serialization
+      const sanitizedPayments = payments.map(payment => ({
+        ...payment,
+        id: payment.id.toString(),
+        studentId: payment.studentId ? payment.studentId.toString() : null,
+        parentId: payment.parentId ? payment.parentId.toString() : null,
+        feeStructureId: payment.feeStructureId ? payment.feeStructureId.toString() : null,
+        schoolId: payment.schoolId.toString(),
+        createdBy: payment.createdBy.toString(),
+        updatedBy: payment.updatedBy ? payment.updatedBy.toString() : null,
+        customerId: payment.customerId ? payment.customerId.toString() : null,
+        student: payment.student ? {
+          ...payment.student,
+          id: payment.student.id.toString(),
+          user: payment.student.user ? {
+            ...payment.student.user,
+            id: payment.student.user.id.toString()
+          } : null
+        } : null,
+        parent: payment.parent ? {
+          ...payment.parent,
+          id: payment.parent.id.toString(),
+          user: payment.parent.user ? {
+            ...payment.parent.user,
+            id: payment.parent.user.id.toString()
+          } : null
+        } : null,
+        feeStructure: payment.feeStructure ? {
+          ...payment.feeStructure,
+          id: payment.feeStructure.id.toString()
+        } : null,
+        items: payment.items.map(item => ({
+          ...item,
+          id: item.id.toString(),
+          paymentId: item.paymentId.toString(),
+          feeItemId: item.feeItemId ? item.feeItemId.toString() : null
+        }))
+      }));
+
       res.json({
         success: true,
-        data: payments,
+        data: sanitizedPayments,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -854,6 +893,33 @@ class PaymentController {
         })
       ]);
 
+      // Convert BigInt values in recentPayments for JSON serialization
+      const sanitizedRecentPayments = recentPayments.map(payment => ({
+        ...payment,
+        id: payment.id.toString(),
+        studentId: payment.studentId ? payment.studentId.toString() : null,
+        parentId: payment.parentId ? payment.parentId.toString() : null,
+        feeStructureId: payment.feeStructureId ? payment.feeStructureId.toString() : null,
+        schoolId: payment.schoolId.toString(),
+        createdBy: payment.createdBy.toString(),
+        updatedBy: payment.updatedBy ? payment.updatedBy.toString() : null,
+        customerId: payment.customerId ? payment.customerId.toString() : null,
+        student: payment.student ? {
+          ...payment.student,
+          user: payment.student.user ? {
+            ...payment.student.user
+          } : null
+        } : null,
+        parent: payment.parent ? {
+          ...payment.parent,
+          id: payment.parent.id.toString(),
+          user: payment.parent.user ? {
+            ...payment.parent.user,
+            id: payment.parent.user.id.toString()
+          } : null
+        } : null
+      }));
+
       res.json({
         success: true,
         data: {
@@ -863,7 +929,7 @@ class PaymentController {
           methodCounts,
           monthlyData,
           overduePayments,
-          recentPayments
+          recentPayments: sanitizedRecentPayments
         }
       });
     } catch (error) {
