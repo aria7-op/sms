@@ -21,10 +21,10 @@ router.use(authenticateToken);
 /**
  * @route   POST /api/refunds
  * @desc    Create new refund
- * @access  Private (ADMIN, ACCOUNTANT)
+ * @access  Private (ADMIN, ACCOUNTANT, TEACHER)
  */
 router.post('/',
-    authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACCOUNTANT']),
+    authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACCOUNTANT', 'TEACHER']),
     async (req, res) => {
         await refundController.createRefund(req, res);
     }
@@ -57,10 +57,10 @@ router.get('/:id',
 /**
  * @route   PUT /api/refunds/:id
  * @desc    Update refund
- * @access  Private (ADMIN, ACCOUNTANT)
+ * @access  Private (ADMIN, ACCOUNTANT, TEACHER)
  */
 router.put('/:id',
-    authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACCOUNTANT']),
+    authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACCOUNTANT', 'TEACHER']),
     async (req, res) => {
         await refundController.updateRefund(req, res);
     }
@@ -69,10 +69,10 @@ router.put('/:id',
 /**
  * @route   DELETE /api/refunds/:id
  * @desc    Delete refund
- * @access  Private (ADMIN, ACCOUNTANT)
+ * @access  Private (ADMIN, ACCOUNTANT, TEACHER)
  */
 router.delete('/:id',
-    authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACCOUNTANT']),
+    authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACCOUNTANT', 'TEACHER']),
     async (req, res) => {
         await refundController.deleteRefund(req, res);
     }
