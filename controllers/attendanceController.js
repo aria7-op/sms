@@ -1,5 +1,6 @@
 import { PrismaClient } from '../generated/prisma/client.js';
 import { createSuccessResponse, createErrorResponse } from '../utils/responseUtils.js';
+import smsService from '../services/smsService.js';
 
 const prisma = new PrismaClient();
 
@@ -128,7 +129,7 @@ export const getAttendanceById = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const attendance = await prisma.attendance.findUnique({
+  const attendance = await prisma.attendance.findUnique({
       where: { id: BigInt(id) },
       include: {
         student: {
@@ -214,7 +215,7 @@ export const createAttendance = async (req, res) => {
     }
 
     // Create attendance record
-    const attendance = await prisma.attendance.create({
+  const attendance = await prisma.attendance.create({
       data: {
         date: new Date(date),
         status,
@@ -281,7 +282,7 @@ export const updateAttendance = async (req, res) => {
     }
 
     // Update attendance
-    const attendance = await prisma.attendance.update({
+  const attendance = await prisma.attendance.update({
       where: { id: BigInt(id) },
       data: {
         status,
@@ -388,6 +389,49 @@ export const markInTime = async (req, res) => {
       updatedBy: attendance.updatedBy ? Number(attendance.updatedBy) : null
     };
 
+    // Send SMS notification (non-blocking)
+    try {
+      // Get student and class information for SMS
+      const [student, classInfo] = await Promise.all([
+        prisma.student.findUnique({
+          where: { id: BigInt(studentId) },
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                phone: true
+              }
+            }
+          }
+        }),
+        prisma.class.findUnique({
+          where: { id: BigInt(classId) },
+          select: { name: true }
+        })
+      ]);
+
+      if (student && student.user && student.user.phone) {
+        // Send SMS notification asynchronously (don't wait for it)
+        smsService.sendAttendanceSMS(
+          {
+            name: `${student.user.firstName} ${student.user.lastName}`,
+            phone: student.user.phone
+          },
+          {
+            inTime: currentTime,
+            date: attendanceDate,
+            className: classInfo?.name || 'Unknown Class',
+            status: 'PRESENT'
+          }
+        ).catch(smsError => {
+          console.error('SMS sending failed (non-critical):', smsError.message);
+        });
+      }
+    } catch (smsError) {
+      console.error('Failed to prepare SMS data (non-critical):', smsError.message);
+    }
+
     res.json({
       success: true,
       message: 'In-time marked successfully',
@@ -444,6 +488,49 @@ export const markOutTime = async (req, res) => {
         updatedBy: BigInt(updatedBy)
       }
     });
+
+    // Send SMS notification for out-time (non-blocking)
+    try {
+      // Get student and class information for SMS
+      const [student, classInfo] = await Promise.all([
+        prisma.student.findUnique({
+          where: { id: BigInt(studentId) },
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                phone: true
+              }
+            }
+          }
+        }),
+        prisma.class.findUnique({
+          where: { id: BigInt(classId) },
+          select: { name: true }
+        })
+      ]);
+
+      if (student && student.user && student.user.phone) {
+        // Send SMS notification asynchronously (don't wait for it)
+        smsService.sendAttendanceSMS(
+          {
+            name: `${student.user.firstName} ${student.user.lastName}`,
+            phone: student.user.phone
+          },
+          {
+            outTime: currentTime,
+            date: attendanceDate,
+            className: classInfo?.name || 'Unknown Class',
+            status: 'DEPARTED'
+          }
+        ).catch(smsError => {
+          console.error('SMS sending failed (non-critical):', smsError.message);
+        });
+      }
+    } catch (smsError) {
+      console.error('Failed to prepare SMS data (non-critical):', smsError.message);
+    }
 
     return createSuccessResponse(res, 'Out-time marked successfully', updatedAttendance);
   } catch (error) {
