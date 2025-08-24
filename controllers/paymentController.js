@@ -104,15 +104,8 @@ const upload = multer({
   }
 });
 
-// Generate bill number
-const generateBillNumber = async (schoolId) => {
-  const year = new Date().getFullYear();
-  const timestamp = Date.now();
-  const random = Math.floor(Math.random() * 1000);
-  
-  // Generate a unique bill number without querying the database
-  return `BILL-${year}-${timestamp}-${random}`;
-};
+// Bill number generation removed - Bill model not available in Prisma schema
+// TODO: Re-implement when Bill model is added to schema
 
 class PaymentController {
   // Create new payment with file upload support
@@ -218,53 +211,10 @@ class PaymentController {
             });
           }
 
-          // Create bill for the payment
-          let bill;
-          try {
-            const billNumber = await generateBillNumber(schoolId);
-            const prismaClient = await getPrismaClient();
-            bill = await prismaClient.bill.create({
-            data: {
-              billNumber,
-              paymentId: payment.id,
-              totalAmount: payment.total,
-              status: payment.status === 'PAID' ? 'PAID' : 'ISSUED',
-              description: `Bill for payment ${payment.transactionId || payment.id}`,
-              remarks: payment.remarks,
-              schoolId: BigInt(schoolId),
-              createdBy: BigInt(userId)
-            },
-            include: {
-              payment: {
-                select: {
-                  id: true,
-                  transactionId: true,
-                  amount: true,
-                  total: true,
-                  method: true,
-                  status: true,
-                  paymentDate: true
-                }
-              },
-              school: {
-                select: {
-                  id: true,
-                  name: true,
-                  address: true,
-                  phone: true,
-                  email: true
-                }
-              }
-            }
-          });
-          } catch (billError) {
-            console.error('Bill creation error:', billError);
-            return res.status(500).json({ 
-              success: false, 
-              message: 'Failed to create bill for payment',
-              error: billError.message 
-            });
-          }
+                    // Bill creation removed - Bill model not available in Prisma schema
+          // TODO: Add Bill model to schema or implement alternative billing system
+          console.log('Bill creation skipped - Bill model not available in Prisma schema');
+          const bill = null; // Set bill to null for now
 
           // Get school information for file generation
           const school = await prismaClient.school.findFirst({
@@ -287,24 +237,29 @@ class PaymentController {
           const uploadedFiles = [];
           if (req.files && req.files.length > 0) {
             for (const file of req.files) {
-              const fileRecord = await prismaClient.file.create({
-                data: {
-                  filename: file.filename,
-                  originalName: file.originalname,
-                  filePath: file.path,
-                  fileSize: BigInt(file.size),
-                  mimeType: file.mimetype,
-                  fileType: path.extname(file.originalname).toLowerCase().substring(1),
-                  entityType: 'bill',
-                  entityId: bill.id,
-                  description: `File uploaded with payment ${payment.transactionId || payment.id}`,
-                  tags: ['payment', 'bill'],
-                  isPublic: false,
-                  schoolId: BigInt(schoolId),
-                  createdBy: BigInt(userId)
-                }
-              });
-              uploadedFiles.push(fileRecord);
+              try {
+                const fileRecord = await prismaClient.file.create({
+                  data: {
+                    filename: file.filename,
+                    originalName: file.originalname,
+                    filePath: file.path,
+                    fileSize: BigInt(file.size),
+                    mimeType: file.mimetype,
+                    fileType: path.extname(file.originalname).toLowerCase().substring(1),
+                    entityType: 'payment', // Changed from 'bill' to 'payment'
+                    entityId: payment.id, // Use payment.id instead of bill.id
+                    description: `File uploaded with payment ${payment.transactionId || payment.id}`,
+                    tags: ['payment', 'file'], // Changed from 'bill' to 'file'
+                    isPublic: false,
+                    schoolId: BigInt(schoolId),
+                    createdBy: BigInt(userId)
+                  }
+                });
+                uploadedFiles.push(fileRecord);
+              } catch (fileError) {
+                console.error('File creation error:', fileError);
+                // Continue with other files even if one fails
+              }
             }
           }
 
@@ -331,10 +286,10 @@ class PaymentController {
                     fileSize: BigInt(excelBill.fileSize),
                     mimeType: excelBill.mimeType,
                     fileType: 'xlsx',
-                    entityType: 'bill',
-                    entityId: bill.id,
-                    description: `Excel bill generated from Google Drive template for payment ${payment.transactionId || payment.id}`,
-                    tags: ['payment', 'bill', 'excel', 'google-drive'],
+                    entityType: 'payment', // Changed from 'bill' to 'payment'
+                    entityId: payment.id, // Use payment.id instead of bill.id
+                    description: `Excel payment file generated from Google Drive template for payment ${payment.transactionId || payment.id}`,
+                    tags: ['payment', 'excel', 'google-drive'], // Removed 'bill' tag
                     isPublic: false,
                     schoolId: BigInt(schoolId),
                     createdBy: BigInt(userId)
@@ -342,7 +297,7 @@ class PaymentController {
                 });
                 generatedFiles.push(excelFileRecord);
               } catch (excelError) {
-                console.error('Error generating Excel bill from Google Drive template:', excelError);
+                console.error('Error generating Excel payment file from Google Drive template:', excelError);
                 // Continue with PDF generation even if Excel fails
               }
             }
@@ -357,24 +312,29 @@ class PaymentController {
             );
 
             for (const fileInfo of autoGeneratedFiles) {
-              const fileRecord = await prismaClient.file.create({
-                data: {
-                  filename: fileInfo.filename,
-                  originalName: fileInfo.originalName,
-                  filePath: fileInfo.filePath,
-                  fileSize: BigInt(fileInfo.fileSize),
-                  mimeType: fileInfo.mimeType,
-                  fileType: fileInfo.fileType,
-                  entityType: fileInfo.entityType,
-                  entityId: bill.id,
-                  description: fileInfo.description,
-                  tags: fileInfo.tags,
-                  isPublic: false,
-                  schoolId: BigInt(schoolId),
-                  createdBy: BigInt(userId)
-                }
-              });
-              generatedFiles.push(fileRecord);
+              try {
+                const fileRecord = await prismaClient.file.create({
+                  data: {
+                    filename: fileInfo.filename,
+                    originalName: fileInfo.originalName,
+                    filePath: fileInfo.filePath,
+                    fileSize: BigInt(fileInfo.fileSize),
+                    mimeType: fileInfo.mimeType,
+                    fileType: fileInfo.fileType,
+                    entityType: 'payment', // Changed from fileInfo.entityType to 'payment'
+                    entityId: payment.id, // Use payment.id instead of bill.id
+                    description: fileInfo.description,
+                    tags: ['payment', ...(fileInfo.tags || [])], // Ensure payment tag is included
+                    isPublic: false,
+                    schoolId: BigInt(schoolId),
+                    createdBy: BigInt(userId)
+                  }
+                });
+                generatedFiles.push(fileRecord);
+              } catch (fileError) {
+                console.error('Auto-generated file creation error:', fileError);
+                // Continue with other files even if one fails
+              }
             }
           } catch (error) {
             console.error('Error generating automatic files:', error);
@@ -429,10 +389,10 @@ class PaymentController {
 
           res.status(201).json({
             success: true,
-            message: 'Payment and bill created successfully',
+            message: 'Payment created successfully (bill creation skipped - model not available)',
             data: {
               payment: paymentResponse,
-              bill: billResponse,
+              bill: null, // Bill creation skipped - model not available
               uploadedFiles: uploadedFiles.map(file => ({
                 id: file.id ? file.id.toString() : null,
                 filename: file.filename,
