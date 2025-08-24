@@ -212,14 +212,12 @@ export const buildStudentSearchQuery = (filters) => {
     query.OR = [
       {
         admissionNo: {
-          contains: searchTerm,
-          mode: 'insensitive'
+          contains: searchTerm
         }
       },
       {
         rollNo: {
-          contains: searchTerm,
-          mode: 'insensitive'
+          contains: searchTerm
         }
       },
       {
@@ -227,20 +225,17 @@ export const buildStudentSearchQuery = (filters) => {
           OR: [
             {
               firstName: {
-                contains: searchTerm,
-                mode: 'insensitive'
+                contains: searchTerm
               }
             },
             {
               lastName: {
-                contains: searchTerm,
-                mode: 'insensitive'
+                contains: searchTerm
               }
             },
             {
               email: {
-                contains: searchTerm,
-                mode: 'insensitive'
+                contains: searchTerm
               }
             }
           ]
