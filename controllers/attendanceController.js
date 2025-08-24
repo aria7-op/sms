@@ -325,10 +325,16 @@ export const updateAttendance = async (req, res) => {
  */
 export const markInTime = async (req, res) => {
   try {
+    console.log('🚀 markInTime endpoint called');
+    console.log('📝 Request body:', req.body);
+    
     const { studentId, classId, subjectId, date } = req.body;
+    
+    console.log('🔍 Extracted values:', { studentId, classId, subjectId, date });
     
     // Validate required fields
     if (!studentId || !classId || !date) {
+      console.log('❌ Missing required fields');
       return res.status(400).json({
         success: false,
         error: 'Missing required fields: studentId, classId, date'
@@ -340,7 +346,13 @@ export const markInTime = async (req, res) => {
     const schoolId = 1; // Default school ID for testing
     const createdBy = 1; // Default user ID for testing
 
+    console.log('⏰ Current time:', currentTime);
+    console.log('📅 Attendance date:', attendanceDate);
+    console.log('🏫 School ID:', schoolId);
+    console.log('👤 Created by:', createdBy);
+
     // Check if attendance record exists
+    console.log('🔍 Checking if attendance record exists...');
     let attendance = await prisma.attendance.findFirst({
       where: {
         studentId: BigInt(studentId),
@@ -353,6 +365,7 @@ export const markInTime = async (req, res) => {
     });
 
     if (attendance) {
+      console.log('📝 Updating existing attendance record:', attendance.id);
       // Update existing record with in-time
       attendance = await prisma.attendance.update({
         where: { id: attendance.id },
@@ -361,7 +374,9 @@ export const markInTime = async (req, res) => {
           status: 'PRESENT'
         }
       });
+      console.log('✅ Attendance record updated successfully');
     } else {
+      console.log('🆕 Creating new attendance record...');
       // Create new record
       attendance = await prisma.attendance.create({
         data: {
@@ -375,9 +390,11 @@ export const markInTime = async (req, res) => {
           createdBy: BigInt(createdBy)
         }
       });
+      console.log('✅ New attendance record created with ID:', attendance.id);
     }
 
     // Convert BigInt values to regular numbers for JSON serialization
+    console.log('🔄 Serializing attendance data...');
     const serializedAttendance = {
       ...attendance,
       id: Number(attendance.id),
@@ -388,9 +405,13 @@ export const markInTime = async (req, res) => {
       createdBy: attendance.createdBy ? Number(attendance.createdBy) : null,
       updatedBy: attendance.updatedBy ? Number(attendance.updatedBy) : null
     };
+    console.log('✅ Data serialized successfully');
 
     // Send SMS notification (non-blocking)
     try {
+      console.log('🔍 Starting SMS process for student ID:', studentId);
+      console.log('📱 About to call SMS service...');
+      
       // Get student and class information for SMS
       const [student, classInfo] = await Promise.all([
         prisma.student.findUnique({
@@ -441,11 +462,13 @@ export const markInTime = async (req, res) => {
       console.error('Failed to prepare SMS data (non-critical):', smsError.message);
     }
 
+    console.log('📤 Sending success response...');
     res.json({
       success: true,
       message: 'In-time marked successfully',
       data: serializedAttendance
     });
+    console.log('✅ Response sent successfully');
   } catch (error) {
     console.error('Error in markInTime:', error);
     res.status(500).json({
