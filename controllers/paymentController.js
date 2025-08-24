@@ -786,7 +786,10 @@ class PaymentController {
       const { status } = req.body;
       const { schoolId, id: userId } = req.user;
 
-      const payment = await prisma.payment.findFirst({
+      // Get Prisma client for payment operations
+      const prismaClient = await getPrismaClient();
+
+      const payment = await prismaClient.payment.findFirst({
         where: { id: BigInt(id), schoolId, deletedAt: null }
       });
 
@@ -795,7 +798,7 @@ class PaymentController {
       }
 
       const oldStatus = payment.status;
-      const updatedPayment = await prisma.payment.update({
+      const updatedPayment = await prismaClient.payment.update({
         where: { id: BigInt(id) },
         data: { status, updatedBy: userId },
         include: {
@@ -846,8 +849,11 @@ class PaymentController {
       const { schoolId, id: userId } = req.user;
       const refundData = { ...value, schoolId, createdBy: userId };
 
+      // Get Prisma client for refund operations
+      const prismaClient = await getPrismaClient();
+
       // Check if payment exists and belongs to school
-      const payment = await prisma.payment.findFirst({
+      const payment = await prismaClient.payment.findFirst({
         where: { id: BigInt(value.paymentId), schoolId, deletedAt: null }
       });
 
@@ -861,7 +867,7 @@ class PaymentController {
       }
 
       // Check existing refunds
-      const existingRefunds = await prisma.refund.findMany({
+      const existingRefunds = await prismaClient.refund.findMany({
         where: { paymentId: BigInt(value.paymentId), status: { not: 'CANCELLED' } }
       });
 
@@ -870,7 +876,7 @@ class PaymentController {
         return res.status(400).json({ success: false, message: 'Total refund amount cannot exceed payment total' });
       }
 
-      const refund = await prisma.refund.create({
+      const refund = await prismaClient.refund.create({
         data: refundData,
         include: {
           payment: { select: { id: true, uuid: true, amount: true, total: true } }
@@ -894,6 +900,9 @@ class PaymentController {
       const { schoolId } = req.user;
       const { startDate, endDate, groupBy = 'month' } = req.query;
 
+      // Get Prisma client for analytics queries
+      const prismaClient = await getPrismaClient();
+
       const where = { schoolId, deletedAt: null };
       if (startDate || endDate) {
         where.paymentDate = {};
@@ -914,33 +923,33 @@ class PaymentController {
           overduePaymentsResult,
           recentPaymentsResult
         ] = await Promise.all([
-        prisma.payment.count({ where }),
-        prisma.payment.aggregate({
+        prismaClient.payment.count({ where }),
+        prismaClient.payment.aggregate({
           where: { ...where, status: 'PAID' },
           _sum: { total: true }
         }),
-        prisma.payment.groupBy({
+        prismaClient.payment.groupBy({
           by: ['status'],
           where,
           _count: { status: true },
           _sum: { total: true }
         }),
-        prisma.payment.groupBy({
+        prismaClient.payment.groupBy({
           by: ['method'],
           where,
           _count: { method: true },
           _sum: { total: true }
         }),
-        prisma.payment.groupBy({
+        prismaClient.payment.groupBy({
           by: ['paymentDate'],
           where,
           _count: { id: true },
           _sum: { total: true }
         }),
-        prisma.payment.count({
+        prismaClient.payment.count({
           where: { ...where, status: 'OVERDUE' }
         }),
-        prisma.payment.findMany({
+        prismaClient.payment.findMany({
           where,
           orderBy: { createdAt: 'desc' },
           take: 5,
@@ -1057,6 +1066,9 @@ class PaymentController {
       const { schoolId } = req.user;
       const { startDate, endDate, format = 'json' } = req.query;
 
+      // Get Prisma client for report generation
+      const prismaClient = await getPrismaClient();
+
       const where = { schoolId, deletedAt: null };
       if (startDate || endDate) {
         where.paymentDate = {};
@@ -1064,7 +1076,7 @@ class PaymentController {
         if (endDate) where.paymentDate.lte = new Date(endDate);
       }
 
-      const payments = await prisma.payment.findMany({
+      const payments = await prismaClient.payment.findMany({
         where,
         include: {
           student: { 
@@ -1130,7 +1142,10 @@ class PaymentController {
       const { id } = req.params;
       const { schoolId } = req.user;
 
-      const refunds = await prisma.refund.findMany({
+      // Get Prisma client for refund operations
+      const prismaClient = await getPrismaClient();
+
+      const refunds = await prismaClient.refund.findMany({
         where: { paymentId: BigInt(id), schoolId: BigInt(schoolId) },
         orderBy: { createdAt: 'desc' }
       });
@@ -1154,7 +1169,10 @@ class PaymentController {
       const { schoolId } = req.user;
       const installmentData = { ...value, paymentId: BigInt(id), schoolId: BigInt(schoolId) };
 
-      const installment = await prisma.installment.create({
+      // Get Prisma client for installment operations
+      const prismaClient = await getPrismaClient();
+
+      const installment = await prismaClient.installment.create({
         data: installmentData,
         include: {
           payment: { select: { id: true, uuid: true, amount: true, total: true } }
@@ -1520,6 +1538,9 @@ class PaymentController {
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
       const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
+      // Get Prisma client for dashboard operations
+      const prismaClient = await getPrismaClient();
+
       const [
         totalPayments,
         monthlyPayments,
@@ -1530,15 +1551,15 @@ class PaymentController {
         overdueAmount,
         pendingAmount
       ] = await Promise.all([
-        prisma.payment.count({ where: { schoolId: BigInt(schoolId), deletedAt: null } }),
-        prisma.payment.count({
+        prismaClient.payment.count({ where: { schoolId: BigInt(schoolId), deletedAt: null } }),
+        prismaClient.payment.count({
           where: {
             schoolId: BigInt(schoolId),
             paymentDate: { gte: startOfMonth, lte: endOfMonth },
             deletedAt: null
           }
         }),
-        prisma.payment.count({
+        prismaClient.payment.count({
           where: {
             schoolId: BigInt(schoolId),
             dueDate: { lt: today },
@@ -1546,18 +1567,18 @@ class PaymentController {
             deletedAt: null
           }
         }),
-        prisma.payment.count({
+        prismaClient.payment.count({
           where: {
             schoolId: BigInt(schoolId),
             status: 'UNPAID',
             deletedAt: null
           }
         }),
-        prisma.payment.aggregate({
+        prismaClient.payment.aggregate({
           where: { schoolId: BigInt(schoolId), status: 'PAID', deletedAt: null },
           _sum: { total: true }
         }),
-        prisma.payment.aggregate({
+        prismaClient.payment.aggregate({
           where: {
             schoolId: BigInt(schoolId),
             paymentDate: { gte: startOfMonth, lte: endOfMonth },
@@ -1566,7 +1587,7 @@ class PaymentController {
           },
           _sum: { total: true }
         }),
-        prisma.payment.aggregate({
+        prismaClient.payment.aggregate({
           where: {
             schoolId: BigInt(schoolId),
             dueDate: { lt: today },
@@ -1575,7 +1596,7 @@ class PaymentController {
           },
           _sum: { total: true }
         }),
-        prisma.payment.aggregate({
+        prismaClient.payment.aggregate({
           where: {
             schoolId: BigInt(schoolId),
             status: 'UNPAID',
