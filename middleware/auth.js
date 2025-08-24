@@ -504,6 +504,9 @@ export function getUserPermissions(role) {
       'school:read', 'user:read', 'class:read', 'subject:read',
       'student:read', 'staff:read', 'parent:read',
       
+      // Student management permissions
+      'student:create', 'student:update',
+      
       // Academic permissions
       'attendance:create', 'attendance:read', 'attendance:update',
       'grade:create', 'grade:read', 'grade:update',
