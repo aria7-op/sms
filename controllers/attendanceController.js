@@ -8,17 +8,79 @@ const prisma = new PrismaClient();
  */
 export const getAllAttendances = async (req, res) => {
   try {
-    // Simple test response without database
+    const { 
+      studentId, 
+      classId, 
+      date, 
+      status, 
+      schoolId = 1, // Default school ID for testing
+      page = 1, 
+      limit = 50 
+    } = req.query;
+
+    const where = {
+      schoolId: BigInt(schoolId),
+      deletedAt: null
+    };
+
+    if (studentId) where.studentId = BigInt(studentId);
+    if (classId) where.classId = BigInt(classId);
+    if (date) where.date = new Date(date);
+    if (status) where.status = status;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const [attendances, total] = await Promise.all([
+      prisma.attendance.findMany({
+        where,
+        include: {
+          student: {
+            select: {
+              id: true,
+              uuid: true,
+              rollNo: true,
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true
+                }
+              }
+            }
+          },
+          class: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          },
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          }
+        },
+        orderBy: { date: 'desc' },
+        skip,
+        take
+      }),
+      prisma.attendance.count({ where })
+    ]);
+
     res.json({
       success: true,
-      message: 'Test response - getAllAttendances working',
+      message: 'Attendances retrieved successfully',
       data: {
-        attendances: [],
+        attendances,
         pagination: {
-          page: 1,
-          limit: 50,
-          total: 0,
-          pages: 0
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / parseInt(limit))
         }
       }
     });
@@ -245,18 +307,52 @@ export const markInTime = async (req, res) => {
       });
     }
 
-    // Simple test response without database
+    const currentTime = new Date();
+    const attendanceDate = new Date(date);
+    const schoolId = 1; // Default school ID for testing
+    const createdBy = 1; // Default user ID for testing
+
+    // Check if attendance record exists
+    let attendance = await prisma.attendance.findFirst({
+      where: {
+        studentId: BigInt(studentId),
+        classId: BigInt(classId),
+        subjectId: subjectId ? BigInt(subjectId) : null,
+        date: attendanceDate,
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      }
+    });
+
+    if (attendance) {
+      // Update existing record with in-time
+      attendance = await prisma.attendance.update({
+        where: { id: attendance.id },
+        data: {
+          inTime: currentTime,
+          status: 'PRESENT'
+        }
+      });
+    } else {
+      // Create new record
+      attendance = await prisma.attendance.create({
+        data: {
+          date: attendanceDate,
+          status: 'PRESENT',
+          inTime: currentTime,
+          studentId: BigInt(studentId),
+          classId: BigInt(classId),
+          subjectId: subjectId ? BigInt(subjectId) : null,
+          schoolId: BigInt(schoolId),
+          createdBy: BigInt(createdBy)
+        }
+      });
+    }
+
     res.json({
       success: true,
-      message: 'Test response - markInTime working',
-      data: {
-        studentId,
-        classId,
-        subjectId,
-        date,
-        inTime: new Date().toISOString(),
-        status: 'PRESENT'
-      }
+      message: 'In-time marked successfully',
+      data: attendance
     });
   } catch (error) {
     console.error('Error in markInTime:', error);
