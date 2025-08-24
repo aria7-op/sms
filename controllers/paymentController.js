@@ -1094,8 +1094,7 @@ class PaymentController {
             },
           feeStructure: { select: { name: true } },
           items: { include: { feeItem: true } },
-          refunds: true,
-          installments: true
+          refunds: true
         },
         orderBy: { paymentDate: 'desc' }
       });
@@ -1157,97 +1156,9 @@ class PaymentController {
     }
   }
 
-  // Create installment
-  async createInstallment(req, res) {
-    try {
-      const { id } = req.params;
-      const { error, value } = validateInstallmentData(req.body);
-      if (error) {
-        return res.status(400).json({ success: false, message: error.details[0].message });
-      }
+  // Installment creation method removed - not needed
 
-      const { schoolId } = req.user;
-      const installmentData = { ...value, paymentId: BigInt(id), schoolId: BigInt(schoolId) };
-
-      // Get Prisma client for installment operations
-      const prismaClient = await getPrismaClient();
-
-      const installment = await prismaClient.installment.create({
-        data: installmentData,
-        include: {
-          payment: { select: { id: true, uuid: true, amount: true, total: true } }
-        }
-      });
-
-      res.status(201).json({
-        success: true,
-        message: 'Installment created successfully',
-        data: installment
-      });
-    } catch (error) {
-      console.error('Create installment error:', error);
-      res.status(500).json({ success: false, message: 'Internal server error' });
-    }
-  }
-
-  // Get payment installments
-  async getPaymentInstallments(req, res) {
-    try {
-      const { id } = req.params;
-      const { schoolId } = req.user;
-
-      // Get Prisma client for installment operations
-      const prismaClient = await getPrismaClient();
-
-      const installments = await prismaClient.installment.findMany({
-        where: { paymentId: BigInt(id), schoolId: BigInt(schoolId) },
-        orderBy: { installmentNumber: 'asc' }
-      });
-
-      res.json({ success: true, data: convertBigInts(installments) });
-    } catch (error) {
-      console.error('Get payment installments error:', error);
-      res.status(500).json({ success: false, message: 'Internal server error' });
-    }
-  }
-
-  // Update installment status
-  async updateInstallmentStatus(req, res) {
-    try {
-      const { installmentId } = req.params;
-      const { status } = req.body;
-      const { schoolId, id: userId } = req.user;
-
-      // Get Prisma client for installment operations
-      const prismaClient = await getPrismaClient();
-
-      const installment = await prismaClient.installment.findFirst({
-        where: { id: BigInt(installmentId), schoolId: BigInt(schoolId) }
-      });
-
-      if (!installment) {
-        return res.status(404).json({ success: false, message: 'Installment not found' });
-      }
-
-      const updatedInstallment = await prismaClient.installment.update({
-        where: { id: BigInt(installmentId) },
-        data: { 
-          status,
-          paidDate: status === 'PAID' ? new Date() : null,
-          updatedAt: new Date()
-        }
-      });
-
-      res.json({
-        success: true,
-        message: 'Installment status updated successfully',
-        data: updatedInstallment
-      });
-    } catch (error) {
-      console.error('Update installment status error:', error);
-      res.status(500).json({ success: false, message: 'Internal server error' });
-    }
-  }
+  // Installment methods removed - not needed
 
   // Create bulk payments
   async createBulkPayments(req, res) {
@@ -1403,8 +1314,7 @@ class PaymentController {
           include: {
             feeStructure: { select: { id: true, uuid: true, name: true } },
             items: { include: { feeItem: true } },
-            refunds: true,
-            installments: true
+            refunds: true
           },
           orderBy: { paymentDate: 'desc' },
           skip: parseInt(skip),
@@ -1446,19 +1356,18 @@ class PaymentController {
       const [payments, total] = await Promise.all([
         prismaClient.payment.findMany({
           where: { parentId: BigInt(parentId), schoolId: BigInt(schoolId), deletedAt: null },
-          include: {
-            student: { 
-              select: { 
-                id: true, 
-                uuid: true, 
-                user: { select: { firstName: true, lastName: true } }
-              } 
+                      include: {
+              student: { 
+                select: { 
+                  id: true, 
+                  uuid: true, 
+                  user: { select: { firstName: true, lastName: true } }
+                } 
+              },
+              feeStructure: { select: { id: true, uuid: true, name: true } },
+              items: { include: { feeItem: true } },
+              refunds: true
             },
-            feeStructure: { select: { id: true, uuid: true, name: true } },
-            items: { include: { feeItem: true } },
-            refunds: true,
-            installments: true
-          },
           orderBy: { paymentDate: 'desc' },
           skip: parseInt(skip),
           take: parseInt(limit)
