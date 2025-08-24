@@ -433,29 +433,68 @@ export const markInTime = async (req, res) => {
       ]);
 
       if (student && student.user && student.user.phone) {
+        console.log('👤 Student found:', {
+          name: `${student.user.firstName} ${student.user.lastName}`,
+          phone: student.user.phone
+        });
+        console.log('📚 Class info:', classInfo);
+        
         // Send SMS notification asynchronously (don't wait for it)
-        smsService.sendAttendanceSMS(
-          {
-            name: `${student.user.firstName} ${student.user.lastName}`,
-            phone: student.user.phone
-          },
-          {
-            inTime: currentTime,
-            date: attendanceDate,
-            className: classInfo?.name || 'Unknown Class',
-            status: 'PRESENT'
-          },
-          'inTime' // Use campaign ID 403 for in-time
-        ).then(smsResult => {
+        console.log('📱 Calling SMS service with data:', {
+          studentName: `${student.user.firstName} ${student.user.lastName}`,
+          phone: student.user.phone,
+          inTime: currentTime,
+          date: attendanceDate,
+          className: classInfo?.name || 'Unknown Class',
+          status: 'PRESENT',
+          campaignId: 'inTime'
+        });
+        
+        console.log('📱 Calling SMS service...');
+        
+        // Make SMS service call synchronous to see the response
+        try {
+          const smsResult = await smsService.sendAttendanceSMS(
+            {
+              name: `${student.user.firstName} ${student.user.lastName}`,
+              phone: student.user.phone
+            },
+            {
+              inTime: currentTime,
+              date: attendanceDate,
+              className: classInfo?.name || 'Unknown Class',
+              status: 'PRESENT'
+            },
+            'inTime' // Use campaign ID 403 for in-time
+          );
+          
+          console.log('📱 SMS service completed!');
+          console.log('📱 SMS API Response Data:', smsResult);
+          
           if (smsResult && smsResult.success) {
-            console.log('📱 SMS sent successfully for student:', student.user.firstName, {
+            console.log('✅ SMS sent successfully for student:', student.user.firstName, {
               campaignId: smsResult.campaignId,
               phone: student.user.phone,
-              time: currentTime
+              time: currentTime,
+              fullResponse: smsResult
             });
+          } else if (smsResult === null) {
+            console.log('❌ SMS service returned null - check SMS service logs above');
+          } else {
+            console.log('⚠️ SMS service returned unsuccessful result:', smsResult);
           }
-        }).catch(smsError => {
-          console.error('❌ SMS sending failed (non-critical):', smsError.message);
+        } catch (smsError) {
+          console.error('❌ SMS sending failed:', {
+            error: smsError.message,
+            stack: smsError.stack,
+            fullError: smsError
+          });
+        }
+      } else {
+        console.log('⚠️ Student or phone not found:', {
+          student: !!student,
+          user: !!student?.user,
+          phone: student?.user?.phone
         });
       }
     } catch (smsError) {
