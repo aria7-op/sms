@@ -166,6 +166,32 @@ class SMSService {
       hour12: true 
     });
   }
+
+  /**
+   * Check SMS delivery status (if the API supports it)
+   */
+  async checkSMSStatus(requestId) {
+    try {
+      const token = await this.getAuthToken();
+      
+      // This endpoint might vary based on Etisalat's API
+      const response = await axios.get(
+        `${this.baseUrl}/campaignApi/GetSMSStatus/${requestId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      console.log('📱 SMS Status Check Response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to check SMS status:', error.message);
+      return null;
+    }
+  }
 }
 
 export default new SMSService(); 
