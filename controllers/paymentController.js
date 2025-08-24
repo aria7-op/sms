@@ -1705,7 +1705,11 @@ class PaymentController {
           },
           _count: { id: true },
           _sum: { total: true, amount: true }
-        }),
+        }).then(results => results.map(item => ({
+          month: new Date(item.paymentDate).getMonth(),
+          total: item._sum?.total || 0,
+          count: item._count?.id || 0
+        }))),
         
         // Daily trends (last 30 days)
         prismaClient.payment.groupBy({
@@ -1718,7 +1722,11 @@ class PaymentController {
           },
           _count: { id: true },
           _sum: { total: true, amount: true }
-        }),
+        }).then(results => results.map(item => ({
+          date: item.paymentDate.toISOString().split('T')[0],
+          total: item._sum?.total || 0,
+          count: item._count?.id || 0
+        }))),
         
         // Recent payments (last 10)
         prismaClient.payment.findMany({
@@ -1911,7 +1919,11 @@ class PaymentController {
             }
           },
           _sum: { total: true, amount: true }
-        }),
+        }).then(results => results.map(item => ({
+          month: new Date(item.paymentDate).getMonth(),
+          total: item._sum?.total || 0,
+          count: 1
+        }))),
         
         // Daily revenue (last 30 days)
         prismaClient.payment.groupBy({
@@ -1923,7 +1935,11 @@ class PaymentController {
             }
           },
           _sum: { total: true, amount: true }
-        }),
+        }).then(results => results.map(item => ({
+          date: item.paymentDate.toISOString().split('T')[0],
+          total: item._sum?.total || 0,
+          count: 1
+        }))),
         
         // Revenue by payment method
         prismaClient.payment.groupBy({
@@ -2099,7 +2115,11 @@ class PaymentController {
             count: item._count.id,
             total: Number(item._sum?.total || 0)
           })),
-          dailyBreakdown: this.processDailyTrends(dailyBreakdown)
+          dailyBreakdown: this.processDailyTrends(dailyBreakdown.map(item => ({
+            date: item.paymentDate.toISOString().split('T')[0],
+            total: item._sum?.total || 0,
+            count: item._count?.id || 0
+          })))
         };
       }
 
@@ -2279,6 +2299,40 @@ class PaymentController {
         return null;
       }
     }).filter(Boolean);
+  }
+
+  // Helper method to process monthly trends
+  processMonthlyTrends(monthlyData, groupBy = 'month') {
+    if (!monthlyData || monthlyData.length === 0) {
+      return [];
+    }
+
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    return monthlyData.map(item => ({
+      month: item.month,
+      monthName: monthNames[item.month] || `Month ${item.month}`,
+      total: Number(item.total || 0),
+      count: Number(item.count || 0),
+      average: Number(item.total || 0) / Math.max(Number(item.count || 1), 1)
+    }));
+  }
+
+  // Helper method to process daily trends
+  processDailyTrends(dailyData) {
+    if (!dailyData || dailyData.length === 0) {
+      return [];
+    }
+
+    return dailyData.map(item => ({
+      date: item.date,
+      total: Number(item.total || 0),
+      count: Number(item.count || 0),
+      average: Number(item.total || 0) / Math.max(Number(item.count || 1), 1)
+    }));
   }
 }
 
