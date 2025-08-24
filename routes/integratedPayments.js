@@ -13,43 +13,13 @@ router.use(generalLimiter);
 router.use(authenticateToken);
 
 /**
- * @route   POST /api/integrated-payments/create-with-installments
- * @desc    Create payment with installments
+ * @route   POST /api/integrated-payments/create
+ * @desc    Create payment
  * @access  Private (Admin, Owner, Teacher)
  */
-router.post('/create-with-installments', 
+router.post('/create', 
     authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
-    integratedPaymentController.createPaymentWithInstallments.bind(integratedPaymentController)
-);
-
-/**
- * @route   GET /api/integrated-payments/:paymentId/complete-details
- * @desc    Get complete payment details with refunds and installments
- * @access  Private (Admin, Owner, Teacher, Student, Parent)
- */
-router.get('/:paymentId/complete-details', 
-    authorizeRoles(['ADMIN', 'OWNER', 'TEACHER', 'STUDENT', 'PARENT']),
-    integratedPaymentController.getCompletePaymentDetails.bind(integratedPaymentController)
-);
-
-/**
- * @route   POST /api/integrated-payments/:paymentId/refund
- * @desc    Process refund for payment
- * @access  Private (Admin, Owner, Teacher)
- */
-router.post('/:paymentId/refund', 
-    authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
-    integratedPaymentController.processRefund.bind(integratedPaymentController)
-);
-
-/**
- * @route   PATCH /api/integrated-payments/installments/:installmentId/pay
- * @desc    Mark installment as paid and update payment status
- * @access  Private (Admin, Owner, Teacher)
- */
-router.patch('/installments/:installmentId/pay', 
-    authorizeRoles(['ADMIN', 'OWNER', 'TEACHER']),
-    integratedPaymentController.payInstallment.bind(integratedPaymentController)
+    integratedPaymentController.createPayment.bind(integratedPaymentController)
 );
 
 /**
@@ -93,3 +63,4 @@ router.post('/bulk-operations',
 
 export { router as integratedPaymentRouter };
 export default router;
+
