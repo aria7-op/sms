@@ -134,7 +134,7 @@ class StudentController {
       // Extract address fields and move to metadata
       const { address, city, state, country, postalCode, ...userDataWithoutAddress } = userDataWithoutDateOfBirth;
       
-      // Create metadata object with address information
+      // Create metadata object with address information and convert to JSON string
       const userMetadata = {
         address: {
           street: address,
@@ -144,6 +144,9 @@ class StudentController {
           postalCode
         }
       };
+      
+      // Convert metadata object to JSON string since the database expects a string
+      const userMetadataString = JSON.stringify(userMetadata);
 
       // Create student with user FIRST
       const student = await prisma.student.create({
@@ -168,8 +171,8 @@ class StudentController {
                        `${studentData.user.firstName.toLowerCase()}${Date.now()}`,
               // Map dateOfBirth to birthDate for User model
               birthDate: dateOfBirth,
-              // Store address in metadata
-              metadata: userMetadata,
+              // Store address in metadata as JSON string
+              metadata: userMetadataString,
               role: 'STUDENT',
               schoolId,
               createdBy: req.user.id,
