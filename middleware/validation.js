@@ -447,23 +447,14 @@ export const validateClassAccess = async (user, classId, schoolId) => {
     if (user.role === 'TEACHER') {
       console.log('Teacher access check - user:', { id: user.id, role: user.role, schoolId: user.schoolId });
       
-      // First check if teacher exists in this school
-      const teacher = await prisma.teacher.findFirst({
-        where: {
-          userId: BigInt(user.id),
-          schoolId: BigInt(schoolId)
-        }
-      });
-
-      console.log('Teacher lookup result:', teacher);
-
-      if (teacher) {
+      // Since teacher data is stored in users table, just check if user belongs to the same school
+      if (user.schoolId === parseInt(schoolId)) {
         // Teachers have access to all classes within their school
         // This allows them to perform administrative tasks like creating students
-        console.log('Teacher access granted to class');
+        console.log('Teacher access granted to class - same school');
         return;
       } else {
-        console.log('Teacher not found in school, access denied');
+        console.log('Teacher not in same school, access denied');
       }
     }
 
