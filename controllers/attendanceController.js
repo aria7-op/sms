@@ -71,11 +71,38 @@ export const getAllAttendances = async (req, res) => {
       prisma.attendance.count({ where })
     ]);
 
+    // Convert BigInt values to regular numbers for JSON serialization
+    const serializedAttendances = attendances.map(attendance => ({
+      ...attendance,
+      id: Number(attendance.id),
+      studentId: attendance.studentId ? Number(attendance.studentId) : null,
+      classId: attendance.classId ? Number(attendance.classId) : null,
+      subjectId: attendance.subjectId ? Number(attendance.subjectId) : null,
+      schoolId: attendance.schoolId ? Number(attendance.schoolId) : null,
+      createdBy: attendance.createdBy ? Number(attendance.createdBy) : null,
+      updatedBy: attendance.updatedBy ? Number(attendance.updatedBy) : null,
+      student: attendance.student ? {
+        ...attendance.student,
+        id: Number(attendance.student.id),
+        user: attendance.student.user ? {
+          ...attendance.student.user
+        } : null
+      } : null,
+      class: attendance.class ? {
+        ...attendance.class,
+        id: Number(attendance.class.id)
+      } : null,
+      subject: attendance.subject ? {
+        ...attendance.subject,
+        id: Number(attendance.subject.id)
+      } : null
+    }));
+
     res.json({
       success: true,
       message: 'Attendances retrieved successfully',
       data: {
-        attendances,
+        attendances: serializedAttendances,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -349,10 +376,22 @@ export const markInTime = async (req, res) => {
       });
     }
 
+    // Convert BigInt values to regular numbers for JSON serialization
+    const serializedAttendance = {
+      ...attendance,
+      id: Number(attendance.id),
+      studentId: attendance.studentId ? Number(attendance.studentId) : null,
+      classId: attendance.classId ? Number(attendance.classId) : null,
+      subjectId: attendance.subjectId ? Number(attendance.subjectId) : null,
+      schoolId: attendance.schoolId ? Number(attendance.schoolId) : null,
+      createdBy: attendance.createdBy ? Number(attendance.createdBy) : null,
+      updatedBy: attendance.updatedBy ? Number(attendance.updatedBy) : null
+    };
+
     res.json({
       success: true,
       message: 'In-time marked successfully',
-      data: attendance
+      data: serializedAttendance
     });
   } catch (error) {
     console.error('Error in markInTime:', error);
