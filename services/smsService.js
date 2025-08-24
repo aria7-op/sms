@@ -102,7 +102,7 @@ class SMSService {
       });
 
       const response = await axios.post(
-        `${this.baseUrl}/campaignApi/InsertBulkSms/${this.masterCampaignId}`,
+        `${this.baseUrl}/campaignApi/InsertBulkSms/${masterCampaignId}`,
         smsPayload,
         {
           headers: {
@@ -112,8 +112,33 @@ class SMSService {
         }
       );
 
-      console.log('✅ SMS sent successfully:', response.data);
-      return response.data;
+      // Log detailed SMS response
+      console.log('📱 SMS API Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: response.data,
+        campaignId: masterCampaignId,
+        student: studentData.name,
+        phone: studentData.phone
+      });
+
+      // Check if SMS was successful
+      if (response.status === 200 || response.status === 201) {
+        console.log('✅ SMS sent successfully!');
+        return {
+          success: true,
+          data: response.data,
+          campaignId: masterCampaignId
+        };
+      } else {
+        console.log('⚠️ SMS sent but with unexpected status:', response.status);
+        return {
+          success: true,
+          data: response.data,
+          campaignId: masterCampaignId,
+          warning: `Unexpected status: ${response.status}`
+        };
+      }
 
     } catch (error) {
       console.error('❌ Failed to send SMS:', error.message);
