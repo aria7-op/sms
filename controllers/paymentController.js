@@ -177,10 +177,12 @@ class PaymentController {
             typeof value === 'bigint' ? value.toString() : value, 2
           ));
 
+          // Get Prisma client for payment creation and file operations
+          const prismaClient = await getPrismaClient();
+
           // Create payment with better error handling
           let payment;
           try {
-            const prismaClient = await getPrismaClient();
             payment = await prismaClient.payment.create({
               data: createData,
               include: {
