@@ -598,7 +598,7 @@ class PaymentController {
         sanitizedPayments = payments.filter(payment => payment).map(payment => {
           try {
             return {
-              ...payment,A
+              ...payment,
               id: payment.id ? payment.id.toString() : null,
               studentId: payment.studentId ? payment.studentId.toString() : null,
               parentId: payment.parentId ? payment.parentId.toString() : null,
@@ -679,25 +679,25 @@ class PaymentController {
       try {
         const prismaClient = await getPrismaClient();
         payment = await prismaClient.payment.findFirst({
-        where: { id: BigInt(id), schoolId: BigInt(schoolId), deletedAt: null },
-        include: {
-          student: { 
-            select: { 
-              id: true, 
-              uuid: true, 
-              user: { select: { firstName: true, lastName: true } }
+          where: { id: BigInt(id), schoolId: BigInt(schoolId), deletedAt: null },
+          include: {
+            student: { 
+              select: { 
+                id: true, 
+                uuid: true, 
+                user: { select: { firstName: true, lastName: true } }
+              } 
+            },
+            parent: { 
+              select: { 
+                id: true, 
+                uuid: true, 
+                user: { select: { firstName: true, lastName: true } }
             } 
           },
-          parent: { 
-            select: { 
-              id: true, 
-              uuid: true, 
-              user: { select: { firstName: true, lastName: true } }
-            } 
-          },
-          feeStructure: { select: { id: true, uuid: true, name: true } },
-          items: { include: { feeItem: true } }
-        }
+            feeStructure: { select: { id: true, uuid: true, name: true } },
+            items: { include: { feeItem: true } }
+          }
         });
       } catch (queryError) {
         console.error('Payment query error:', queryError);
