@@ -29,7 +29,7 @@ class Payment {
                     gateway: data.gateway,
                     transactionId: data.transactionId,
                     gatewayTransactionId: data.gatewayTransactionId,
-                    receiptNumber: data.receiptNumber,
+                    transactionId: data.transactionId,
                     remarks: data.remarks,
                     metadata: data.metadata,
                     isRecurring: data.isRecurring || false,
@@ -56,14 +56,15 @@ class Payment {
                     student: {
                         select: {
                             id: true,
-                            name: true,
-                            rollNumber: true
+                            uuid: true,
+                            user: { select: { firstName: true, lastName: true } }
                         }
                     },
                     parent: {
                         select: {
                             id: true,
-                            name: true
+                            uuid: true,
+                            user: { select: { firstName: true, lastName: true } }
                         }
                     },
                     feeStructure: {
@@ -118,8 +119,8 @@ class Payment {
                     student: {
                         select: {
                             id: true,
-                            name: true,
-                            rollNumber: true,
+                            uuid: true,
+                            user: { select: { firstName: true, lastName: true } },
                             class: {
                                 select: {
                                     id: true,
@@ -131,7 +132,8 @@ class Payment {
                     parent: {
                         select: {
                             id: true,
-                            name: true
+                            uuid: true,
+                            user: { select: { firstName: true, lastName: true } }
                         }
                     },
                     feeStructure: {
@@ -231,11 +233,13 @@ class Payment {
                 }),
                 ...(search && {
                     OR: [
-                        { receiptNumber: { contains: search, mode: 'insensitive' } },
+                        { transactionId: { contains: search, mode: 'insensitive' } },
                         { transactionId: { contains: search, mode: 'insensitive' } },
                         { gatewayTransactionId: { contains: search, mode: 'insensitive' } },
-                        { student: { name: { contains: search, mode: 'insensitive' } } },
-                        { parent: { name: { contains: search, mode: 'insensitive' } } }
+                        { student: { user: { firstName: { contains: search, mode: 'insensitive' } } } },
+                        { student: { user: { lastName: { contains: search, mode: 'insensitive' } } } },
+                        { parent: { user: { firstName: { contains: search, mode: 'insensitive' } } } },
+                        { parent: { user: { lastName: { contains: search, mode: 'insensitive' } } } }
                     ]
                 })
             };
@@ -247,14 +251,15 @@ class Payment {
                         student: {
                             select: {
                                 id: true,
-                                name: true,
-                                rollNumber: true
+                                uuid: true,
+                                user: { select: { firstName: true, lastName: true } }
                             }
                         },
                         parent: {
                             select: {
                                 id: true,
-                                name: true
+                                uuid: true,
+                                user: { select: { firstName: true, lastName: true } }
                             }
                         },
                         feeStructure: {
@@ -313,7 +318,7 @@ class Payment {
             // Only allow updating certain fields
             const allowedFields = [
                 'status', 'remarks', 'metadata', 'gatewayTransactionId', 
-                'receiptNumber', 'nextPaymentDate', 'isRecurring', 'recurringFrequency'
+                'transactionId', 'nextPaymentDate', 'isRecurring', 'recurringFrequency'
             ];
             
             const updatePayload = {};
@@ -334,13 +339,15 @@ class Payment {
                     student: {
                         select: {
                             id: true,
-                            name: true
+                            uuid: true,
+                            user: { select: { firstName: true, lastName: true } }
                         }
                     },
                     parent: {
                         select: {
                             id: true,
-                            name: true
+                            uuid: true,
+                            user: { select: { firstName: true, lastName: true } }
                         }
                     }
                 }
@@ -464,7 +471,9 @@ class Payment {
                     include: {
                         student: {
                             select: {
-                                name: true
+                                id: true,
+                                uuid: true,
+                                user: { select: { firstName: true, lastName: true } }
                             }
                         }
                     },
@@ -556,7 +565,7 @@ class Payment {
             return {
                 success: true,
                 data: {
-                    receiptNumber: payment.data.receiptNumber,
+                    transactionId: payment.data.transactionId,
                     date: payment.data.paymentDate,
                     amount: payment.data.amount,
                     discount: payment.data.discount,
@@ -585,12 +594,14 @@ class Payment {
                 schoolId: BigInt(schoolId),
                 deletedAt: null,
                 OR: [
-                    { receiptNumber: { contains: searchTerm, mode: 'insensitive' } },
+                    { transactionId: { contains: searchTerm, mode: 'insensitive' } },
                     { transactionId: { contains: searchTerm, mode: 'insensitive' } },
                     { gatewayTransactionId: { contains: searchTerm, mode: 'insensitive' } },
-                    { student: { name: { contains: searchTerm, mode: 'insensitive' } } },
+                    { student: { user: { firstName: { contains: searchTerm, mode: 'insensitive' } } } },
+                    { student: { user: { lastName: { contains: searchTerm, mode: 'insensitive' } } } },
                     { student: { rollNumber: { contains: searchTerm, mode: 'insensitive' } } },
-                    { parent: { name: { contains: searchTerm, mode: 'insensitive' } } }
+                    { parent: { user: { firstName: { contains: searchTerm, mode: 'insensitive' } } } },
+                    { parent: { user: { lastName: { contains: searchTerm, mode: 'insensitive' } } } }
                 ]
             };
 
@@ -601,14 +612,15 @@ class Payment {
                         student: {
                             select: {
                                 id: true,
-                                name: true,
-                                rollNumber: true
+                                uuid: true,
+                                user: { select: { firstName: true, lastName: true } }
                             }
                         },
                         parent: {
                             select: {
                                 id: true,
-                                name: true
+                                uuid: true,
+                                user: { select: { firstName: true, lastName: true } }
                             }
                         }
                     },
@@ -642,3 +654,4 @@ class Payment {
 }
 
 export default Payment;
+
