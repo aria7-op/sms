@@ -425,8 +425,16 @@ export const markInTime = async (req, res) => {
             status: 'PRESENT'
           },
           'inTime' // Use campaign ID 403 for in-time
-        ).catch(smsError => {
-          console.error('SMS sending failed (non-critical):', smsError.message);
+        ).then(smsResult => {
+          if (smsResult && smsResult.success) {
+            console.log('📱 SMS sent successfully for student:', student.user.firstName, {
+              campaignId: smsResult.campaignId,
+              phone: student.user.phone,
+              time: currentTime
+            });
+          }
+        }).catch(smsError => {
+          console.error('❌ SMS sending failed (non-critical):', smsError.message);
         });
       }
     } catch (smsError) {
@@ -526,8 +534,16 @@ export const markOutTime = async (req, res) => {
             status: 'DEPARTED'
           },
           'outTime' // Use campaign ID 404 for out-time
-        ).catch(smsError => {
-          console.error('SMS sending failed (non-critical):', smsError.message);
+        ).then(smsResult => {
+          if (smsResult && smsResult.success) {
+            console.log('📱 SMS sent successfully for student:', student.user.firstName, {
+              campaignId: smsResult.campaignId,
+              phone: student.user.phone,
+              time: currentTime
+            });
+          }
+        }).catch(smsError => {
+          console.error('❌ SMS sending failed (non-critical):', smsError.message);
         });
       }
     } catch (smsError) {
