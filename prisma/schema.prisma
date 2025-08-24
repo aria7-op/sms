@@ -763,6 +763,8 @@ model Attendance {
   uuid          String           @unique @default(uuid()) @db.VarChar(36)
   date          DateTime
   status        AttendanceStatus
+  inTime        DateTime?        // Time when student arrived
+  outTime       DateTime?        // Time when student left
   remarks       String?          @db.VarChar(255)
   studentId     BigInt?
   teacherId     BigInt?
@@ -3081,4 +3083,5 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
+
 
