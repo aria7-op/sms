@@ -7,6 +7,9 @@ import { validatePaymentData, validateRefundData } from '../utils/paymentUtils.j
 // Analytics and reporting (MUST come before /:id routes to avoid conflicts)
 router.get('/analytics/summary', authenticateToken, paymentController.getPaymentAnalytics);
 router.get('/analytics', authenticateToken, paymentController.getPaymentAnalytics); // Add this for frontend compatibility
+router.get('/analytics/detailed', authenticateToken, paymentController.getDetailedPaymentAnalytics);
+router.get('/analytics/revenue', authenticateToken, paymentController.getRevenueAnalytics);
+router.get('/analytics/recent', authenticateToken, paymentController.getRecentPaymentsDetailed);
 router.get('/report/generate', authenticateToken, authorizeRoles(['ACCOUNTANT', 'SCHOOL_ADMIN', 'SUPER_ADMIN', 'TEACHER']), paymentController.generatePaymentReport);
 
 // Google Drive integration routes
