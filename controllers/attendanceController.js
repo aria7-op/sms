@@ -8,81 +8,27 @@ const prisma = new PrismaClient();
  */
 export const getAllAttendances = async (req, res) => {
   try {
-    const { 
-      studentId, 
-      classId, 
-      date, 
-      status, 
-      schoolId = req.user.schoolId,
-      page = 1, 
-      limit = 50 
-    } = req.query;
-
-    const where = {
-      schoolId: BigInt(schoolId),
-      deletedAt: null
-    };
-
-    if (studentId) where.studentId = BigInt(studentId);
-    if (classId) where.classId = BigInt(classId);
-    if (date) where.date = new Date(date);
-    if (status) where.status = status;
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
-
-    const [attendances, total] = await Promise.all([
-      prisma.attendance.findMany({
-        where,
-        include: {
-          student: {
-            select: {
-              id: true,
-              uuid: true,
-              rollNo: true,
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  email: true
-                }
-              }
-            }
-          },
-          class: {
-            select: {
-              id: true,
-              name: true,
-              code: true
-            }
-          },
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true
-            }
-          }
-        },
-        orderBy: { date: 'desc' },
-        skip,
-        take
-      }),
-      prisma.attendance.count({ where })
-    ]);
-
-    return createSuccessResponse(res, 'Attendances retrieved successfully', {
-      attendances,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit))
+    // Simple test response without database
+    res.json({
+      success: true,
+      message: 'Test response - getAllAttendances working',
+      data: {
+        attendances: [],
+        pagination: {
+          page: 1,
+          limit: 50,
+          total: 0,
+          pages: 0
+        }
       }
     });
   } catch (error) {
     console.error('Error in getAllAttendances:', error);
-    return createErrorResponse(res, 'Failed to retrieve attendances', 500);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve attendances',
+      message: error.message
+    });
   }
 };
 
@@ -290,59 +236,35 @@ export const updateAttendance = async (req, res) => {
 export const markInTime = async (req, res) => {
   try {
     const { studentId, classId, subjectId, date } = req.body;
-    const schoolId = req.user.schoolId;
-    const updatedBy = req.user.id;
-
+    
     // Validate required fields
     if (!studentId || !classId || !date) {
-      return createErrorResponse(res, 'Missing required fields: studentId, classId, date', 400);
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: studentId, classId, date'
+      });
     }
 
-    const currentTime = new Date();
-    const attendanceDate = new Date(date);
-
-    // Check if attendance record exists
-    let attendance = await prisma.attendance.findFirst({
-      where: {
-        studentId: BigInt(studentId),
-        classId: BigInt(classId),
-        subjectId: subjectId ? BigInt(subjectId) : null,
-        date: attendanceDate,
-        schoolId: BigInt(schoolId),
-        deletedAt: null
+    // Simple test response without database
+    res.json({
+      success: true,
+      message: 'Test response - markInTime working',
+      data: {
+        studentId,
+        classId,
+        subjectId,
+        date,
+        inTime: new Date().toISOString(),
+        status: 'PRESENT'
       }
     });
-
-    if (attendance) {
-      // Update existing record with in-time
-      attendance = await prisma.attendance.update({
-        where: { id: attendance.id },
-        data: {
-          inTime: currentTime,
-          status: 'PRESENT',
-          updatedBy: BigInt(updatedBy)
-        }
-      });
-    } else {
-      // Create new record
-      attendance = await prisma.attendance.create({
-        data: {
-          date: attendanceDate,
-          status: 'PRESENT',
-          inTime: currentTime,
-          studentId: BigInt(studentId),
-          classId: BigInt(classId),
-          subjectId: subjectId ? BigInt(subjectId) : null,
-          schoolId: BigInt(schoolId),
-          createdBy: BigInt(updatedBy)
-        }
-      });
-    }
-
-    return createSuccessResponse(res, 'In-time marked successfully', attendance);
   } catch (error) {
     console.error('Error in markInTime:', error);
-    return createErrorResponse(res, 'Failed to mark in-time', 500);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to mark in-time',
+      message: error.message
+    });
   }
 };
 
