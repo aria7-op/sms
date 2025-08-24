@@ -1639,6 +1639,647 @@ class PaymentController {
       res.status(500).json({ success: false, message: 'Internal server error' });
     }
   }
+
+  // Get detailed payment analytics with enhanced charts and revenue data
+  async getDetailedPaymentAnalytics(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { startDate, endDate, groupBy = 'month', includeCharts = 'true' } = req.query;
+
+      const prismaClient = await getPrismaClient();
+      const where = { schoolId: BigInt(schoolId), deletedAt: null };
+      
+      if (startDate || endDate) {
+        where.paymentDate = {};
+        if (startDate) where.paymentDate.gte = new Date(startDate);
+        if (endDate) where.paymentDate.lte = new Date(endDate);
+      }
+
+      // Get comprehensive payment data
+      const [
+        totalPayments,
+        totalRevenue,
+        statusBreakdown,
+        methodBreakdown,
+        monthlyTrends,
+        dailyTrends,
+        recentPayments,
+        topStudents,
+        paymentCategories,
+        overdueData,
+        upcomingData
+      ] = await Promise.all([
+        // Total payments count
+        prismaClient.payment.count({ where }),
+        
+        // Total revenue (sum of all paid amounts)
+        prismaClient.payment.aggregate({
+          where: { ...where, status: 'PAID' },
+          _sum: { total: true, amount: true }
+        }),
+        
+        // Payment status breakdown
+        prismaClient.payment.groupBy({
+          by: ['status'],
+          where,
+          _count: { id: true },
+          _sum: { total: true, amount: true }
+        }),
+        
+        // Payment method breakdown
+        prismaClient.payment.groupBy({
+          by: ['method'],
+          where,
+          _count: { id: true },
+          _sum: { total: true, amount: true }
+        }),
+        
+        // Monthly trends (last 12 months)
+        prismaClient.payment.groupBy({
+          by: ['paymentDate'],
+          where: {
+            ...where,
+            paymentDate: {
+              gte: new Date(new Date().getFullYear() - 1, 0, 1)
+            }
+          },
+          _count: { id: true },
+          _sum: { total: true, amount: true }
+        }),
+        
+        // Daily trends (last 30 days)
+        prismaClient.payment.groupBy({
+          by: ['paymentDate'],
+          where: {
+            ...where,
+            paymentDate: {
+              gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+            }
+          },
+          _count: { id: true },
+          _sum: { total: true, amount: true }
+        }),
+        
+        // Recent payments (last 10)
+        prismaClient.payment.findMany({
+          where,
+          include: {
+            student: { 
+              select: { 
+                user: { select: { firstName: true, lastName: true } }
+              } 
+            },
+            parent: { 
+              select: { 
+                user: { select: { firstName: true, lastName: true } }
+              } 
+            },
+            feeStructure: { select: { name: true } }
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 10
+        }),
+        
+        // Top paying students
+        prismaClient.payment.groupBy({
+          by: ['studentId'],
+          where: { ...where, status: 'PAID' },
+          _sum: { total: true, amount: true },
+          _count: { id: true },
+          orderBy: { _sum: { total: 'desc' } },
+          take: 10
+        }),
+        
+        // Payment categories (fee structures)
+        prismaClient.payment.groupBy({
+          by: ['feeStructureId'],
+          where,
+          _sum: { total: true, amount: true },
+          _count: { id: true }
+        }),
+        
+        // Overdue payments data
+        prismaClient.payment.aggregate({
+          where: {
+            ...where,
+            dueDate: { lt: new Date() },
+            status: { in: ['UNPAID', 'PARTIALLY_PAID'] }
+          },
+          _count: { id: true },
+          _sum: { total: true, amount: true }
+        }),
+        
+        // Upcoming payments data
+        prismaClient.payment.aggregate({
+          where: {
+            ...where,
+            dueDate: { 
+              gte: new Date(),
+              lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // Next 7 days
+            },
+            status: { in: ['UNPAID', 'PARTIALLY_PAID'] }
+          },
+          _count: { id: true },
+          _sum: { total: true, amount: true }
+        })
+      ]);
+
+      // Process monthly trends data
+      const monthlyData = this.processMonthlyTrends(monthlyTrends, groupBy);
+      
+      // Process daily trends data
+      const dailyData = this.processDailyTrends(dailyTrends);
+      
+      // Process top students with names
+      const topStudentsWithNames = await this.getTopStudentsWithNames(prismaClient, topStudents, schoolId);
+      
+      // Process payment categories with names
+      const categoriesWithNames = await this.getCategoriesWithNames(prismaClient, paymentCategories, schoolId);
+
+      // Calculate key metrics
+      const totalRevenueAmount = totalRevenue._sum?.total || 0;
+      const totalAmount = totalRevenue._sum?.amount || 0;
+      const paidPayments = statusBreakdown.find(s => s.status === 'PAID')?._count?.id || 0;
+      const pendingPayments = statusBreakdown.find(s => s.status === 'UNPAID')?._count?.id || 0;
+      const overduePayments = overdueData._count?.id || 0;
+      const upcomingPayments = upcomingData._count?.id || 0;
+      
+      // Calculate growth rates
+      const currentMonth = new Date().getMonth();
+      const previousMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const currentMonthRevenue = monthlyData.find(m => m.month === currentMonth)?.total || 0;
+      const previousMonthRevenue = monthlyData.find(m => m.month === previousMonth)?.total || 0;
+      const revenueGrowth = previousMonthRevenue > 0 ? ((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100 : 0;
+
+      // Convert BigInt values for JSON serialization
+      const sanitizedRecentPayments = this.sanitizePayments(recentPayments);
+
+      const analyticsData = {
+        summary: {
+          totalPayments,
+          totalRevenue: Number(totalRevenueAmount),
+          totalAmount: Number(totalAmount),
+          paidPayments,
+          pendingPayments,
+          overduePayments,
+          upcomingPayments,
+          revenueGrowth: Math.round(revenueGrowth * 100) / 100,
+          averagePayment: totalPayments > 0 ? Number(totalRevenueAmount) / totalPayments : 0
+        },
+        
+        statusBreakdown: statusBreakdown.map(item => ({
+          status: item.status,
+          count: item._count.id,
+          total: Number(item._sum?.total || 0),
+          percentage: totalPayments > 0 ? (item._count.id / totalPayments) * 100 : 0
+        })),
+        
+        methodBreakdown: methodBreakdown.map(item => ({
+          method: item.method,
+          count: item._count.id,
+          total: Number(item._sum?.total || 0),
+          percentage: totalPayments > 0 ? (item._count.id / totalPayments) * 100 : 0
+        })),
+        
+        trends: {
+          monthly: monthlyData,
+          daily: dailyData
+        },
+        
+        recentPayments: sanitizedRecentPayments,
+        topStudents: topStudentsWithNames,
+        categories: categoriesWithNames,
+        
+        overdue: {
+          count: overdueData._count?.id || 0,
+          amount: Number(overdueData._sum?.total || 0)
+        },
+        
+        upcoming: {
+          count: upcomingData._count?.id || 0,
+          amount: Number(upcomingData._sum?.total || 0)
+        }
+      };
+
+      res.json({
+        success: true,
+        data: analyticsData
+      });
+    } catch (error) {
+      console.error('Get detailed payment analytics error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // Get revenue analytics specifically
+  async getRevenueAnalytics(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { startDate, endDate, groupBy = 'month' } = req.query;
+
+      const prismaClient = await getPrismaClient();
+      const where = { schoolId: BigInt(schoolId), status: 'PAID', deletedAt: null };
+      
+      if (startDate || endDate) {
+        where.paymentDate = {};
+        if (startDate) where.paymentDate.gte = new Date(startDate);
+        if (endDate) where.paymentDate.lte = new Date(endDate);
+      }
+
+      // Get revenue data
+      const [
+        totalRevenue,
+        monthlyRevenue,
+        dailyRevenue,
+        revenueByMethod,
+        revenueByCategory,
+        revenueGrowth
+      ] = await Promise.all([
+        // Total revenue
+        prismaClient.payment.aggregate({
+          where,
+          _sum: { total: true, amount: true }
+        }),
+        
+        // Monthly revenue (last 12 months)
+        prismaClient.payment.groupBy({
+          by: ['paymentDate'],
+          where: {
+            ...where,
+            paymentDate: {
+              gte: new Date(new Date().getFullYear() - 1, 0, 1)
+            }
+          },
+          _sum: { total: true, amount: true }
+        }),
+        
+        // Daily revenue (last 30 days)
+        prismaClient.payment.groupBy({
+          by: ['paymentDate'],
+          where: {
+            ...where,
+            paymentDate: {
+              gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+            }
+          },
+          _sum: { total: true, amount: true }
+        }),
+        
+        // Revenue by payment method
+        prismaClient.payment.groupBy({
+          by: ['method'],
+          where,
+          _sum: { total: true, amount: true },
+          _count: { id: true }
+        }),
+        
+        // Revenue by fee category
+        prismaClient.payment.groupBy({
+          by: ['feeStructureId'],
+          where,
+          _sum: { total: true, amount: true },
+          _count: { id: true }
+        }),
+        
+        // Revenue growth calculation
+        prismaClient.payment.groupBy({
+          by: ['paymentDate'],
+          where: {
+            ...where,
+            paymentDate: {
+              gte: new Date(new Date().getFullYear() - 2, 0, 1)
+            }
+          },
+          _sum: { total: true, amount: true }
+        })
+      ]);
+
+      // Process revenue data
+      const monthlyData = this.processMonthlyTrends(monthlyRevenue, groupBy);
+      const dailyData = this.processDailyTrends(dailyRevenue);
+      
+      // Calculate year-over-year growth
+      const currentYear = new Date().getFullYear();
+      const previousYear = currentYear - 1;
+      const currentYearRevenue = monthlyRevenue
+        .filter(m => new Date(m.paymentDate).getFullYear() === currentYear)
+        .reduce((sum, m) => sum + Number(m._sum?.total || 0), 0);
+      const previousYearRevenue = monthlyRevenue
+        .filter(m => new Date(m.paymentDate).getFullYear() === previousYear)
+        .reduce((sum, m) => sum + Number(m._sum?.total || 0), 0);
+      const yearOverYearGrowth = previousYearRevenue > 0 ? 
+        ((currentYearRevenue - previousYearRevenue) / previousYearRevenue) * 100 : 0;
+
+      const revenueData = {
+        summary: {
+          totalRevenue: Number(totalRevenue._sum?.total || 0),
+          totalAmount: Number(totalRevenue._sum?.amount || 0),
+          yearOverYearGrowth: Math.round(yearOverYearGrowth * 100) / 100,
+          averageRevenue: monthlyData.length > 0 ? 
+            monthlyData.reduce((sum, m) => sum + m.total, 0) / monthlyData.length : 0
+        },
+        
+        trends: {
+          monthly: monthlyData,
+          daily: dailyData
+        },
+        
+        breakdown: {
+          byMethod: revenueByMethod.map(item => ({
+            method: item.method,
+            revenue: Number(item._sum?.total || 0),
+            count: item._count.id,
+            percentage: Number(totalRevenue._sum?.total || 0) > 0 ? 
+              (Number(item._sum?.total || 0) / Number(totalRevenue._sum?.total || 0)) * 100 : 0
+          })),
+          
+          byCategory: await this.getCategoriesWithNames(prismaClient, revenueByCategory, schoolId)
+        }
+      };
+
+      res.json({
+        success: true,
+        data: revenueData
+      });
+    } catch (error) {
+      console.error('Get revenue analytics error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // Get recent payments with enhanced details
+  async getRecentPaymentsDetailed(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { limit = 20, days = 30, includeAnalytics = 'true' } = req.query;
+
+      const prismaClient = await getPrismaClient();
+      const startDate = new Date(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000);
+
+      const where = { 
+        schoolId: BigInt(schoolId), 
+        deletedAt: null,
+        paymentDate: { gte: startDate }
+      };
+
+      // Get recent payments with full details
+      const recentPayments = await prismaClient.payment.findMany({
+        where,
+        include: {
+          student: { 
+            select: { 
+              id: true,
+              uuid: true,
+              user: { select: { firstName: true, lastName: true, email: true } }
+            } 
+          },
+          parent: { 
+            select: { 
+              id: true,
+              uuid: true,
+              user: { select: { firstName: true, lastName: true, email: true } }
+            } 
+          },
+          feeStructure: { select: { id: true, name: true, description: true } },
+          items: { 
+            include: { 
+              feeItem: { select: { id: true, name: true, amount: true } }
+            } 
+          }
+        },
+        orderBy: { paymentDate: 'desc' },
+        take: parseInt(limit)
+      });
+
+      // Get analytics if requested
+      let analytics = null;
+      if (includeAnalytics === 'true') {
+        const [
+          totalCount,
+          totalAmount,
+          statusBreakdown,
+          methodBreakdown,
+          dailyBreakdown
+        ] = await Promise.all([
+          prismaClient.payment.count({ where }),
+          prismaClient.payment.aggregate({
+            where: { ...where, status: 'PAID' },
+            _sum: { total: true }
+          }),
+          prismaClient.payment.groupBy({
+            by: ['status'],
+            where,
+            _count: { id: true },
+            _sum: { total: true }
+          }),
+          prismaClient.payment.groupBy({
+            by: ['method'],
+            where,
+            _count: { id: true },
+            _sum: { total: true }
+          }),
+          prismaClient.payment.groupBy({
+            by: ['paymentDate'],
+            where,
+            _count: { id: true },
+            _sum: { total: true }
+          })
+        ]);
+
+        analytics = {
+          totalCount,
+          totalAmount: Number(totalAmount._sum?.total || 0),
+          statusBreakdown: statusBreakdown.map(item => ({
+            status: item.status,
+            count: item._count.id,
+            total: Number(item._sum?.total || 0)
+          })),
+          methodBreakdown: methodBreakdown.map(item => ({
+            method: item.method,
+            count: item._count.id,
+            total: Number(item._sum?.total || 0)
+          })),
+          dailyBreakdown: this.processDailyTrends(dailyBreakdown)
+        };
+      }
+
+      // Sanitize payments for JSON serialization
+      const sanitizedPayments = this.sanitizePayments(recentPayments);
+
+      res.json({
+        success: true,
+        data: {
+          payments: sanitizedPayments,
+          analytics,
+          period: {
+            startDate: startDate.toISOString(),
+            endDate: new Date().toISOString(),
+            days: parseInt(days)
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Get recent payments detailed error:', error);
+      res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
+  // Helper method to process monthly trends
+  processMonthlyTrends(monthlyData, groupBy = 'month') {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    
+    const monthlyStats = Array(12).fill(0).map((_, index) => ({
+      month: index,
+      monthName: months[index],
+      total: 0,
+      count: 0,
+      amount: 0
+    }));
+
+    monthlyData.forEach(item => {
+      const date = new Date(item.paymentDate);
+      const month = date.getMonth();
+      if (monthlyStats[month]) {
+        monthlyStats[month].total += Number(item._sum?.total || 0);
+        monthlyStats[month].count += item._count?.id || 0;
+        monthlyStats[month].amount += Number(item._sum?.amount || 0);
+      }
+    });
+
+    return monthlyStats;
+  }
+
+  // Helper method to process daily trends
+  processDailyTrends(dailyData) {
+    const dailyStats = [];
+    const today = new Date();
+    
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const dayData = dailyData.find(item => {
+        const itemDate = new Date(item.paymentDate);
+        return itemDate.toISOString().split('T')[0] === dateStr;
+      });
+
+      dailyStats.push({
+        date: dateStr,
+        dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        total: Number(dayData?._sum?.total || 0),
+        count: dayData?._count?.id || 0,
+        amount: Number(dayData?._sum?.amount || 0)
+      });
+    }
+
+    return dailyStats;
+  }
+
+  // Helper method to get top students with names
+  async getTopStudentsWithNames(prismaClient, topStudents, schoolId) {
+    const studentsWithNames = [];
+    
+    for (const student of topStudents) {
+      if (student.studentId) {
+        const studentInfo = await prismaClient.student.findFirst({
+          where: { id: student.studentId, schoolId: BigInt(schoolId) },
+          select: {
+            user: { select: { firstName: true, lastName: true } }
+          }
+        });
+        
+        studentsWithNames.push({
+          studentId: student.studentId.toString(),
+          name: studentInfo ? `${studentInfo.user.firstName} ${studentInfo.user.lastName}` : 'Unknown Student',
+          totalPaid: Number(student._sum?.total || 0),
+          totalAmount: Number(student._sum?.amount || 0),
+          paymentCount: student._count?.id || 0
+        });
+      }
+    }
+    
+    return studentsWithNames;
+  }
+
+  // Helper method to get categories with names
+  async getCategoriesWithNames(prismaClient, categories, schoolId) {
+    const categoriesWithNames = [];
+    
+    for (const category of categories) {
+      if (category.feeStructureId) {
+        const categoryInfo = await prismaClient.feeStructure.findFirst({
+          where: { id: category.feeStructureId, schoolId: BigInt(schoolId) },
+          select: { name: true, description: true }
+        });
+        
+        categoriesWithNames.push({
+          categoryId: category.feeStructureId.toString(),
+          name: categoryInfo?.name || 'Unknown Category',
+          description: categoryInfo?.description || '',
+          total: Number(category._sum?.total || 0),
+          amount: Number(category._sum?.amount || 0),
+          count: category._count?.id || 0
+        });
+      }
+    }
+    
+    return categoriesWithNames;
+  }
+
+  // Helper method to sanitize payments for JSON serialization
+  sanitizePayments(payments) {
+    return payments.filter(payment => payment).map(payment => {
+      try {
+        return {
+          ...payment,
+          id: payment.id ? payment.id.toString() : null,
+          studentId: payment.studentId ? payment.studentId.toString() : null,
+          parentId: payment.parentId ? payment.parentId.toString() : null,
+          feeStructureId: payment.feeStructureId ? payment.feeStructureId.toString() : null,
+          schoolId: payment.schoolId ? payment.schoolId.toString() : null,
+          createdBy: payment.createdBy ? payment.createdBy.toString() : null,
+          updatedBy: payment.updatedBy ? payment.updatedBy.toString() : null,
+          customerId: payment.customerId ? payment.customerId.toString() : null,
+          student: payment.student ? {
+            ...payment.student,
+            id: payment.student.id ? payment.student.id.toString() : null,
+            user: payment.student.user ? {
+              ...payment.student.user,
+              id: payment.student.user.id ? payment.student.user.id.toString() : null
+            } : null
+          } : null,
+          parent: payment.parent ? {
+            ...payment.parent,
+            id: payment.parent.id ? payment.parent.id.toString() : null,
+            user: payment.parent.user ? {
+              ...payment.parent.user,
+              id: payment.parent.user.id ? payment.parent.user.id.toString() : null
+            } : null
+          } : null,
+          feeStructure: payment.feeStructure ? {
+            ...payment.feeStructure,
+            id: payment.feeStructure.id ? payment.feeStructure.id.toString() : null
+          } : null,
+          items: payment.items ? payment.items.map(item => ({
+            ...item,
+            id: item.id ? item.id.toString() : null,
+            paymentId: item.paymentId ? item.paymentId.toString() : null,
+            feeItemId: item.feeItemId ? item.feeItemId.toString() : null,
+            feeItem: item.feeItem ? {
+              ...item.feeItem,
+              id: item.feeItem.id ? item.feeItem.id.toString() : null
+            } : null
+          })) : []
+        };
+      } catch (itemError) {
+        console.error('Error processing payment item:', itemError, 'Payment:', payment);
+        return null;
+      }
+    }).filter(Boolean);
+  }
 }
 
 export default new PaymentController(); 
