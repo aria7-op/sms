@@ -891,16 +891,19 @@ class PaymentController {
         if (endDate) where.paymentDate.lte = new Date(endDate);
       }
 
-      // Get payment statistics
-      const [
-        totalPaymentsResult,
-        totalAmountResult,
-        statusCountsResult,
-        methodCountsResult,
-        monthlyDataResult,
-        overduePaymentsResult,
-        recentPaymentsResult
-      ] = await Promise.all([
+      // Get payment statistics with error handling
+      let totalPaymentsResult, totalAmountResult, statusCountsResult, methodCountsResult, monthlyDataResult, overduePaymentsResult, recentPaymentsResult;
+      
+      try {
+        [
+          totalPaymentsResult,
+          totalAmountResult,
+          statusCountsResult,
+          methodCountsResult,
+          monthlyDataResult,
+          overduePaymentsResult,
+          recentPaymentsResult
+        ] = await Promise.all([
         prisma.payment.count({ where }),
         prisma.payment.aggregate({
           where: { ...where, status: 'PAID' },
@@ -946,19 +949,41 @@ class PaymentController {
             }
           }
         })
-      ]);
+        ]);
+      } catch (dbError) {
+        console.error('Database query error in analytics:', dbError);
+        // Set default values on database error
+        totalPaymentsResult = 0;
+        totalAmountResult = { _sum: { total: 0 } };
+        statusCountsResult = [];
+        methodCountsResult = [];
+        monthlyDataResult = [];
+        overduePaymentsResult = 0;
+        recentPaymentsResult = [];
+      }
 
       // Ensure we have valid results with safety checks
       const totalPayments = typeof totalPaymentsResult === 'number' ? totalPaymentsResult : 0;
-      const totalAmount = totalAmountResult && totalAmountResult._sum ? totalAmountResult._sum : { total: 0 };
+      
+      // More robust totalAmount handling
+      let totalAmount = { total: 0 };
+      if (totalAmountResult && totalAmountResult._sum && typeof totalAmountResult._sum.total === 'number') {
+        totalAmount = { total: totalAmountResult._sum.total };
+      } else if (totalAmountResult && totalAmountResult._sum && totalAmountResult._sum.total !== null && totalAmountResult._sum.total !== undefined) {
+        // Handle BigInt or other numeric types
+        totalAmount = { total: Number(totalAmountResult._sum.total) || 0 };
+      }
+      
       const statusCounts = Array.isArray(statusCountsResult) ? statusCountsResult : [];
       const methodCounts = Array.isArray(methodCountsResult) ? methodCountsResult : [];
       const monthlyData = Array.isArray(monthlyDataResult) ? monthlyDataResult : [];
       const overduePayments = typeof overduePaymentsResult === 'number' ? overduePaymentsResult : 0;
       const recentPayments = Array.isArray(recentPaymentsResult) ? recentPaymentsResult : [];
 
-      // Log for debugging
+      // Enhanced logging for debugging
       console.log(`Analytics results - Total: ${totalPayments}, Overdue: ${overduePayments}, Recent: ${recentPayments.length}`);
+      console.log(`Total amount result:`, JSON.stringify(totalAmountResult));
+      console.log(`Processed total amount:`, totalAmount);
 
       // Convert BigInt values in recentPayments for JSON serialization
       const sanitizedRecentPayments = recentPayments.filter(payment => payment).map(payment => {
@@ -994,18 +1019,22 @@ class PaymentController {
         }
       }).filter(Boolean);
 
-      res.json({
+      // Final safety check before sending response
+      const responseData = {
         success: true,
         data: {
           totalPayments,
-          totalAmount: totalAmount._sum.total || 0,
+          totalAmount: totalAmount.total || 0,
           statusCounts,
           methodCounts,
           monthlyData,
           overduePayments,
           recentPayments: sanitizedRecentPayments
         }
-      });
+      };
+
+      console.log('Sending analytics response:', JSON.stringify(responseData, null, 2));
+      res.json(responseData);
     } catch (error) {
       console.error('Get payment analytics error:', error);
       res.status(500).json({ success: false, message: 'Internal server error' });
@@ -1553,10 +1582,10 @@ class PaymentController {
           monthlyPayments,
           overduePayments,
           pendingPayments,
-          totalAmount: totalAmount._sum.total || 0,
-          monthlyAmount: monthlyAmount._sum.total || 0,
-          overdueAmount: overdueAmount._sum.total || 0,
-          pendingAmount: pendingAmount._sum.total || 0
+          totalAmount: totalAmount && totalAmount._sum && totalAmount._sum.total ? Number(totalAmount._sum.total) : 0,
+          monthlyAmount: monthlyAmount && monthlyAmount._sum && monthlyAmount._sum.total ? Number(monthlyAmount._sum.total) : 0,
+          overdueAmount: overdueAmount && overdueAmount._sum && overdueAmount._sum.total ? Number(overdueAmount._sum.total) : 0,
+          pendingAmount: pendingAmount && pendingAmount._sum && pendingAmount._sum.total ? Number(pendingAmount._sum.total) : 0
         }
       });
     } catch (error) {
