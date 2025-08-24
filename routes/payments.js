@@ -39,14 +39,9 @@ router.delete('/:id', authenticateToken, authorizeRoles(['ACCOUNTANT', 'SCHOOL_A
 // Payment status management
 router.patch('/:id/status', authenticateToken, authorizeRoles(['ACCOUNTANT', 'SCHOOL_ADMIN', 'SUPER_ADMIN', 'TEACHER']), paymentController.updatePaymentStatus);
 
-// Refund routes
-router.post('/:id/refunds', authenticateToken, authorizeRoles(['ACCOUNTANT', 'SCHOOL_ADMIN', 'SUPER_ADMIN', 'TEACHER']), paymentController.createRefund);
-router.get('/:id/refunds', authenticateToken, paymentController.getPaymentRefunds);
+// Refund routes removed - not needed
 
-// Installment routes
-router.post('/:id/installments', authenticateToken, authorizeRoles(['ACCOUNTANT', 'SCHOOL_ADMIN', 'SUPER_ADMIN', 'TEACHER']), paymentController.createInstallment);
-router.get('/:id/installments', authenticateToken, paymentController.getPaymentInstallments);
-router.patch('/installments/:installmentId', authenticateToken, authorizeRoles(['ACCOUNTANT', 'SCHOOL_ADMIN', 'SUPER_ADMIN', 'TEACHER']), paymentController.updateInstallmentStatus);
+// Installment routes removed - not needed
 
 // Generic ID route (MUST be last to avoid conflicts)
 router.get('/:id', authenticateToken, paymentController.getPaymentById);
