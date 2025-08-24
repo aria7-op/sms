@@ -1196,7 +1196,10 @@ class PaymentController {
       const { id } = req.params;
       const { schoolId } = req.user;
 
-      const installments = await prisma.installment.findMany({
+      // Get Prisma client for installment operations
+      const prismaClient = await getPrismaClient();
+
+      const installments = await prismaClient.installment.findMany({
         where: { paymentId: BigInt(id), schoolId: BigInt(schoolId) },
         orderBy: { installmentNumber: 'asc' }
       });
@@ -1215,7 +1218,10 @@ class PaymentController {
       const { status } = req.body;
       const { schoolId, id: userId } = req.user;
 
-      const installment = await prisma.installment.findFirst({
+      // Get Prisma client for installment operations
+      const prismaClient = await getPrismaClient();
+
+      const installment = await prismaClient.installment.findFirst({
         where: { id: BigInt(installmentId), schoolId: BigInt(schoolId) }
       });
 
@@ -1223,7 +1229,7 @@ class PaymentController {
         return res.status(404).json({ success: false, message: 'Installment not found' });
       }
 
-      const updatedInstallment = await prisma.installment.update({
+      const updatedInstallment = await prismaClient.installment.update({
         where: { id: BigInt(installmentId) },
         data: { 
           status,
@@ -1271,7 +1277,10 @@ class PaymentController {
           const payment = { ...filteredPaymentData, schoolId, createdBy: userId };
           payment.transactionId = await generateReceiptNumber(schoolId);
 
-          const createdPayment = await prisma.payment.create({
+          // Get Prisma client for bulk payment operations
+          const prismaClient = await getPrismaClient();
+
+          const createdPayment = await prismaClient.payment.create({
             data: payment,
             include: {
               student: { 
@@ -1318,7 +1327,10 @@ class PaymentController {
         return res.status(400).json({ success: false, message: 'Payment IDs array is required' });
       }
 
-      const updatedPayments = await prisma.payment.updateMany({
+      // Get Prisma client for bulk update operations
+      const prismaClient = await getPrismaClient();
+
+      const updatedPayments = await prismaClient.payment.updateMany({
         where: {
           id: { in: paymentIds.map(id => BigInt(id)) },
           schoolId: BigInt(schoolId)
@@ -1382,8 +1394,11 @@ class PaymentController {
 
       const skip = (page - 1) * limit;
 
+      // Get Prisma client for student payment operations
+      const prismaClient = await getPrismaClient();
+
       const [payments, total] = await Promise.all([
-        prisma.payment.findMany({
+        prismaClient.payment.findMany({
           where: { studentId: BigInt(studentId), schoolId: BigInt(schoolId), deletedAt: null },
           include: {
             feeStructure: { select: { id: true, uuid: true, name: true } },
@@ -1395,7 +1410,7 @@ class PaymentController {
           skip: parseInt(skip),
           take: parseInt(limit)
         }),
-        prisma.payment.count({
+        prismaClient.payment.count({
           where: { studentId: BigInt(studentId), schoolId: BigInt(schoolId), deletedAt: null }
         })
       ]);
@@ -1425,8 +1440,11 @@ class PaymentController {
 
       const skip = (page - 1) * limit;
 
+      // Get Prisma client for parent payment operations
+      const prismaClient = await getPrismaClient();
+
       const [payments, total] = await Promise.all([
-        prisma.payment.findMany({
+        prismaClient.payment.findMany({
           where: { parentId: BigInt(parentId), schoolId: BigInt(schoolId), deletedAt: null },
           include: {
             student: { 
@@ -1445,7 +1463,7 @@ class PaymentController {
           skip: parseInt(skip),
           take: parseInt(limit)
         }),
-        prisma.payment.count({
+        prismaClient.payment.count({
           where: { parentId: BigInt(parentId), schoolId: BigInt(schoolId), deletedAt: null }
         })
       ]);
@@ -1475,8 +1493,11 @@ class PaymentController {
       const skip = (page - 1) * limit;
       const today = new Date();
 
+      // Get Prisma client for overdue payment operations
+      const prismaClient = await getPrismaClient();
+
       const [payments, total] = await Promise.all([
-        prisma.payment.findMany({
+        prismaClient.payment.findMany({
           where: {
             schoolId: BigInt(schoolId),
             dueDate: { lt: today },
@@ -1504,7 +1525,7 @@ class PaymentController {
           skip: parseInt(skip),
           take: parseInt(limit)
         }),
-        prisma.payment.count({
+        prismaClient.payment.count({
           where: {
             schoolId: BigInt(schoolId),
             dueDate: { lt: today },
@@ -1631,7 +1652,10 @@ class PaymentController {
       const { schoolId } = req.user;
       const { limit = 10 } = req.query;
 
-      const payments = await prisma.payment.findMany({
+      // Get Prisma client for recent payments
+      const prismaClient = await getPrismaClient();
+
+      const payments = await prismaClient.payment.findMany({
         where: { schoolId: BigInt(schoolId), deletedAt: null },
         include: {
           student: { 
@@ -1669,7 +1693,10 @@ class PaymentController {
       const today = new Date();
       const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-      const payments = await prisma.payment.findMany({
+      // Get Prisma client for upcoming payments
+      const prismaClient = await getPrismaClient();
+
+      const payments = await prismaClient.payment.findMany({
         where: {
           schoolId: BigInt(schoolId),
           dueDate: { gte: today, lte: nextWeek },
