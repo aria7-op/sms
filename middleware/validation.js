@@ -445,6 +445,8 @@ export const validateClassAccess = async (user, classId, schoolId) => {
 
     // Teachers can access classes in their school
     if (user.role === 'TEACHER') {
+      console.log('Teacher access check - user:', { id: user.id, role: user.role, schoolId: user.schoolId });
+      
       // First check if teacher exists in this school
       const teacher = await prisma.teacher.findFirst({
         where: {
@@ -453,10 +455,15 @@ export const validateClassAccess = async (user, classId, schoolId) => {
         }
       });
 
+      console.log('Teacher lookup result:', teacher);
+
       if (teacher) {
         // Teachers have access to all classes within their school
         // This allows them to perform administrative tasks like creating students
+        console.log('Teacher access granted to class');
         return;
+      } else {
+        console.log('Teacher not found in school, access denied');
       }
     }
 
