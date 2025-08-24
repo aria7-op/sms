@@ -446,15 +446,21 @@ export const validateClassAccess = async (user, classId, schoolId) => {
     // Teachers can access classes in their school
     if (user.role === 'TEACHER') {
       console.log('Teacher access check - user:', { id: user.id, role: user.role, schoolId: user.schoolId });
+      console.log('Comparing schoolId - user.schoolId:', user.schoolId, 'class schoolId:', schoolId, 'types:', typeof user.schoolId, typeof schoolId);
       
       // Since teacher data is stored in users table, just check if user belongs to the same school
-      if (user.schoolId === parseInt(schoolId)) {
+      // Handle both BigInt and number comparisons
+      const userSchoolId = typeof user.schoolId === 'bigint' ? Number(user.schoolId) : user.schoolId;
+      const classSchoolId = typeof schoolId === 'bigint' ? Number(schoolId) : parseInt(schoolId);
+      
+      if (userSchoolId === classSchoolId) {
         // Teachers have access to all classes within their school
         // This allows them to perform administrative tasks like creating students
         console.log('Teacher access granted to class - same school');
         return;
       } else {
         console.log('Teacher not in same school, access denied');
+        console.log('School ID mismatch - user:', userSchoolId, 'class:', classSchoolId);
       }
     }
 
