@@ -24,11 +24,13 @@ class Installment {
                     student: {
                         select: {
                             id: true,
-                            name: true,
+                            uuid: true,
                             user: {
                                 select: {
                                     id: true,
-                                    email: true
+                                    email: true,
+                                    firstName: true,
+                                    lastName: true
                                 }
                             }
                         }
@@ -36,11 +38,13 @@ class Installment {
                     parent: {
                         select: {
                             id: true,
-                            name: true,
+                            uuid: true,
                             user: {
                                 select: {
                                     id: true,
-                                    email: true
+                                    email: true,
+                                    firstName: true,
+                                    lastName: true
                                 }
                             }
                         }
@@ -164,11 +168,13 @@ class Installment {
                             student: {
                                 select: {
                                     id: true,
-                                    name: true,
+                                    uuid: true,
                                     user: {
                                         select: {
                                             id: true,
-                                            email: true
+                                            email: true,
+                                            firstName: true,
+                                            lastName: true
                                         }
                                     }
                                 }
@@ -176,11 +182,13 @@ class Installment {
                             parent: {
                                 select: {
                                     id: true,
-                                    name: true,
+                                    uuid: true,
                                     user: {
                                         select: {
                                             id: true,
-                                            email: true
+                                            email: true,
+                                            firstName: true,
+                                            lastName: true
                                         }
                                     }
                                 }
