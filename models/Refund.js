@@ -24,11 +24,13 @@ class Refund {
                     student: {
                         select: {
                             id: true,
-                            name: true,
+                            uuid: true,
                             user: {
                                 select: {
                                     id: true,
-                                    email: true
+                                    email: true,
+                                    firstName: true,
+                                    lastName: true
                                 }
                             }
                         }
@@ -36,11 +38,13 @@ class Refund {
                     parent: {
                         select: {
                             id: true,
-                            name: true,
+                            uuid: true,
                             user: {
                                 select: {
                                     id: true,
-                                    email: true
+                                    email: true,
+                                    firstName: true,
+                                    lastName: true
                                 }
                             }
                         }
@@ -86,39 +90,43 @@ class Refund {
                     createdBy: BigInt(data.createdBy)
                 },
                 include: {
-                    payment: {
-                        select: {
-                            id: true,
-                            total: true,
-                            status: true,
-                            method: true,
-                            gateway: true,
-                            student: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    user: {
-                                        select: {
-                                            id: true,
-                                            email: true
+                                            payment: {
+                            select: {
+                                id: true,
+                                total: true,
+                                status: true,
+                                method: true,
+                                gateway: true,
+                                student: {
+                                    select: {
+                                        id: true,
+                                        uuid: true,
+                                        user: {
+                                            select: {
+                                                id: true,
+                                                email: true,
+                                                firstName: true,
+                                                lastName: true
+                                            }
                                         }
                                     }
-                                }
-                            },
-                            parent: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    user: {
-                                        select: {
-                                            id: true,
-                                            email: true
+                                },
+                                parent: {
+                                    select: {
+                                        id: true,
+                                        uuid: true,
+                                        user: {
+                                            select: {
+                                                id: true,
+                                                email: true,
+                                                firstName: true,
+                                                lastName: true
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                    },
+                        },
                     school: {
                         select: {
                             id: true,
@@ -163,11 +171,13 @@ class Refund {
                             student: {
                                 select: {
                                     id: true,
-                                    name: true,
+                                    uuid: true,
                                     user: {
                                         select: {
                                             id: true,
-                                            email: true
+                                            email: true,
+                                            firstName: true,
+                                            lastName: true
                                         }
                                     }
                                 }
@@ -175,11 +185,13 @@ class Refund {
                             parent: {
                                 select: {
                                     id: true,
-                                    name: true,
+                                    uuid: true,
                                     user: {
                                         select: {
                                             id: true,
-                                            email: true
+                                            email: true,
+                                            firstName: true,
+                                            lastName: true
                                         }
                                     }
                                 }
@@ -367,11 +379,13 @@ class Refund {
                                 student: {
                                     select: {
                                         id: true,
-                                        name: true,
+                                        uuid: true,
                                         user: {
                                             select: {
                                                 id: true,
-                                                email: true
+                                                email: true,
+                                                firstName: true,
+                                                lastName: true
                                             }
                                         }
                                     }
@@ -379,11 +393,13 @@ class Refund {
                                 parent: {
                                     select: {
                                         id: true,
-                                        name: true,
+                                        uuid: true,
                                         user: {
                                             select: {
                                                 id: true,
-                                                email: true
+                                                email: true,
+                                                firstName: true,
+                                                lastName: true
                                             }
                                         }
                                     }
