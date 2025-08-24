@@ -120,10 +120,14 @@ class PaymentController {
         }
 
         try {
+          // Validate request body
           const { error, value } = validatePaymentData(req.body);
           if (error) {
             return res.status(400).json({ success: false, message: error.details[0].message });
           }
+
+          // Log the incoming data for debugging
+          console.log('Creating payment with data:', JSON.stringify(value, null, 2));
 
           const { schoolId, id: userId } = req.user;
           const { items, ...paymentData } = value; // Extract items from the data
@@ -170,31 +174,49 @@ class PaymentController {
             })
           };
 
-          const payment = await prismaProxy.payment.create({
-            data: createData,
-            include: {
-              student: { 
-                select: { 
-                  id: true, 
-                  uuid: true, 
-                  user: { select: { firstName: true, lastName: true } }
-                } 
-              },
-              parent: { 
-                select: { 
-                  id: true, 
-                  uuid: true, 
-                  user: { select: { firstName: true, lastName: true } }
-                } 
-              },
-              feeStructure: { select: { id: true, uuid: true, name: true } },
-              items: true
-            }
-          });
+          // Log the processed data for debugging
+          console.log('Processed payment data:', JSON.stringify(createData, (key, value) => 
+            typeof value === 'bigint' ? value.toString() : value, 2
+          ));
+
+          // Create payment with better error handling
+          let payment;
+          try {
+            payment = await prismaProxy.payment.create({
+              data: createData,
+              include: {
+                student: { 
+                  select: { 
+                    id: true, 
+                    uuid: true, 
+                    user: { select: { firstName: true, lastName: true } }
+                  } 
+                },
+                parent: { 
+                  select: { 
+                    id: true, 
+                    uuid: true, 
+                    user: { select: { firstName: true, lastName: true } }
+                  } 
+                },
+                feeStructure: { select: { id: true, uuid: true, name: true } },
+                items: true
+              }
+            });
+          } catch (createError) {
+            console.error('Payment creation error:', createError);
+            return res.status(500).json({ 
+              success: false, 
+              message: 'Failed to create payment',
+              error: createError.message 
+            });
+          }
 
           // Create bill for the payment
-          const billNumber = await generateBillNumber(schoolId);
-          const bill = await prismaProxy.bill.create({
+          let bill;
+          try {
+            const billNumber = await generateBillNumber(schoolId);
+            bill = await prismaProxy.bill.create({
             data: {
               billNumber,
               paymentId: payment.id,
@@ -228,6 +250,14 @@ class PaymentController {
               }
             }
           });
+          } catch (billError) {
+            console.error('Bill creation error:', billError);
+            return res.status(500).json({ 
+              success: false, 
+              message: 'Failed to create bill for payment',
+              error: billError.message 
+            });
+          }
 
           // Get school information for file generation
           const school = await prismaProxy.school.findFirst({
@@ -637,30 +667,37 @@ class PaymentController {
         });
       }
 
-      const payment = await prisma.payment.findFirst({
-        where: { id: BigInt(id), schoolId, deletedAt: null },
-                  include: {
-            student: { 
-              select: { 
-                id: true, 
-                uuid: true, 
-                user: { select: { firstName: true, lastName: true } }
-              } 
-            },
-            parent: { 
-              select: { 
-                id: true, 
-                uuid: true, 
-                user: { select: { firstName: true, lastName: true } }
-              } 
-            },
-            feeStructure: { select: { id: true, uuid: true, name: true } },
-            items: { include: { feeItem: true } },
-            refunds: true,
-            installments: true,
-            paymentLogs: { orderBy: { createdAt: 'desc' } }
-          }
-      });
+      let payment;
+      try {
+        payment = await prismaProxy.payment.findFirst({
+        where: { id: BigInt(id), schoolId: BigInt(schoolId), deletedAt: null },
+        include: {
+          student: { 
+            select: { 
+              id: true, 
+              uuid: true, 
+              user: { select: { firstName: true, lastName: true } }
+            } 
+          },
+          parent: { 
+            select: { 
+              id: true, 
+              uuid: true, 
+              user: { select: { firstName: true, lastName: true } }
+            } 
+          },
+          feeStructure: { select: { id: true, uuid: true, name: true } },
+          items: { include: { feeItem: true } }
+        }
+        });
+      } catch (queryError) {
+        console.error('Payment query error:', queryError);
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Failed to retrieve payment',
+          error: queryError.message 
+        });
+      }
 
       if (!payment) {
         return res.status(404).json({ success: false, message: 'Payment not found' });
@@ -680,8 +717,8 @@ class PaymentController {
       const { schoolId, id: userId } = req.user;
       const updateData = req.body;
 
-      const existingPayment = await prisma.payment.findFirst({
-        where: { id: BigInt(id), schoolId, deletedAt: null }
+      const existingPayment = await prismaProxy.payment.findFirst({
+        where: { id: BigInt(id), schoolId: BigInt(schoolId), deletedAt: null }
       });
 
       if (!existingPayment) {
@@ -697,9 +734,9 @@ class PaymentController {
       // Store old values for logging
       const oldValues = { ...existingPayment };
 
-      const updatedPayment = await prisma.payment.update({
+      const updatedPayment = await prismaProxy.payment.update({
         where: { id: BigInt(id) },
-        data: { ...updateData, updatedBy: userId },
+        data: { ...updateData, updatedBy: BigInt(userId) },
         include: {
           student: { 
             select: { 
@@ -743,17 +780,17 @@ class PaymentController {
       const { id } = req.params;
       const { schoolId, id: userId } = req.user;
 
-      const payment = await prisma.payment.findFirst({
-        where: { id: BigInt(id), schoolId, deletedAt: null }
+      const payment = await prismaProxy.payment.findFirst({
+        where: { id: BigInt(id), schoolId: BigInt(schoolId), deletedAt: null }
       });
 
       if (!payment) {
         return res.status(404).json({ success: false, message: 'Payment not found' });
       }
 
-      await prisma.payment.update({
+      await prismaProxy.payment.update({
         where: { id: BigInt(id) },
-        data: { deletedAt: new Date(), updatedBy: userId }
+        data: { deletedAt: new Date(), updatedBy: BigInt(userId) }
       });
 
       // Create payment log
@@ -936,10 +973,10 @@ class PaymentController {
           take: 5,
           include: {
             student: { 
-            select: { 
-              user: { select: { firstName: true, lastName: true } }
-            } 
-          },
+              select: { 
+                user: { select: { firstName: true, lastName: true } }
+              } 
+            },
             parent: { 
               select: { 
                 id: true, 
