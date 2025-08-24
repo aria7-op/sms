@@ -443,27 +443,19 @@ export const validateClassAccess = async (user, classId, schoolId) => {
       return;
     }
 
-    // Teachers can access classes they are assigned to
+    // Teachers can access classes in their school
     if (user.role === 'TEACHER') {
+      // First check if teacher exists in this school
       const teacher = await prisma.teacher.findFirst({
         where: {
           userId: BigInt(user.id),
           schoolId: BigInt(schoolId)
-        },
-        include: {
-          subjects: {
-            where: {
-              classes: {
-                some: {
-                  id: BigInt(classId)
-                }
-              }
-            }
-          }
         }
       });
 
-      if (teacher && teacher.subjects.length > 0) {
+      if (teacher) {
+        // Teachers have access to all classes within their school
+        // This allows them to perform administrative tasks like creating students
         return;
       }
     }
