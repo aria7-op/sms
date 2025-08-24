@@ -80,16 +80,33 @@ export class IntegratedPaymentController {
                 filters
             );
 
+            // Convert BigInt values to regular numbers to avoid serialization errors
+            const convertBigInts = (obj) => {
+                if (obj === null || obj === undefined) return obj;
+                if (typeof obj === 'bigint') return Number(obj);
+                if (Array.isArray(obj)) return obj.map(convertBigInts);
+                if (typeof obj === 'object') {
+                    const converted = {};
+                    for (const [key, value] of Object.entries(obj)) {
+                        converted[key] = convertBigInts(value);
+                    }
+                    return converted;
+                }
+                return obj;
+            };
+
+            const convertedStats = convertBigInts(paymentStats.data);
+
             // Return simplified analytics with just payment data
             const analytics = {
-                payments: paymentStats.data,
+                payments: convertedStats,
                 summary: {
-                    totalRevenue: paymentStats.data.totalAmount,
-                    totalPayments: paymentStats.data.totalPayments,
-                    averageAmount: paymentStats.data.averageAmount,
-                    paymentsByStatus: paymentStats.data.paymentsByStatus,
-                    paymentsByMethod: paymentStats.data.paymentsByMethod,
-                    recentPayments: paymentStats.data.recentPayments
+                    totalRevenue: convertedStats.totalAmount || 0,
+                    totalPayments: convertedStats.totalPayments || 0,
+                    averageAmount: convertedStats.averageAmount || 0,
+                    paymentsByStatus: convertedStats.paymentsByStatus || [],
+                    paymentsByMethod: convertedStats.paymentsByMethod || [],
+                    recentPayments: convertedStats.recentPayments || []
                 }
             };
 
@@ -117,15 +134,32 @@ export class IntegratedPaymentController {
             // Get payment statistics only
             const paymentStats = await this.paymentModel.getStatistics(parseInt(schoolId));
 
+            // Convert BigInt values to regular numbers to avoid serialization errors
+            const convertBigInts = (obj) => {
+                if (obj === null || obj === undefined) return obj;
+                if (typeof obj === 'bigint') return Number(obj);
+                if (Array.isArray(obj)) return obj.map(convertBigInts);
+                if (typeof obj === 'object') {
+                    const converted = {};
+                    for (const [key, value] of Object.entries(obj)) {
+                        converted[key] = convertBigInts(value);
+                    }
+                    return converted;
+                }
+                return obj;
+            };
+
+            const convertedStats = convertBigInts(paymentStats.data);
+
             const dashboard = {
-                payments: paymentStats.data,
+                payments: convertedStats,
                 overview: {
-                    totalPayments: paymentStats.data.totalPayments,
-                    totalAmount: paymentStats.data.totalAmount,
-                    averageAmount: paymentStats.data.averageAmount,
-                    paymentsByStatus: paymentStats.data.paymentsByStatus,
-                    paymentsByMethod: paymentStats.data.paymentsByMethod,
-                    recentPayments: paymentStats.data.recentPayments
+                    totalPayments: convertedStats.totalPayments || 0,
+                    totalAmount: convertedStats.totalAmount || 0,
+                    averageAmount: convertedStats.averageAmount || 0,
+                    paymentsByStatus: convertedStats.paymentsByStatus || [],
+                    paymentsByMethod: convertedStats.paymentsByMethod || [],
+                    recentPayments: convertedStats.recentPayments || []
                 }
             };
 
@@ -154,9 +188,26 @@ export class IntegratedPaymentController {
             // Get payment data only
             const payments = await this.paymentModel.getAll({ startDate, endDate });
 
+            // Convert BigInt values to regular numbers to avoid serialization errors
+            const convertBigInts = (obj) => {
+                if (obj === null || obj === undefined) return obj;
+                if (typeof obj === 'bigint') return Number(obj);
+                if (Array.isArray(obj)) return obj.map(convertBigInts);
+                if (typeof obj === 'object') {
+                    const converted = {};
+                    for (const [key, value] of Object.entries(obj)) {
+                        converted[key] = convertBigInts(value);
+                    }
+                    return converted;
+                }
+                return obj;
+            };
+
+            const convertedPayments = convertBigInts(payments.data);
+
             // Calculate summary
-            const totalPayments = payments.data.length;
-            const totalAmount = payments.data.reduce((sum, payment) => sum + parseFloat(payment.total), 0);
+            const totalPayments = convertedPayments.length;
+            const totalAmount = convertedPayments.reduce((sum, payment) => sum + parseFloat(payment.total), 0);
 
             const report = {
                 period: {
@@ -168,12 +219,12 @@ export class IntegratedPaymentController {
                     totalAmount,
                     averageAmount: totalPayments > 0 ? totalAmount / totalPayments : 0
                 },
-                payments: payments.data
+                payments: convertedPayments
             };
 
             if (format === 'csv') {
                 // Convert to CSV format
-                const csvData = this.convertToCSV(payments.data);
+                const csvData = this.convertToCSV(convertedPayments);
                 res.setHeader('Content-Type', 'text/csv');
                 res.setHeader('Content-Disposition', `attachment; filename=payment-report-${startDate}-${endDate}.csv`);
                 return res.send(csvData);
