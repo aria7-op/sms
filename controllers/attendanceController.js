@@ -1,37 +1,469 @@
 import { PrismaClient } from '../generated/prisma/client.js';
+import { createSuccessResponse, createErrorResponse } from '../utils/responseUtils.js';
+
 const prisma = new PrismaClient();
 
+/**
+ * Get all attendances with optional filtering
+ */
 export const getAllAttendances = async (req, res) => {
-  const attendances = await prisma.attendance.findMany();
-  res.json(attendances);
+  try {
+    const { 
+      studentId, 
+      classId, 
+      date, 
+      status, 
+      schoolId = req.user.schoolId,
+      page = 1, 
+      limit = 50 
+    } = req.query;
+
+    const where = {
+      schoolId: BigInt(schoolId),
+      deletedAt: null
+    };
+
+    if (studentId) where.studentId = BigInt(studentId);
+    if (classId) where.classId = BigInt(classId);
+    if (date) where.date = new Date(date);
+    if (status) where.status = status;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const [attendances, total] = await Promise.all([
+      prisma.attendance.findMany({
+        where,
+        include: {
+          student: {
+            select: {
+              id: true,
+              uuid: true,
+              rollNo: true,
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true
+                }
+              }
+            }
+          },
+          class: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          },
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          }
+        },
+        orderBy: { date: 'desc' },
+        skip,
+        take
+      }),
+      prisma.attendance.count({ where })
+    ]);
+
+    return createSuccessResponse(res, 'Attendances retrieved successfully', {
+      attendances,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Error in getAllAttendances:', error);
+    return createErrorResponse(res, 'Failed to retrieve attendances', 500);
+  }
 };
 
+/**
+ * Get attendance by ID
+ */
 export const getAttendanceById = async (req, res) => {
-  const attendance = await prisma.attendance.findUnique({
-    where: { id: BigInt(req.params.id) }
-  });
-  if (!attendance) return res.status(404).json({ error: 'Attendance not found' });
-  res.json(attendance);
+  try {
+    const { id } = req.params;
+    
+    const attendance = await prisma.attendance.findUnique({
+      where: { id: BigInt(id) },
+      include: {
+        student: {
+          select: {
+            id: true,
+            uuid: true,
+            rollNo: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                email: true
+              }
+            }
+          }
+        },
+        class: {
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
+        },
+        subject: {
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
+        }
+      }
+    });
+
+    if (!attendance) {
+      return createErrorResponse(res, 'Attendance not found', 404);
+    }
+
+    return createSuccessResponse(res, 'Attendance retrieved successfully', attendance);
+  } catch (error) {
+    console.error('Error in getAttendanceById:', error);
+    return createErrorResponse(res, 'Failed to retrieve attendance', 500);
+  }
 };
 
+/**
+ * Create new attendance record
+ */
 export const createAttendance = async (req, res) => {
-  const { user_id, status, entry_time, exit_time, remarks, added_by } = req.body;
-  const attendance = await prisma.attendance.create({
-    data: { user_id, status, entry_time, exit_time, remarks, added_by: added_by ? BigInt(added_by) : null }
-  });
-  res.status(201).json(attendance);
+  try {
+    const {
+      studentId,
+      classId,
+      subjectId,
+      date,
+      status,
+      inTime,
+      outTime,
+      remarks
+    } = req.body;
+
+    const schoolId = req.user.schoolId;
+    const createdBy = req.user.id;
+
+    // Validate required fields
+    if (!studentId || !classId || !date || !status) {
+      return createErrorResponse(res, 'Missing required fields: studentId, classId, date, status', 400);
+    }
+
+    // Check if attendance already exists for this student, class, subject, and date
+    const existingAttendance = await prisma.attendance.findFirst({
+      where: {
+        studentId: BigInt(studentId),
+        classId: BigInt(classId),
+        subjectId: subjectId ? BigInt(subjectId) : null,
+        date: new Date(date),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      }
+    });
+
+    if (existingAttendance) {
+      return createErrorResponse(res, 'Attendance record already exists for this student, class, and date', 409);
+    }
+
+    // Create attendance record
+    const attendance = await prisma.attendance.create({
+      data: {
+        date: new Date(date),
+        status,
+        inTime: inTime ? new Date(inTime) : null,
+        outTime: outTime ? new Date(outTime) : null,
+        remarks,
+        studentId: BigInt(studentId),
+        classId: BigInt(classId),
+        subjectId: subjectId ? BigInt(subjectId) : null,
+        schoolId: BigInt(schoolId),
+        createdBy: BigInt(createdBy)
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            rollNo: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        class: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    });
+
+    return createSuccessResponse(res, 'Attendance created successfully', attendance, 201);
+  } catch (error) {
+    console.error('Error in createAttendance:', error);
+    return createErrorResponse(res, 'Failed to create attendance', 500);
+  }
 };
 
+/**
+ * Update attendance record
+ */
 export const updateAttendance = async (req, res) => {
-  const { user_id, status, entry_time, exit_time, remarks, added_by } = req.body;
-  const attendance = await prisma.attendance.update({
-    where: { id: BigInt(req.params.id) },
-    data: { user_id, status, entry_time, exit_time, remarks, added_by: added_by ? BigInt(added_by) : null }
-  });
-  res.json(attendance);
+  try {
+    const { id } = req.params;
+    const {
+      status,
+      inTime,
+      outTime,
+      remarks
+    } = req.body;
+
+    const updatedBy = req.user.id;
+
+    // Check if attendance exists
+    const existingAttendance = await prisma.attendance.findUnique({
+      where: { id: BigInt(id) }
+    });
+
+    if (!existingAttendance) {
+      return createErrorResponse(res, 'Attendance not found', 404);
+    }
+
+    // Update attendance
+    const attendance = await prisma.attendance.update({
+      where: { id: BigInt(id) },
+      data: {
+        status,
+        inTime: inTime ? new Date(inTime) : null,
+        outTime: outTime ? new Date(outTime) : null,
+        remarks,
+        updatedBy: BigInt(updatedBy)
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            rollNo: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        class: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    });
+
+    return createSuccessResponse(res, 'Attendance updated successfully', attendance);
+  } catch (error) {
+    console.error('Error in updateAttendance:', error);
+    return createErrorResponse(res, 'Failed to update attendance', 500);
+  }
 };
 
+/**
+ * Mark student in-time (arrival)
+ */
+export const markInTime = async (req, res) => {
+  try {
+    const { studentId, classId, subjectId, date } = req.body;
+    const schoolId = req.user.schoolId;
+    const updatedBy = req.user.id;
+
+    // Validate required fields
+    if (!studentId || !classId || !date) {
+      return createErrorResponse(res, 'Missing required fields: studentId, classId, date', 400);
+    }
+
+    const currentTime = new Date();
+    const attendanceDate = new Date(date);
+
+    // Check if attendance record exists
+    let attendance = await prisma.attendance.findFirst({
+      where: {
+        studentId: BigInt(studentId),
+        classId: BigInt(classId),
+        subjectId: subjectId ? BigInt(subjectId) : null,
+        date: attendanceDate,
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      }
+    });
+
+    if (attendance) {
+      // Update existing record with in-time
+      attendance = await prisma.attendance.update({
+        where: { id: attendance.id },
+        data: {
+          inTime: currentTime,
+          status: 'PRESENT',
+          updatedBy: BigInt(updatedBy)
+        }
+      });
+    } else {
+      // Create new record
+      attendance = await prisma.attendance.create({
+        data: {
+          date: attendanceDate,
+          status: 'PRESENT',
+          inTime: currentTime,
+          studentId: BigInt(studentId),
+          classId: BigInt(classId),
+          subjectId: subjectId ? BigInt(subjectId) : null,
+          schoolId: BigInt(schoolId),
+          createdBy: BigInt(updatedBy)
+        }
+      });
+    }
+
+    return createSuccessResponse(res, 'In-time marked successfully', attendance);
+  } catch (error) {
+    console.error('Error in markInTime:', error);
+    return createErrorResponse(res, 'Failed to mark in-time', 500);
+  }
+};
+
+/**
+ * Mark student out-time (departure)
+ */
+export const markOutTime = async (req, res) => {
+  try {
+    const { studentId, classId, subjectId, date } = req.body;
+    const schoolId = req.user.schoolId;
+    const updatedBy = req.user.id;
+
+    // Validate required fields
+    if (!studentId || !classId || !date) {
+      return createErrorResponse(res, 'Missing required fields: studentId, classId, date', 400);
+    }
+
+    const currentTime = new Date();
+    const attendanceDate = new Date(date);
+
+    // Find existing attendance record
+    const attendance = await prisma.attendance.findFirst({
+      where: {
+        studentId: BigInt(studentId),
+        classId: BigInt(classId),
+        subjectId: subjectId ? BigInt(subjectId) : null,
+        date: attendanceDate,
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      }
+    });
+
+    if (!attendance) {
+      return createErrorResponse(res, 'No attendance record found for this student, class, and date', 404);
+    }
+
+    // Update with out-time
+    const updatedAttendance = await prisma.attendance.update({
+      where: { id: attendance.id },
+      data: {
+        outTime: currentTime,
+        updatedBy: BigInt(updatedBy)
+      }
+    });
+
+    return createSuccessResponse(res, 'Out-time marked successfully', updatedAttendance);
+  } catch (error) {
+    console.error('Error in markOutTime:', error);
+    return createErrorResponse(res, 'Failed to mark out-time', 500);
+  }
+};
+
+/**
+ * Bulk create attendance records
+ */
+export const bulkCreateAttendance = async (req, res) => {
+  try {
+    const { attendances } = req.body;
+    const schoolId = req.user.schoolId;
+    const createdBy = req.user.id;
+
+    if (!Array.isArray(attendances) || attendances.length === 0) {
+      return createErrorResponse(res, 'Attendances array is required and must not be empty', 400);
+    }
+
+    const attendanceData = attendances.map(att => ({
+      date: new Date(att.date),
+      status: att.status,
+      inTime: att.inTime ? new Date(att.inTime) : null,
+      outTime: att.outTime ? new Date(att.outTime) : null,
+      remarks: att.remarks,
+      studentId: BigInt(att.studentId),
+      classId: BigInt(att.classId),
+      subjectId: att.subjectId ? BigInt(att.subjectId) : null,
+      schoolId: BigInt(schoolId),
+      createdBy: BigInt(createdBy)
+    }));
+
+    const createdAttendances = await prisma.attendance.createMany({
+      data: attendanceData,
+      skipDuplicates: true
+    });
+
+    return createSuccessResponse(res, 'Bulk attendance created successfully', {
+      created: createdAttendances.count
+    }, 201);
+  } catch (error) {
+    console.error('Error in bulkCreateAttendance:', error);
+    return createErrorResponse(res, 'Failed to create bulk attendance', 500);
+  }
+};
+
+/**
+ * Delete attendance record (soft delete)
+ */
 export const deleteAttendance = async (req, res) => {
-  await prisma.attendance.delete({ where: { id: BigInt(req.params.id) } });
-  res.json({ message: 'Attendance deleted' });
+  try {
+    const { id } = req.params;
+    const updatedBy = req.user.id;
+
+    // Check if attendance exists
+    const existingAttendance = await prisma.attendance.findUnique({
+      where: { id: BigInt(id) }
+    });
+
+    if (!existingAttendance) {
+      return createErrorResponse(res, 'Attendance not found', 404);
+    }
+
+    // Soft delete
+    await prisma.attendance.update({
+      where: { id: BigInt(id) },
+      data: {
+        deletedAt: new Date(),
+        updatedBy: BigInt(updatedBy)
+      }
+    });
+
+    return createSuccessResponse(res, 'Attendance deleted successfully');
+  } catch (error) {
+    console.error('Error in deleteAttendance:', error);
+    return createErrorResponse(res, 'Failed to delete attendance', 500);
+  }
 }; 
