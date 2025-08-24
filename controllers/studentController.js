@@ -145,26 +145,7 @@ class StudentController {
         }
       };
 
-      // EVENT-FIRST WORKFLOW: Log event before creating student
-      const studentEventService = new StudentEventService();
-      const eventData = {
-        studentData: studentDataWithoutRelations,
-        userData: userDataWithoutAddress,
-        studentCode,
-        classId,
-        schoolId,
-        createdBy: req.user.id,
-        userMetadata
-      };
-      
-      // Log the student creation event FIRST
-      const event = await studentEventService.createStudentCreationEvent(
-        eventData,
-        req.user.id,
-        schoolId
-      );
-      
-      // Create student with user
+      // Create student with user FIRST
       const student = await prisma.student.create({
         data: {
           ...studentDataWithoutRelations,
@@ -268,14 +249,18 @@ class StudentController {
         }
       });
 
-      // Update the event with the student ID
-      await prisma.studentEvent.update({
-        where: { id: event.id },
-        data: { 
-          studentId: student.id,
-          metadata: { ...event.metadata, studentId: student.id.toString() }
-        }
-      });
+      // Log the student creation event AFTER student is created
+      const studentEventService = new StudentEventService();
+      try {
+        await studentEventService.createStudentEnrollmentEvent(
+          student,
+          req.user.id,
+          schoolId
+        );
+      } catch (eventError) {
+        // Log event error but don't fail the student creation
+        console.error('Failed to log student creation event:', eventError);
+      }
 
       // Invalidate cache
       await invalidateStudentCacheOnCreate(student);
@@ -310,8 +295,7 @@ class StudentController {
       );
 
       return createSuccessResponse(res, 201, 'Student created successfully', {
-        student,
-        event
+        student
       });
     } catch (error) {
       return handlePrismaError(res, error, 'createStudent');
@@ -322,32 +306,32 @@ class StudentController {
    * Get students with pagination and filters
    */
   async getStudents(req, res) {
-    console.log('=== getStudents START ===');
-    console.log('Query:', req.query);
-    console.log('User:', req.user);
+    // console.log('=== getStudents START ===');
+    // console.log('Query:', req.query);
+    // console.log('User:', req.user);
     
     try {
-      console.log('Step 1: Determining user type and schoolId...');
+      // console.log('Step 1: Determining user type and schoolId...');
       // Handle different user types
       let schoolId;
       if (req.user.type === 'owner' || req.user.role === 'SUPER_ADMIN') {
         // Owner can access all schools or specific school
         schoolId = req.query.schoolId || req.user.schoolId;
-        console.log('Owner accessing students for schoolId:', schoolId);
+        // console.log('Owner accessing students for schoolId:', schoolId);
       } else {
         // Regular user can only access their school
         schoolId = req.user.schoolId;
-        console.log('Regular user accessing students for schoolId:', schoolId);
+        // console.log('Regular user accessing students for schoolId:', schoolId);
       }
 
-      console.log('Step 2: Validating schoolId...');
+      // console.log('Step 2: Validating schoolId...');
       if (!schoolId) {
-        console.log('ERROR: No schoolId found');
+        // console.log('ERROR: No schoolId found');
         return createErrorResponse(res, 400, 'School ID is required');
       }
-      console.log('SchoolId validated:', schoolId);
+      // console.log('SchoolId validated:', schoolId);
 
-      console.log('Step 3: Extracting query parameters...');
+      // console.log('Step 3: Extracting query parameters...');
       const { 
         page = 1, 
         limit = 10, 
@@ -373,19 +357,19 @@ class StudentController {
                              limit === 'unlimited' ||
                              parseInt(limit) > 10000;
       
-      console.log('Query parameters extracted:', { page, limit, search, classId, sectionId, status, include, sortBy, sortOrder });
-      console.log('Request analysis:', { 
-        requestHost, 
-        hasExplicitLimit, 
-        limitValue: limit,
-        shouldReturnAll 
-      });
+      // console.log('Query parameters extracted:', { page, limit, search, classId, sectionId, status, include, sortBy, sortOrder });
+      // console.log('Request analysis:', { 
+      //   requestHost, 
+      //   hasExplicitLimit, 
+      //   limitValue: limit,
+      //   shouldReturnAll 
+      // });
 
-      console.log('Step 4: Building include query...');
+      // console.log('Step 4: Building include query...');
       const includeQuery = buildStudentIncludeQuery(include);
-      console.log('Include query built:', includeQuery);
+      // console.log('Include query built:', includeQuery);
 
-      console.log('Step 5: Building search query...');
+      // console.log('Step 5: Building search query...');
       const searchQuery = buildStudentSearchQuery({
         search,
         classId,
@@ -393,9 +377,9 @@ class StudentController {
         status,
         schoolId
       });
-      console.log('Search query built:', searchQuery);
+      // console.log('Search query built:', searchQuery);
 
-      console.log('Step 6: Preparing final query...');
+      // console.log('Step 6: Preparing final query...');
       const finalQuery = {
         where: {
           ...searchQuery,
@@ -411,7 +395,7 @@ class StudentController {
         finalQuery.skip = (parseInt(page) - 1) * parseInt(limit);
         finalQuery.take = parseInt(limit);
       } else {
-        console.log('Returning ALL students - pagination disabled');
+        // console.log('Returning ALL students - pagination disabled');
       }
       
       // Convert BigInt values to strings for logging
@@ -421,13 +405,13 @@ class StudentController {
         }
         return value;
       }));
-      console.log('Final query prepared:', JSON.stringify(logQuery, null, 2));
+      // console.log('Final query prepared:', JSON.stringify(logQuery, null, 2));
 
-      console.log('Step 7: Executing Prisma query...');
+      // console.log('Step 7: Executing Prisma query...');
       const students = await prisma.student.findMany(finalQuery);
 
-      console.log('Step 8: Query completed. Found students:', students.length);
-      console.log('=== getStudents END ===');
+      // console.log('Step 8: Query completed. Found students:', students.length);
+      // console.log('=== getStudents END ===');
       
       const message = shouldReturnAll ? 
         `All ${students.length} students fetched successfully (no pagination)` : 
@@ -1108,18 +1092,18 @@ class StudentController {
    * Get students by class
    */
   async getStudentsByClass(req, res) {
-    console.log('=== getStudentsByClass START ===');
-    console.log('Params:', req.params);
-    console.log('Query:', req.query);
-    console.log('User:', req.user);
+    // console.log('=== getStudentsByClass START ===');
+    // console.log('Params:', req.params);
+    // console.log('Query:', req.query);
+    // console.log('User:', req.user);
     
     try {
       const { classId } = req.params;
       const { include = [] } = req.query;
 
-      console.log('Building include query...');
+      // console.log('Building include query...');
       const includeQuery = buildStudentIncludeQuery(include);
-      console.log('Include query:', includeQuery);
+      // console.log('Include query:', includeQuery);
 
       console.log('Executing Prisma query...');
       const students = await prisma.student.findMany({
@@ -1131,8 +1115,8 @@ class StudentController {
         include: includeQuery
       });
 
-      console.log('Query completed. Found students:', students.length);
-      console.log('=== getStudentsByClass END ===');
+      // console.log('Query completed. Found students:', students.length);
+      // console.log('=== getStudentsByClass END ===');
       return createSuccessResponse(res, 200, 'Students by class fetched successfully', students);
     } catch (error) {
       console.error('=== getStudentsByClass ERROR ===', error);
