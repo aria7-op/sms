@@ -13,7 +13,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-i
 /**
  * Verify JWT token and attach user to request
  */
-export const authenticateToken = (req, res, next) => {
+export const authenticateToken = async (req, res, next) => {
   console.log('=== authenticateToken START ===');
   console.log('Request:', req.method, req.path);
   console.log('Request IP:', req.ip, 'Forwarded for:', req.headers['x-forwarded-for']);
@@ -46,18 +46,20 @@ export const authenticateToken = (req, res, next) => {
     if (decoded.role === 'SUPER_ADMIN' || decoded.ownerId) {
       // This could be an owner or a SUPER_ADMIN user
       console.log('Fetching owner from database...');
-      prisma.owner.findUnique({
-        where: { id: BigInt(decoded.userId || decoded.id) },
-        include: {
-          schools: {
-            select: {
-              id: true,
-              name: true,
-              code: true
+      try {
+        const owner = await prisma.owner.findUnique({
+          where: { id: BigInt(decoded.userId || decoded.id) },
+          include: {
+            schools: {
+              select: {
+                id: true,
+                name: true,
+                code: true
+              }
             }
           }
-        }
-      }).then(owner => {
+        });
+        
         if (owner) {
           console.log('Owner found:', owner.id, owner.email);
           // Set owner properties for compatibility
@@ -69,11 +71,11 @@ export const authenticateToken = (req, res, next) => {
             schoolId: owner.schools.length > 0 ? owner.schools[0].id : null
           };
           console.log('=== authenticateToken END (Owner) ===');
-          next();
+          return next();
         } else {
           // Owner not found, check if it's a SUPER_ADMIN user
           console.log('Owner not found, checking users table...');
-          prisma.user.findUnique({
+          const user = await prisma.user.findUnique({
             where: { id: BigInt(decoded.userId || decoded.id) },
             include: {
               school: true,
@@ -83,51 +85,46 @@ export const authenticateToken = (req, res, next) => {
               student: true,
               staff: true
             }
-          }).then(user => {
-            if (!user) {
-              console.log('=== authenticateToken ERROR: User not found ===');
-              return res.status(401).json({
-                success: false,
-                error: 'Access denied',
-                message: 'User not found'
-              });
-            }
-
-            console.log('User found:', user.id, user.email);
-            req.user = user;
-            console.log('=== authenticateToken END (User) ===');
-            next();
-          }).catch(error => {
-            console.error('=== authenticateToken DATABASE ERROR ===', error);
-            return res.status(500).json({
-              success: false,
-              error: 'Authentication error',
-              message: 'Database error during authentication'
-            });
           });
+          
+          if (!user) {
+            console.log('=== authenticateToken ERROR: User not found ===');
+            return res.status(401).json({
+              success: false,
+              error: 'Access denied',
+              message: 'User not found'
+            });
+          }
+
+          console.log('User found:', user.id, user.email);
+          req.user = user;
+          console.log('=== authenticateToken END (User) ===');
+          return next();
         }
-      }).catch(error => {
+      } catch (error) {
         console.error('=== authenticateToken DATABASE ERROR ===', error);
         return res.status(500).json({
           success: false,
           error: 'Authentication error',
           message: 'Database error during authentication'
         });
-      });
+      }
     } else {
       // This is a regular user token
       console.log('Fetching user from database...');
-      prisma.user.findUnique({
-        where: { id: BigInt(decoded.userId || decoded.id) },
-        include: {
-          school: true,
-          createdByOwner: true,
-          teacher: true,
-          parent: true,
-          student: true,
-          staff: true
-        }
-      }).then(user => {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: BigInt(decoded.userId || decoded.id) },
+          include: {
+            school: true,
+            createdByOwner: true,
+            teacher: true,
+            parent: true,
+            student: true,
+            staff: true
+          }
+        });
+        
         if (!user) {
           console.log('=== authenticateToken ERROR: User not found ===');
           return res.status(401).json({
@@ -140,15 +137,15 @@ export const authenticateToken = (req, res, next) => {
         console.log('User found:', user.id, user.email);
         req.user = user;
         console.log('=== authenticateToken END (User) ===');
-        next();
-      }).catch(error => {
+        return next();
+      } catch (error) {
         console.error('=== authenticateToken DATABASE ERROR ===', error);
         return res.status(500).json({
           success: false,
           error: 'Authentication error',
           message: 'Database error during authentication'
         });
-      });
+      }
     }
   } catch (error) {
     console.error('=== authenticateToken JWT ERROR ===', error);
