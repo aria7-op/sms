@@ -423,7 +423,8 @@ export const markInTime = async (req, res) => {
             date: attendanceDate,
             className: classInfo?.name || 'Unknown Class',
             status: 'PRESENT'
-          }
+          },
+          'inTime' // Use campaign ID 403 for in-time
         ).catch(smsError => {
           console.error('SMS sending failed (non-critical):', smsError.message);
         });
@@ -523,7 +524,8 @@ export const markOutTime = async (req, res) => {
             date: attendanceDate,
             className: classInfo?.name || 'Unknown Class',
             status: 'DEPARTED'
-          }
+          },
+          'outTime' // Use campaign ID 404 for out-time
         ).catch(smsError => {
           console.error('SMS sending failed (non-critical):', smsError.message);
         });
