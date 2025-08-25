@@ -8,9 +8,9 @@ class SMSService {
     this.apiKey = '81945d'; // API key for SMS service
     this.token = null;
     this.lastTokenDate = null;
-    // Campaign IDs: 403 for in-time, 404 for out-time
+    // Campaign IDs: 81945d for in-time, 404 for out-time
     this.campaignIds = {
-      inTime: '403',
+      inTime: '81945d',
       outTime: '404'
     };
   }
@@ -160,10 +160,9 @@ class SMSService {
       console.log('📱 Token:', token);
       console.log('📱 Payload:', JSON.stringify(smsPayload, null, 2));
 
-      // Use JWT token in Authorization header and API key in X-API-Key header
+      // Use only JWT token in Authorization header (no X-API-Key needed)
       const headers = {
         'Content-Type': 'application/json',
-        'X-API-Key': this.apiKey,
         'Authorization': `Bearer ${token}`
       };
 
