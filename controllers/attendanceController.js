@@ -1383,4 +1383,4 @@ export const exportAttendanceData = async (req, res) => {
     console.error('Error in exportAttendanceData:', error);
     return createErrorResponse(res, 'Failed to export attendance data', 500);
   }
-
+};
