@@ -131,7 +131,7 @@ class SMSService {
           MasterCampaignID: masterCampaignId,
           BulkData: [
             {
-              Msisdn: studentData.phone || '',
+              Msisdn: (studentData.phone || '').replace('+', ''), // Remove + prefix
               VAR1: studentData.name || 'Student',
               VAR2: timeInfo,
               VAR3: attendanceData.date || new Date().toDateString(),
