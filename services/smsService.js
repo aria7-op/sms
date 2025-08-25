@@ -5,6 +5,7 @@ class SMSService {
     this.baseUrl = 'https://dservices.etisalat.af/smsbusinesssolution';
     this.username = '730774777';
     this.password = 'Kawish#1234';
+    this.apiKey = '81945d'; // API key for SMS service
     this.token = null;
     this.lastTokenDate = null;
     // Campaign IDs: 403 for in-time, 404 for out-time
@@ -159,18 +160,11 @@ class SMSService {
       console.log('📱 Token:', token);
       console.log('📱 Payload:', JSON.stringify(smsPayload, null, 2));
 
-      // Try different authorization header formats
+      // Use the correct API key for SMS service
       const headers = {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-API-Key': this.apiKey
       };
-
-      // Try different auth header formats
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-        // Alternative formats if the first one doesn't work
-        headers['X-Auth-Token'] = token;
-        headers['X-API-Key'] = token;
-      }
 
       console.log('📱 Request Headers:', headers);
 
