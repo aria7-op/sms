@@ -8,9 +8,9 @@ class SMSService {
     this.apiKey = '81945d'; // API key for SMS service
     this.token = null;
     this.lastTokenDate = null;
-    // Campaign IDs: 81945d for in-time, 404 for out-time
+    // Campaign IDs: 403 for in-time, 404 for out-time (81945d is the API key in URL)
     this.campaignIds = {
-      inTime: '81945d',
+      inTime: '403',
       outTime: '404'
     };
   }
@@ -156,7 +156,7 @@ class SMSService {
       });
 
       console.log('📱 SMS API Request Details:');
-      console.log('📱 URL:', `${this.baseUrl}/campaignApi/InsertBulkSms/${masterCampaignId}`);
+      console.log('📱 URL:', `${this.baseUrl}/campaignApi/InsertBulkSms/81945d`);
       console.log('📱 Token:', token);
       console.log('📱 Payload:', JSON.stringify(smsPayload, null, 2));
 
@@ -169,7 +169,7 @@ class SMSService {
       console.log('📱 Request Headers:', headers);
 
       const response = await axios.post(
-        `${this.baseUrl}/campaignApi/InsertBulkSms/${masterCampaignId}`,
+        `${this.baseUrl}/campaignApi/InsertBulkSms/81945d`,
         smsPayload,
         { headers }
       );
