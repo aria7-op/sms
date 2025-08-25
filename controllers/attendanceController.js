@@ -1,3 +1,4 @@
+
 import { PrismaClient } from '../generated/prisma/client.js';
 import { createSuccessResponse, createErrorResponse } from '../utils/responseUtils.js';
 import smsService from '../services/smsService.js';
@@ -829,10 +830,24 @@ export const getClassAttendanceSummary = async (req, res) => {
     const absent = totalStudents - present;
     const late = attendanceRecords.filter(r => r.status === 'LATE').length;
     const attendanceRate = totalStudents > 0 ? Math.round((present / totalStudents) * 100) : 0;
+    
+    console.log('🔍 Summary calculation:');
+    console.log('🔍 Total students:', totalStudents);
+    console.log('🔍 Present count:', present);
+    console.log('🔍 Absent count:', absent);
+    console.log('🔍 Late count:', late);
+    console.log('🔍 Attendance rate:', attendanceRate);
 
     // Create student attendance details
     const students = classStudents.map(student => {
-      const attendance = attendanceRecords.find(r => r.studentId === student.id);
+      console.log('🔍 Processing student:', { studentId: student.id, studentIdType: typeof student.id });
+      console.log('🔍 Available attendance records:', attendanceRecords.map(r => ({ 
+        attendanceStudentId: r.studentId, 
+        attendanceStudentIdType: typeof r.studentId,
+        status: r.status 
+      })));
+      
+      const attendance = attendanceRecords.find(r => BigInt(r.studentId) === student.id);
       
       // Check if user data exists
       if (!student.user || !student.user.firstName || !student.user.lastName) {
@@ -873,6 +888,8 @@ export const getClassAttendanceSummary = async (req, res) => {
 
     console.log('🔍 Returning summary:', summary);
     console.log('🔍 Sample student data:', students[0]);
+    console.log('🔍 All students data:', students);
+    console.log('🔍 Attendance records:', attendanceRecords);
     return createSuccessResponse(res, 'Class attendance summary retrieved successfully', summary);
   } catch (error) {
     console.error('❌ Error in getClassAttendanceSummary:', error);
