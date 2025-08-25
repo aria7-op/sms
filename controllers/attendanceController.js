@@ -1348,43 +1348,263 @@
 
         case 'pdf':
         default:
-          // For now, return formatted text as PDF (you can implement proper PDF generation later)
-          const pdfContent = [
-            'ATTENDANCE REPORT',
-            '================',
-            '',
-            `Generated on: ${new Date().toLocaleDateString()}`,
-            `Class: ${classId ? 'Specific Class' : 'All Classes'}`,
-            `Date Range: ${startDate || 'All'} to ${endDate || 'All'}`,
-            `Total Records: ${exportData.length}`,
-            '',
-            ...exportData.map(row => 
-              `${row.date} | ${row.studentName} (${row.rollNo}) | ${row.className} | ${row.status} | ${row.inTime} - ${row.outTime}`
-            )
-          ].join('\n');
-          
-          exportContent = pdfContent;
-          contentType = 'application/pdf';
-          filename = `attendance_${startDate || 'all'}_${endDate || 'data'}.pdf`;
+          try {
+            console.log('🔍 Generating PDF file...');
+            
+            // Import PDFKit library dynamically to avoid issues
+            const PDFDocument = require('pdfkit');
+            console.log('✅ PDFKit imported successfully');
+            
+            // Create a new PDF document
+            const doc = new PDFDocument({
+              size: 'A4',
+              margin: 50,
+              info: {
+                Title: 'Attendance Report',
+                Author: 'School Management System',
+                Subject: 'Student Attendance Report',
+                Keywords: 'attendance, students, report',
+                CreationDate: new Date()
+              }
+            });
+            
+            console.log('✅ PDF document created');
+            
+            // Validate that we have data to export
+            if (!exportData || exportData.length === 0) {
+              console.error('❌ No data to export for PDF');
+              throw new Error('No attendance data available for export');
+            }
+            
+            console.log('🔍 Data validation passed, rows to export:', exportData.length);
+            
+            // Set up response headers for PDF
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="attendance_${startDate || 'all'}_${endDate || 'data'}.pdf"`);
+            res.setHeader('Cache-Control', 'no-cache');
+            
+            // Pipe the PDF to the response
+            doc.pipe(res);
+            
+            console.log('🔍 Starting PDF content generation...');
+            
+            // Add title
+            doc.fontSize(24)
+               .font('Helvetica-Bold')
+               .text('ATTENDANCE REPORT', { align: 'center' });
+            
+            doc.moveDown(0.5);
+            console.log('✅ Title added');
+            
+            // Add subtitle
+            doc.fontSize(14)
+               .font('Helvetica')
+               .text(`Generated on: ${new Date().toLocaleDateString()}`, { align: 'center' });
+            
+            doc.moveDown(0.5);
+            console.log('✅ Subtitle added');
+            
+            // Add report details
+            doc.fontSize(12)
+               .font('Helvetica-Bold')
+               .text('Report Details:', { underline: true });
+            
+            doc.fontSize(10)
+               .font('Helvetica')
+               .text(`Class: ${classId ? 'Specific Class' : 'All Classes'}`)
+               .text(`Date Range: ${startDate || 'All'} to ${endDate || 'All'}`)
+               .text(`Total Records: ${exportData.length}`);
+            
+            doc.moveDown(1);
+            console.log('✅ Report details added');
+            
+            // Create table headers
+            const tableTop = doc.y;
+            const tableLeft = 50;
+            const colWidths = [80, 120, 80, 80, 80, 80, 80];
+            const headers = ['Date', 'Student Name', 'Roll No', 'Class', 'Status', 'In Time', 'Out Time'];
+            
+            console.log('🔍 Creating table headers at Y position:', tableTop);
+            
+            // Draw table headers
+            doc.fontSize(10)
+               .font('Helvetica-Bold')
+               .fillColor('black');
+            
+            headers.forEach((header, i) => {
+              doc.text(header, tableLeft + colWidths.slice(0, i).reduce((a, b) => a + b, 0), tableTop);
+            });
+            
+            // Draw header underline
+            doc.moveTo(tableLeft, tableTop + 15)
+               .lineTo(tableLeft + colWidths.reduce((a, b) => a + b, 0), tableTop + 15)
+               .stroke();
+            
+            doc.moveDown(0.5);
+            console.log('✅ Table headers created');
+            
+            // Add data rows
+            let currentY = doc.y;
+            doc.fontSize(9)
+               .font('Helvetica');
+            
+            console.log('🔍 Adding data rows, starting Y position:', currentY);
+            console.log('🔍 Total rows to add:', exportData.length);
+            
+            exportData.forEach((row, index) => {
+              // Check if we need a new page
+              if (currentY > 700) {
+                doc.addPage();
+                currentY = 50;
+                console.log('📄 Added new page at row:', index);
+              }
+              
+              const rowData = [
+                row.date,
+                row.studentName,
+                row.rollNo,
+                row.className,
+                row.status,
+                row.inTime,
+                row.outTime
+              ];
+              
+              // Draw row data
+              rowData.forEach((cell, i) => {
+                const x = tableLeft + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
+                doc.text(cell || '--', x, currentY);
+              });
+              
+              currentY += 20;
+              
+              // Add alternating row background
+              if (index % 2 === 0) {
+                doc.rect(tableLeft, currentY - 20, colWidths.reduce((a, b) => a + b, 0), 20)
+                   .fillColor('#f8f9fa')
+                   .fill();
+                doc.fillColor('black'); // Reset fill color
+              }
+              
+              // Log progress every 10 rows
+              if (index % 10 === 0 || index === exportData.length - 1) {
+                console.log(`📝 Processed row ${index + 1}/${exportData.length}, Y position: ${currentY}`);
+              }
+            });
+            
+            console.log('✅ All data rows added successfully');
+            
+            // Add summary at the end
+            doc.addPage();
+            doc.fontSize(16)
+               .font('Helvetica-Bold')
+               .text('Summary', { underline: true });
+            
+            doc.moveDown(0.5);
+            
+            const statusCounts = {};
+            exportData.forEach(row => {
+              statusCounts[row.status] = (statusCounts[row.status] || 0) + 1;
+            });
+            
+            doc.fontSize(12)
+               .font('Helvetica');
+            
+            Object.entries(statusCounts).forEach(([status, count]) => {
+              doc.text(`${status}: ${count} students`);
+            });
+            
+            doc.moveDown(1);
+            doc.text(`Total Students: ${exportData.length}`);
+            doc.text(`Report Generated: ${new Date().toLocaleString()}`);
+            
+            console.log('✅ PDF content added successfully');
+            console.log('🔍 PDF document info:', {
+              pageCount: doc.bufferedPageRange().count,
+              currentPage: doc.page.pageNumber,
+              yPosition: doc.y
+            });
+            
+            // Finalize the PDF
+            doc.end();
+            console.log('✅ PDF finalized and sent');
+            
+            // Add a small delay to ensure the PDF is fully written
+            setTimeout(() => {
+              console.log('✅ PDF generation completed');
+            }, 100);
+            
+            // Return early since we're piping to response
+            return;
+            
+          } catch (pdfError) {
+            console.error('❌ PDF generation failed, falling back to CSV:', pdfError);
+            console.error('❌ Error details:', {
+              message: pdfError.message,
+              stack: pdfError.stack,
+              name: pdfError.name
+            });
+            
+            // Try to generate a simple text-based PDF as fallback
+            try {
+              console.log('🔄 Attempting simple PDF fallback...');
+              
+              const simpleDoc = new (require('pdfkit'))({
+                size: 'A4',
+                margin: 50
+              });
+              
+              // Set headers for fallback PDF
+              res.setHeader('Content-Type', 'application/pdf');
+              res.setHeader('Content-Disposition', `attachment; filename="attendance_${startDate || 'all'}_${endDate || 'data'}.pdf"`);
+              
+              simpleDoc.pipe(res);
+              simpleDoc.fontSize(16).text('ATTENDANCE REPORT', { align: 'center' });
+              simpleDoc.moveDown(1);
+              simpleDoc.fontSize(12).text(`Generated on: ${new Date().toLocaleDateString()}`);
+              simpleDoc.moveDown(1);
+              simpleDoc.text(`Total Records: ${exportData.length}`);
+              simpleDoc.moveDown(1);
+              simpleDoc.text('Note: This is a simplified version due to generation error.');
+              simpleDoc.end();
+              
+              console.log('✅ Simple PDF fallback sent');
+              return;
+            } catch (fallbackError) {
+              console.error('❌ PDF fallback also failed:', fallbackError);
+              
+              // Final fallback to CSV
+              res.setHeader('Content-Type', 'text/csv');
+              res.setHeader('Content-Disposition', `attachment; filename="attendance_${startDate || 'all'}_${endDate || 'data'}.csv"`);
+              res.send(exportContent);
+              console.log('✅ Final fallback CSV sent');
+              return;
+            }
+          }
           break;
       }
 
-      // Set response headers for file download
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.setHeader('Content-Length', Buffer.byteLength(exportContent, 'utf8'));
+      // Set response headers for file download (only for non-PDF formats)
+      if (format !== 'pdf') {
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', Buffer.byteLength(exportContent, 'utf8'));
+      }
 
       console.log('✅ Export completed successfully:', { format, filename, records: exportData.length });
       
       // For Excel format, we need to create a proper Excel file
       if (format === 'excel') {
         try {
+          console.log('🔍 Generating Excel file...');
+          
           // Import ExcelJS library dynamically to avoid issues
           const ExcelJS = require('exceljs');
+          console.log('✅ ExcelJS imported successfully');
           
           // Create workbook and worksheet
           const workbook = new ExcelJS.Workbook();
           const worksheet = workbook.addWorksheet('Attendance Data');
+          console.log('✅ Workbook and worksheet created');
           
           // Add headers
           worksheet.columns = [
@@ -1397,11 +1617,14 @@
             { header: 'Out Time', key: 'outTime', width: 15 },
             { header: 'Remarks', key: 'remarks', width: 30 }
           ];
+          console.log('✅ Headers added');
           
           // Add data rows
-          exportData.forEach(row => {
+          exportData.forEach((row, index) => {
             worksheet.addRow(row);
+            if (index < 5) console.log('📝 Added row:', row); // Log first 5 rows for debugging
           });
+          console.log(`✅ Added ${exportData.length} data rows`);
           
           // Style the header row
           worksheet.getRow(1).font = { bold: true };
@@ -1410,27 +1633,42 @@
             pattern: 'solid',
             fgColor: { argb: 'FFE0E0E0' }
           };
+          console.log('✅ Header styling applied');
           
           // Write to buffer
+          console.log('🔍 Writing to buffer...');
           const buffer = await workbook.xlsx.writeBuffer();
+          console.log('✅ Buffer created, size:', buffer.length);
           
           // Set proper headers for Excel
           res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
           res.setHeader('Content-Length', buffer.length);
+          res.setHeader('Cache-Control', 'no-cache');
+          console.log('✅ Headers set for Excel');
           
           // Send the buffer
           res.send(buffer);
+          console.log('✅ Excel buffer sent successfully');
         } catch (excelError) {
           console.error('❌ Excel generation failed, falling back to CSV:', excelError);
+          console.error('❌ Error details:', {
+            message: excelError.message,
+            stack: excelError.stack,
+            name: excelError.name
+          });
+          
           // Fallback to CSV if Excel fails
           res.setHeader('Content-Type', 'text/csv');
           res.setHeader('Content-Disposition', `attachment; filename="attendance_${startDate || 'all'}_${endDate || 'data'}.csv"`);
           res.send(exportContent);
+          console.log('✅ Fallback CSV sent');
         }
-      } else {
-        // Send the file content for other formats
+      } else if (format === 'csv') {
+        // Send the CSV content
         res.send(exportContent);
+        console.log('✅ CSV content sent');
       }
+      // Note: PDF is handled separately above with doc.pipe(res)
 
     } catch (error) {
       console.error('Error in exportAttendanceData:', error);
