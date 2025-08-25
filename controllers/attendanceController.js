@@ -328,16 +328,16 @@ export const markInTime = async (req, res) => {
     console.log('🚀 markInTime endpoint called');
     console.log('📝 Request body:', req.body);
     
-    const { rollNo, subjectId, date } = req.body;
+    const { studentId, subjectId, date } = req.body;
     
-    console.log('🔍 Extracted values:', { rollNo, subjectId, date });
+    console.log('🔍 Extracted values:', { studentId, subjectId, date });
     
     // Validate required fields
-    if (!rollNo || !date) {
+    if (!studentId || !date) {
       console.log('❌ Missing required fields');
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: rollNo, date'
+        error: 'Missing required fields: studentId, date'
       });
     }
 
@@ -351,11 +351,11 @@ export const markInTime = async (req, res) => {
     console.log('🏫 School ID:', schoolId);
     console.log('👤 Created by:', createdBy);
 
-    // First, find the student by roll number
-    console.log('🔍 Finding student by roll number:', rollNo);
-    const student = await prisma.student.findFirst({
+    // First, find the student by ID
+    console.log('🔍 Finding student by ID:', studentId);
+    const student = await prisma.student.findUnique({
       where: {
-        rollNo: rollNo,
+        id: BigInt(studentId),
         schoolId: BigInt(schoolId),
         deletedAt: null
       },
@@ -377,10 +377,10 @@ export const markInTime = async (req, res) => {
     });
 
     if (!student) {
-      console.log('❌ Student not found with roll number:', rollNo);
+      console.log('❌ Student not found with ID:', studentId);
       return res.status(404).json({
         success: false,
-        error: `Student with roll number ${rollNo} not found`
+        error: `Student with ID ${studentId} not found`
       });
     }
 
@@ -448,7 +448,7 @@ export const markInTime = async (req, res) => {
 
     // Send SMS notification (non-blocking)
     try {
-      console.log('🔍 Starting SMS process for student roll number:', rollNo);
+      console.log('🔍 Starting SMS process for student ID:', studentId);
       console.log('📱 About to call SMS service...');
       
       // Class information already available from student lookup
@@ -548,16 +548,16 @@ export const markOutTime = async (req, res) => {
     console.log('🚀 markOutTime endpoint called');
     console.log('📝 Request body:', req.body);
     
-    const { rollNo, subjectId, date } = req.body;
+    const { studentId, subjectId, date } = req.body;
     const schoolId = req.user?.schoolId || 1; // Default school ID for testing
     const updatedBy = req.user?.id || 1; // Default user ID for testing
 
-    console.log('🔍 Extracted values:', { rollNo, subjectId, date });
+    console.log('🔍 Extracted values:', { studentId, subjectId, date });
 
     // Validate required fields
-    if (!rollNo || !date) {
+    if (!studentId || !date) {
       console.log('❌ Missing required fields');
-      return createErrorResponse(res, 'Missing required fields: rollNo, date', 400);
+      return createErrorResponse(res, 'Missing required fields: studentId, date', 400);
     }
 
     const currentTime = new Date();
@@ -568,11 +568,11 @@ export const markOutTime = async (req, res) => {
     console.log('🏫 School ID:', schoolId);
     console.log('👤 Updated by:', updatedBy);
 
-    // First, find the student by roll number
-    console.log('🔍 Finding student by roll number:', rollNo);
-    const student = await prisma.student.findFirst({
+    // First, find the student by ID
+    console.log('🔍 Finding student by ID:', studentId);
+    const student = await prisma.student.findUnique({
       where: {
-        rollNo: rollNo,
+        id: BigInt(studentId),
         schoolId: BigInt(schoolId),
         deletedAt: null
       },
@@ -594,8 +594,8 @@ export const markOutTime = async (req, res) => {
     });
 
     if (!student) {
-      console.log('❌ Student not found with roll number:', rollNo);
-      return createErrorResponse(res, `Student with roll number ${rollNo} not found`, 404);
+      console.log('❌ Student not found with ID:', studentId);
+      return createErrorResponse(res, `Student with ID ${studentId} not found`, 404);
     }
 
     console.log('✅ Student found:', {
@@ -631,7 +631,7 @@ export const markOutTime = async (req, res) => {
 
     // Send SMS notification for out-time (non-blocking)
     try {
-      console.log('🔍 Starting SMS process for student roll number:', rollNo);
+      console.log('🔍 Starting SMS process for student ID:', studentId);
       console.log('📱 About to call SMS service...');
       
       // Get class information for SMS (student info already available)
