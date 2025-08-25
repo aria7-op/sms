@@ -134,7 +134,7 @@ class SMSService {
               Msisdn: (studentData.phone || '').replace('+', ''), // Remove + prefix
               VAR1: studentData.name || 'Student',
               VAR2: timeInfo,
-              VAR3: attendanceData.date || new Date().toDateString(),
+              VAR3: attendanceData.date ? new Date(attendanceData.date).toDateString() : new Date().toDateString(),
               VAR4: attendanceData.className || 'Class',
               VAR5: attendanceData.status || 'PRESENT',
               VAR6: 'Attendance System',
@@ -154,15 +154,30 @@ class SMSService {
         time: attendanceData.inTime || attendanceData.outTime
       });
 
+      console.log('📱 SMS API Request Details:');
+      console.log('📱 URL:', `${this.baseUrl}/campaignApi/InsertBulkSms/${masterCampaignId}`);
+      console.log('📱 Token:', token);
+      console.log('📱 Payload:', JSON.stringify(smsPayload, null, 2));
+
+      // Try different authorization header formats
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+
+      // Try different auth header formats
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        // Alternative formats if the first one doesn't work
+        headers['X-Auth-Token'] = token;
+        headers['X-API-Key'] = token;
+      }
+
+      console.log('📱 Request Headers:', headers);
+
       const response = await axios.post(
         `${this.baseUrl}/campaignApi/InsertBulkSms/${masterCampaignId}`,
         smsPayload,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
+        { headers }
       );
 
       // Log detailed SMS response
