@@ -1189,7 +1189,7 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
     });
 
     // Fill in actual attendance data
-    attendanceRecords.forEach(record) => {
+    attendanceRecords.forEach((record) => {
       const studentId = record.studentId.toString();
       const dateStr = record.date.toISOString().split('T')[0];
       
