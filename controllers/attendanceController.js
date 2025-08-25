@@ -784,6 +784,13 @@ export const getClassAttendanceSummary = async (req, res) => {
             firstName: true,
             lastName: true
           }
+        },
+        class: {
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
         }
       }
     });
@@ -826,6 +833,20 @@ export const getClassAttendanceSummary = async (req, res) => {
     // Create student attendance details
     const students = classStudents.map(student => {
       const attendance = attendanceRecords.find(r => r.studentId === student.id);
+      
+      // Check if user data exists
+      if (!student.user || !student.user.firstName || !student.user.lastName) {
+        console.warn('⚠️ Student missing user data:', student.id);
+              return {
+        studentId: Number(student.id).toString(),
+        studentName: 'Unknown Student',
+        rollNo: student.rollNo || '',
+        status: attendance?.status || 'ABSENT',
+        inTime: attendance?.inTime || null,
+        outTime: attendance?.outTime || null
+      };
+      }
+      
       return {
         studentId: Number(student.id).toString(),
         studentName: `${student.user.firstName} ${student.user.lastName}`,
@@ -851,6 +872,7 @@ export const getClassAttendanceSummary = async (req, res) => {
     };
 
     console.log('🔍 Returning summary:', summary);
+    console.log('🔍 Sample student data:', students[0]);
     return createSuccessResponse(res, 'Class attendance summary retrieved successfully', summary);
   } catch (error) {
     console.error('❌ Error in getClassAttendanceSummary:', error);
