@@ -753,4 +753,268 @@ export const deleteAttendance = async (req, res) => {
     console.error('Error in deleteAttendance:', error);
     return createErrorResponse(res, 'Failed to delete attendance', 500);
   }
+};
+
+/**
+ * Get attendance summary for a specific class and date
+ */
+export const getClassAttendanceSummary = async (req, res) => {
+  try {
+    const { classId, date } = req.query;
+    const schoolId = req.user?.schoolId || 1;
+
+    if (!classId || !date) {
+      return createErrorResponse(res, 'Class ID and date are required', 400);
+    }
+
+    // Get all students in the class
+    const classStudents = await prisma.student.findMany({
+      where: {
+        classId: BigInt(classId),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
+    });
+
+    // Get attendance records for the class and date
+    const attendanceRecords = await prisma.attendance.findMany({
+      where: {
+        classId: BigInt(classId),
+        date: new Date(date),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      include: {
+        student: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Calculate summary statistics
+    const totalStudents = classStudents.length;
+    const present = attendanceRecords.filter(r => r.status === 'PRESENT').length;
+    const absent = totalStudents - present;
+    const late = attendanceRecords.filter(r => r.status === 'LATE').length;
+    const attendanceRate = totalStudents > 0 ? Math.round((present / totalStudents) * 100) : 0;
+
+    // Create student attendance details
+    const students = classStudents.map(student => {
+      const attendance = attendanceRecords.find(r => r.studentId === student.id);
+      return {
+        id: Number(student.id),
+        name: `${student.user.firstName} ${student.user.lastName}`,
+        status: attendance?.status || 'ABSENT',
+        inTime: attendance?.inTime || null,
+        outTime: attendance?.outTime || null
+      };
+    });
+
+    const summary = {
+      classId: Number(classId),
+      className: classStudents[0]?.class?.name || 'Unknown Class',
+      date,
+      totalStudents,
+      present,
+      absent,
+      late,
+      excused: 0,
+      halfDay: 0,
+      attendanceRate,
+      students
+    };
+
+    return createSuccessResponse(res, 'Class attendance summary retrieved successfully', summary);
+  } catch (error) {
+    console.error('Error in getClassAttendanceSummary:', error);
+    return createErrorResponse(res, 'Failed to retrieve class attendance summary', 500);
+  }
+};
+
+/**
+ * Get overall attendance summary with filters
+ */
+export const getAttendanceSummary = async (req, res) => {
+  try {
+    const { classId, date, schoolId = 1 } = req.query;
+    const effectiveSchoolId = req.user?.schoolId || schoolId;
+
+    const where = {
+      schoolId: BigInt(effectiveSchoolId),
+      deletedAt: null
+    };
+
+    if (classId) where.classId = BigInt(classId);
+    if (date) where.date = new Date(date);
+
+    const attendances = await prisma.attendance.findMany({
+      where,
+      include: {
+        class: {
+          select: { name: true }
+        }
+      }
+    });
+
+    const totalStudents = attendances.length;
+    const present = attendances.filter(r => r.status === 'PRESENT').length;
+    const absent = attendances.filter(r => r.status === 'ABSENT').length;
+    const late = attendances.filter(r => r.status === 'LATE').length;
+    const excused = attendances.filter(r => r.status === 'EXCUSED').length;
+    const halfDay = attendances.filter(r => r.status === 'HALF_DAY').length;
+
+    const attendanceRate = totalStudents > 0 ? Math.round((present / totalStudents) * 100) : 0;
+    const onTimeRate = totalStudents > 0 ? Math.round(((present - late) / totalStudents) * 100) : 0;
+    const lateRate = totalStudents > 0 ? Math.round((late / totalStudents) * 100) : 0;
+
+    const summary = {
+      date: date || new Date().toISOString().split('T')[0],
+      classId: classId || '',
+      className: attendances[0]?.class?.name || 'All Classes',
+      totalStudents,
+      present,
+      absent,
+      late,
+      excused,
+      halfDay,
+      attendanceRate,
+      onTimeRate,
+      lateRate
+    };
+
+    return createSuccessResponse(res, 'Attendance summary retrieved successfully', summary);
+  } catch (error) {
+    console.error('Error in getAttendanceSummary:', error);
+    return createErrorResponse(res, 'Failed to retrieve attendance summary', 500);
+  }
+};
+
+/**
+ * Get attendance statistics and analytics
+ */
+export const getAttendanceStats = async (req, res) => {
+  try {
+    const { classId, startDate, endDate, schoolId = 1 } = req.query;
+    const effectiveSchoolId = req.user?.schoolId || schoolId;
+
+    const where = {
+      schoolId: BigInt(effectiveSchoolId),
+      deletedAt: null
+    };
+
+    if (classId) where.classId = BigInt(classId);
+    if (startDate && endDate) {
+      where.date = {
+        gte: new Date(startDate),
+        lte: new Date(endDate)
+      };
+    }
+
+    const attendances = await prisma.attendance.findMany({
+      where,
+      orderBy: { date: 'asc' }
+    });
+
+    // Calculate statistics
+    const totalDays = new Set(attendances.map(r => r.date.toISOString().split('T')[0])).size;
+    const totalPresent = attendances.filter(r => r.status === 'PRESENT').length;
+    const totalAbsent = attendances.filter(r => r.status === 'ABSENT').length;
+    const totalLate = attendances.filter(r => r.status === 'LATE').length;
+    const totalExcused = attendances.filter(r => r.status === 'EXCUSED').length;
+    const averageAttendanceRate = totalDays > 0 ? Math.round((totalPresent / (totalPresent + totalAbsent)) * 100) : 0;
+
+    // Calculate total hours
+    const totalHours = attendances.reduce((total, record) => {
+      if (record.inTime && record.outTime) {
+        const diffMs = new Date(record.outTime) - new Date(record.inTime);
+        return total + (diffMs / (1000 * 60 * 60));
+      }
+      return total;
+    }, 0);
+
+    const stats = {
+      totalDays,
+      totalPresent,
+      totalAbsent,
+      totalLate,
+      totalExcused,
+      averageAttendanceRate,
+      bestAttendanceDay: '', // TODO: Implement calculation
+      worstAttendanceDay: '', // TODO: Implement calculation
+      consecutivePresentDays: 0, // TODO: Implement calculation
+      totalHours: Math.round(totalHours * 100) / 100
+    };
+
+    return createSuccessResponse(res, 'Attendance statistics retrieved successfully', stats);
+  } catch (error) {
+    console.error('Error in getAttendanceStats:', error);
+    return createErrorResponse(res, 'Failed to retrieve attendance statistics', 500);
+  }
+};
+
+/**
+ * Get attendance trends and analytics
+ */
+export const getAttendanceAnalytics = async (req, res) => {
+  try {
+    const { classId, period = 'daily', startDate, endDate, schoolId = 1 } = req.query;
+    const effectiveSchoolId = req.user?.schoolId || schoolId;
+
+    const where = {
+      schoolId: BigInt(effectiveSchoolId),
+      deletedAt: null
+    };
+
+    if (classId) where.classId = BigInt(classId);
+    if (startDate && endDate) {
+      where.date = {
+        gte: new Date(startDate),
+        lte: new Date(endDate)
+      };
+    }
+
+    const attendances = await prisma.attendance.findMany({
+      where,
+      orderBy: { date: 'asc' }
+    });
+
+    // Group by date and calculate daily trends
+    const dailyTrends = {};
+    attendances.forEach(record => {
+      const date = record.date.toISOString().split('T')[0];
+      if (!dailyTrends[date]) {
+        dailyTrends[date] = { present: 0, absent: 0, late: 0, excused: 0 };
+      }
+      
+      if (record.status === 'PRESENT') dailyTrends[date].present++;
+      else if (record.status === 'ABSENT') dailyTrends[date].absent++;
+      else if (record.status === 'LATE') dailyTrends[date].late++;
+      else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
+    });
+
+    const trends = Object.entries(dailyTrends).map(([date, counts]) => ({
+      date,
+      ...counts
+    }));
+
+    return createSuccessResponse(res, 'Attendance analytics retrieved successfully', trends);
+  } catch (error) {
+    console.error('Error in getAttendanceAnalytics:', error);
+    return createErrorResponse(res, 'Failed to retrieve attendance analytics', 500);
+  }
 }; 
