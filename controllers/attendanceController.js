@@ -328,16 +328,16 @@ export const markInTime = async (req, res) => {
     console.log('🚀 markInTime endpoint called');
     console.log('📝 Request body:', req.body);
     
-    const { studentId, classId, subjectId, date } = req.body;
+    const { rollNo, classId, subjectId, date } = req.body;
     
-    console.log('🔍 Extracted values:', { studentId, classId, subjectId, date });
+    console.log('🔍 Extracted values:', { rollNo, classId, subjectId, date });
     
     // Validate required fields
-    if (!studentId || !classId || !date) {
+    if (!rollNo || !classId || !date) {
       console.log('❌ Missing required fields');
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: studentId, classId, date'
+        error: 'Missing required fields: rollNo, classId, date'
       });
     }
 
@@ -351,11 +351,45 @@ export const markInTime = async (req, res) => {
     console.log('🏫 School ID:', schoolId);
     console.log('👤 Created by:', createdBy);
 
+    // First, find the student by roll number
+    console.log('🔍 Finding student by roll number:', rollNo);
+    const student = await prisma.student.findFirst({
+      where: {
+        rollNo: rollNo,
+        classId: BigInt(classId),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            phone: true
+          }
+        }
+      }
+    });
+
+    if (!student) {
+      console.log('❌ Student not found with roll number:', rollNo, 'in class:', classId);
+      return res.status(404).json({
+        success: false,
+        error: `Student with roll number ${rollNo} not found in class ${classId}`
+      });
+    }
+
+    console.log('✅ Student found:', {
+      id: student.id,
+      rollNo: student.rollNo,
+      name: `${student.user.firstName} ${student.user.lastName}`
+    });
+
     // Check if attendance record exists
     console.log('🔍 Checking if attendance record exists...');
     let attendance = await prisma.attendance.findFirst({
       where: {
-        studentId: BigInt(studentId),
+        studentId: student.id,
         classId: BigInt(classId),
         subjectId: subjectId ? BigInt(subjectId) : null,
         date: attendanceDate,
@@ -383,7 +417,7 @@ export const markInTime = async (req, res) => {
           date: attendanceDate,
           status: 'PRESENT',
           inTime: currentTime,
-          studentId: BigInt(studentId),
+          studentId: student.id,
           classId: BigInt(classId),
           subjectId: subjectId ? BigInt(subjectId) : null,
           schoolId: BigInt(schoolId),
@@ -409,28 +443,14 @@ export const markInTime = async (req, res) => {
 
     // Send SMS notification (non-blocking)
     try {
-      console.log('🔍 Starting SMS process for student ID:', studentId);
+      console.log('🔍 Starting SMS process for student roll number:', rollNo);
       console.log('📱 About to call SMS service...');
       
-      // Get student and class information for SMS
-      const [student, classInfo] = await Promise.all([
-        prisma.student.findUnique({
-          where: { id: BigInt(studentId) },
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-                phone: true
-              }
-            }
-          }
-        }),
-        prisma.class.findUnique({
-          where: { id: BigInt(classId) },
-          select: { name: true }
-        })
-      ]);
+      // Get class information for SMS (student info already available)
+      const classInfo = await prisma.class.findUnique({
+        where: { id: BigInt(classId) },
+        select: { name: true }
+      });
 
       if (student && student.user && student.user.phone) {
         console.log('👤 Student found:', {
@@ -523,22 +543,64 @@ export const markInTime = async (req, res) => {
  */
 export const markOutTime = async (req, res) => {
   try {
-    const { studentId, classId, subjectId, date } = req.body;
-    const schoolId = req.user.schoolId;
-    const updatedBy = req.user.id;
+    console.log('🚀 markOutTime endpoint called');
+    console.log('📝 Request body:', req.body);
+    
+    const { rollNo, classId, subjectId, date } = req.body;
+    const schoolId = req.user?.schoolId || 1; // Default school ID for testing
+    const updatedBy = req.user?.id || 1; // Default user ID for testing
+
+    console.log('🔍 Extracted values:', { rollNo, classId, subjectId, date });
 
     // Validate required fields
-    if (!studentId || !classId || !date) {
-      return createErrorResponse(res, 'Missing required fields: studentId, classId, date', 400);
+    if (!rollNo || !classId || !date) {
+      console.log('❌ Missing required fields');
+      return createErrorResponse(res, 'Missing required fields: rollNo, classId, date', 400);
     }
 
     const currentTime = new Date();
     const attendanceDate = new Date(date);
 
+    console.log('⏰ Current time:', currentTime);
+    console.log('📅 Attendance date:', attendanceDate);
+    console.log('🏫 School ID:', schoolId);
+    console.log('👤 Updated by:', updatedBy);
+
+    // First, find the student by roll number
+    console.log('🔍 Finding student by roll number:', rollNo);
+    const student = await prisma.student.findFirst({
+      where: {
+        rollNo: rollNo,
+        classId: BigInt(classId),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            phone: true
+          }
+        }
+      }
+    });
+
+    if (!student) {
+      console.log('❌ Student not found with roll number:', rollNo, 'in class:', classId);
+      return createErrorResponse(res, `Student with roll number ${rollNo} not found in class ${classId}`, 404);
+    }
+
+    console.log('✅ Student found:', {
+      id: student.id,
+      rollNo: student.rollNo,
+      name: `${student.user.firstName} ${student.user.lastName}`
+    });
+
     // Find existing attendance record
     const attendance = await prisma.attendance.findFirst({
       where: {
-        studentId: BigInt(studentId),
+        studentId: student.id,
         classId: BigInt(classId),
         subjectId: subjectId ? BigInt(subjectId) : null,
         date: attendanceDate,
@@ -562,25 +624,14 @@ export const markOutTime = async (req, res) => {
 
     // Send SMS notification for out-time (non-blocking)
     try {
-      // Get student and class information for SMS
-      const [student, classInfo] = await Promise.all([
-        prisma.student.findUnique({
-          where: { id: BigInt(studentId) },
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-                phone: true
-              }
-            }
-          }
-        }),
-        prisma.class.findUnique({
-          where: { id: BigInt(classId) },
-          select: { name: true }
-        })
-      ]);
+      console.log('🔍 Starting SMS process for student roll number:', rollNo);
+      console.log('📱 About to call SMS service...');
+      
+      // Get class information for SMS (student info already available)
+      const classInfo = await prisma.class.findUnique({
+        where: { id: BigInt(classId) },
+        select: { name: true }
+      });
 
       if (student && student.user && student.user.phone) {
         // Send SMS notification asynchronously (don't wait for it)
