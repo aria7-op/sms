@@ -24,6 +24,15 @@ const router = express.Router();
 // Get all attendances with filtering and pagination
 router.get('/', getAllAttendances);
 
+// Test endpoint to verify basic functionality
+router.get('/test', (req, res) => {
+  res.json({ 
+    success: true, 
+    message: 'Attendance routes are working!',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Get attendance summary and analytics
 router.get('/summary', getAttendanceSummary);
 router.get('/class-summary', getClassAttendanceSummary);
