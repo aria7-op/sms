@@ -432,7 +432,7 @@ export const markInTime = async (req, res) => {
       console.log('✅ New attendance record created with ID:', attendance.id);
     }
 
-    // Convert BigInt values to regular numbers for JSON serialization
+    // Convert BigInt values to regular numbers and dates to ISO strings for JSON serialization
     console.log('🔄 Serializing attendance data...');
     const serializedAttendance = {
       ...attendance,
@@ -442,7 +442,12 @@ export const markInTime = async (req, res) => {
       subjectId: attendance.subjectId ? Number(attendance.subjectId) : null,
       schoolId: attendance.schoolId ? Number(attendance.schoolId) : null,
       createdBy: attendance.createdBy ? Number(attendance.createdBy) : null,
-      updatedBy: attendance.updatedBy ? Number(attendance.updatedBy) : null
+      updatedBy: attendance.updatedBy ? Number(attendance.updatedBy) : null,
+      date: attendance.date ? attendance.date.toISOString() : null,
+      inTime: attendance.inTime ? attendance.inTime.toISOString() : null,
+      outTime: attendance.outTime ? attendance.outTime.toISOString() : null,
+      createdAt: attendance.createdAt ? attendance.createdAt.toISOString() : null,
+      updatedAt: attendance.updatedAt ? attendance.updatedAt.toISOString() : null
     };
     console.log('✅ Data serialized successfully');
 
@@ -664,7 +669,7 @@ export const markOutTime = async (req, res) => {
       console.error('Failed to prepare SMS data (non-critical):', smsError.message);
     }
 
-    // Serialize the attendance data to handle BigInt values
+    // Serialize the attendance data to handle BigInt values and dates
     const serializedAttendance = {
       ...updatedAttendance,
       id: Number(updatedAttendance.id),
@@ -672,7 +677,12 @@ export const markOutTime = async (req, res) => {
       classId: Number(updatedAttendance.classId),
       schoolId: Number(updatedAttendance.schoolId),
       createdBy: Number(updatedAttendance.createdBy),
-      updatedBy: Number(updatedAttendance.updatedBy)
+      updatedBy: Number(updatedAttendance.updatedBy),
+      date: updatedAttendance.date ? updatedAttendance.date.toISOString() : null,
+      inTime: updatedAttendance.inTime ? updatedAttendance.inTime.toISOString() : null,
+      outTime: updatedAttendance.outTime ? updatedAttendance.outTime.toISOString() : null,
+      createdAt: updatedAttendance.createdAt ? updatedAttendance.createdAt.toISOString() : null,
+      updatedAt: updatedAttendance.updatedAt ? updatedAttendance.updatedAt.toISOString() : null
     };
 
     return createSuccessResponse(res, 'Out-time marked successfully', serializedAttendance);
@@ -1085,5 +1095,130 @@ export const getAttendanceAnalytics = async (req, res) => {
   } catch (error) {
     console.error('Error in getAttendanceAnalytics:', error);
     return createErrorResponse(res, 'Failed to retrieve attendance analytics', 500);
+  }
+};
+
+/**
+ * Get monthly attendance matrix for a class
+ */
+export const getMonthlyAttendanceMatrix = async (req, res) => {
+  try {
+    console.log('🔍 getMonthlyAttendanceMatrix called with:', { query: req.query, user: req.user });
+    
+    const { classId, month, year, schoolId: querySchoolId = 1 } = req.query;
+    const schoolId = req.user?.schoolId || querySchoolId || 1;
+
+    if (!classId || !month || !year) {
+      return createErrorResponse(res, 'Class ID, month, and year are required', 400);
+    }
+
+    console.log('🔍 Fetching monthly attendance for class:', classId, 'month:', month, 'year:', year, 'school:', schoolId);
+    
+    // Get all students in the class
+    const classStudents = await prisma.student.findMany({
+      where: {
+        classId: BigInt(classId),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
+    });
+    
+    console.log('🔍 Found students:', classStudents.length);
+
+    // Calculate month start and end dates
+    const monthStart = new Date(parseInt(year), parseInt(month) - 1, 1);
+    const monthEnd = new Date(parseInt(year), parseInt(month), 0);
+    
+    console.log('🔍 Month range:', monthStart.toISOString(), 'to', monthEnd.toISOString());
+    
+    // Get attendance records for the month
+    const attendanceRecords = await prisma.attendance.findMany({
+      where: {
+        classId: BigInt(classId),
+        date: {
+          gte: monthStart,
+          lte: monthEnd
+        },
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      include: {
+        student: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        }
+      }
+    });
+    
+    console.log('🔍 Found attendance records:', attendanceRecords.length);
+
+    // Create monthly matrix data
+    const monthlyMatrix = {};
+    
+    classStudents.forEach(student => {
+      monthlyMatrix[student.id] = {
+        studentId: Number(student.id).toString(),
+        studentName: `${student.user.firstName} ${student.user.lastName}`,
+        rollNo: student.rollNo || '',
+        dailyAttendance: {}
+      };
+      
+      // Initialize all days of the month
+      for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
+        monthlyMatrix[student.id].dailyAttendance[dateStr] = {
+          status: null,
+          inTime: null,
+          outTime: null
+        };
+      }
+    });
+
+    // Fill in actual attendance data
+    attendanceRecords.forEach(record) => {
+      const studentId = record.studentId.toString();
+      const dateStr = record.date.toISOString().split('T')[0];
+      
+      if (monthlyMatrix[studentId] && monthlyMatrix[studentId].dailyAttendance[dateStr]) {
+        monthlyMatrix[studentId].dailyAttendance[dateStr] = {
+          status: record.status,
+          inTime: record.inTime ? record.inTime.toISOString() : null,
+          outTime: record.outTime ? record.outTime.toISOString() : null
+        };
+      }
+    });
+
+    // Convert to array format
+    const matrixData = Object.values(monthlyMatrix);
+    
+    console.log('🔍 Returning monthly matrix with', matrixData.length, 'students');
+    console.log('🔍 Sample data:', matrixData[0] ? Object.keys(matrixData[0].dailyAttendance).length : 0, 'days');
+    
+    return createSuccessResponse(res, 'Monthly attendance matrix retrieved successfully', {
+      classId: Number(classId),
+      month: parseInt(month),
+      year: parseInt(year),
+      monthStart: monthStart.toISOString(),
+      monthEnd: monthEnd.toISOString(),
+      totalStudents: matrixData.length,
+      students: matrixData
+    });
+  } catch (error) {
+    console.error('Error in getMonthlyAttendanceMatrix:', error);
+    return createErrorResponse(res, 'Failed to retrieve monthly attendance matrix', 500);
   }
 }; 
