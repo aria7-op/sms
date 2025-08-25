@@ -160,11 +160,10 @@ class SMSService {
       console.log('📱 Token:', token);
       console.log('📱 Payload:', JSON.stringify(smsPayload, null, 2));
 
-      // Use both API key and JWT token for SMS service
+      // Try using JWT token as API key since direct curl worked
       const headers = {
         'Content-Type': 'application/json',
-        'X-API-Key': this.apiKey,
-        'Authorization': `Bearer ${token}`
+        'X-API-Key': token
       };
 
       console.log('📱 Request Headers:', headers);
