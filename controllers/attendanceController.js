@@ -827,8 +827,9 @@ export const getClassAttendanceSummary = async (req, res) => {
     const students = classStudents.map(student => {
       const attendance = attendanceRecords.find(r => r.studentId === student.id);
       return {
-        id: Number(student.id),
-        name: `${student.user.firstName} ${student.user.lastName}`,
+        studentId: Number(student.id).toString(),
+        studentName: `${student.user.firstName} ${student.user.lastName}`,
+        rollNo: student.rollNo || '',
         status: attendance?.status || 'ABSENT',
         inTime: attendance?.inTime || null,
         outTime: attendance?.outTime || null
