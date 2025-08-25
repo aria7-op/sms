@@ -160,10 +160,11 @@ class SMSService {
       console.log('📱 Token:', token);
       console.log('📱 Payload:', JSON.stringify(smsPayload, null, 2));
 
-      // Use the correct API key for SMS service
+      // Use both API key and JWT token for SMS service
       const headers = {
         'Content-Type': 'application/json',
-        'X-API-Key': this.apiKey
+        'X-API-Key': this.apiKey,
+        'Authorization': `Bearer ${token}`
       };
 
       console.log('📱 Request Headers:', headers);
