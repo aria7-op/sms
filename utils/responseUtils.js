@@ -8,8 +8,28 @@ import bcrypt from 'bcryptjs';
 
 /**
  * Create a standardized success response
+ * Supports both parameter orders:
+ * 1. (res, statusCode, message, data, meta) - legacy order
+ * 2. (res, message, data, statusCode, meta) - new order for better readability
  */
-export const createSuccessResponse = (res, statusCode = 200, message = 'Success', data = null, meta = {}) => {
+export const createSuccessResponse = (res, param1 = 200, param2 = 'Success', param3 = null, param4 = {}) => {
+  let statusCode, message, data, meta;
+  
+  // Determine parameter order based on types
+  if (typeof param1 === 'number') {
+    // Legacy order: (res, statusCode, message, data, meta)
+    statusCode = param1;
+    message = param2;
+    data = param3;
+    meta = param4;
+  } else {
+    // New order: (res, message, data, statusCode, meta)
+    message = param1;
+    data = param2;
+    statusCode = param3 || 200;
+    meta = param4;
+  }
+
   const response = {
     success: true,
     message,
