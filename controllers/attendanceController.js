@@ -760,13 +760,17 @@ export const deleteAttendance = async (req, res) => {
  */
 export const getClassAttendanceSummary = async (req, res) => {
   try {
-    const { classId, date } = req.query;
-    const schoolId = req.user?.schoolId || 1;
+    console.log('🔍 getClassAttendanceSummary called with:', { query: req.query, user: req.user });
+    
+    const { classId, date, schoolId: querySchoolId } = req.query;
+    const schoolId = req.user?.schoolId || querySchoolId || 1;
 
     if (!classId || !date) {
       return createErrorResponse(res, 'Class ID and date are required', 400);
     }
 
+    console.log('🔍 Fetching students for class:', classId, 'school:', schoolId);
+    
     // Get all students in the class
     const classStudents = await prisma.student.findMany({
       where: {
@@ -783,7 +787,11 @@ export const getClassAttendanceSummary = async (req, res) => {
         }
       }
     });
+    
+    console.log('🔍 Found students:', classStudents.length);
 
+    console.log('🔍 Fetching attendance records for class:', classId, 'date:', date, 'school:', schoolId);
+    
     // Get attendance records for the class and date
     const attendanceRecords = await prisma.attendance.findMany({
       where: {
@@ -805,6 +813,8 @@ export const getClassAttendanceSummary = async (req, res) => {
         }
       }
     });
+    
+    console.log('🔍 Found attendance records:', attendanceRecords.length);
 
     // Calculate summary statistics
     const totalStudents = classStudents.length;
@@ -839,9 +849,17 @@ export const getClassAttendanceSummary = async (req, res) => {
       students
     };
 
+    console.log('🔍 Returning summary:', summary);
     return createSuccessResponse(res, 'Class attendance summary retrieved successfully', summary);
   } catch (error) {
-    console.error('Error in getClassAttendanceSummary:', error);
+    console.error('❌ Error in getClassAttendanceSummary:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // Check if it's a Prisma error
+    if (error.code) {
+      console.error('❌ Prisma error code:', error.code);
+    }
+    
     return createErrorResponse(res, 'Failed to retrieve class attendance summary', 500);
   }
 };
@@ -851,8 +869,10 @@ export const getClassAttendanceSummary = async (req, res) => {
  */
 export const getAttendanceSummary = async (req, res) => {
   try {
-    const { classId, date, schoolId = 1 } = req.query;
-    const effectiveSchoolId = req.user?.schoolId || schoolId;
+    console.log('🔍 getAttendanceSummary called with:', { query: req.query, user: req.user });
+    
+    const { classId, date, schoolId: querySchoolId = 1 } = req.query;
+    const effectiveSchoolId = req.user?.schoolId || querySchoolId;
 
     const where = {
       schoolId: BigInt(effectiveSchoolId),
@@ -909,8 +929,10 @@ export const getAttendanceSummary = async (req, res) => {
  */
 export const getAttendanceStats = async (req, res) => {
   try {
-    const { classId, startDate, endDate, schoolId = 1 } = req.query;
-    const effectiveSchoolId = req.user?.schoolId || schoolId;
+    console.log('🔍 getAttendanceStats called with:', { query: req.query, user: req.user });
+    
+    const { classId, startDate, endDate, schoolId: querySchoolId = 1 } = req.query;
+    const effectiveSchoolId = req.user?.schoolId || querySchoolId;
 
     const where = {
       schoolId: BigInt(effectiveSchoolId),
@@ -972,8 +994,8 @@ export const getAttendanceStats = async (req, res) => {
  */
 export const getAttendanceAnalytics = async (req, res) => {
   try {
-    const { classId, period = 'daily', startDate, endDate, schoolId = 1 } = req.query;
-    const effectiveSchoolId = req.user?.schoolId || schoolId;
+    const { classId, period = 'daily', startDate, endDate, schoolId: querySchoolId = 1 } = req.query;
+    const effectiveSchoolId = req.user?.schoolId || querySchoolId;
 
     const where = {
       schoolId: BigInt(effectiveSchoolId),
