@@ -23,26 +23,71 @@ class SMSService {
       
       // Check if we already have a valid token for today
       if (this.token && this.lastTokenDate === today) {
+        console.log('🔐 Using existing SMS token from today');
         return this.token;
       }
 
       console.log('🔐 Getting new SMS authentication token...');
+      console.log('🔐 Base URL:', this.baseUrl);
+      console.log('🔐 Username:', this.username);
+      console.log('🔐 Password:', this.password ? '***' : 'NOT SET');
       
-      const response = await axios.post(`${this.baseUrl}/api/AuthJwt/Authenticate`, {
+      const authPayload = {
         Username: this.username,
         Password: this.password
+      };
+      
+      console.log('🔐 Auth payload:', authPayload);
+      console.log('🔐 Making POST request to:', `${this.baseUrl}/api/AuthJwt/Authenticate`);
+      
+      const response = await axios.post(`${this.baseUrl}/api/AuthJwt/Authenticate`, authPayload, {
+        timeout: 10000, // 10 second timeout
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
       });
+
+      console.log('🔐 Response received:');
+      console.log('🔐 Status:', response.status);
+      console.log('🔐 Status Text:', response.statusText);
+      console.log('🔐 Headers:', response.headers);
+      console.log('🔐 Response Data:', response.data);
+      console.log('🔐 Response Data Type:', typeof response.data);
+      console.log('🔐 Response Data Keys:', response.data ? Object.keys(response.data) : 'No data');
 
       if (response.data && response.data.token) {
         this.token = response.data.token;
         this.lastTokenDate = today;
         console.log('✅ SMS authentication token obtained successfully');
+        console.log('✅ Token:', this.token);
+        return this.token;
+      } else if (response.data && response.data.access_token) {
+        // Handle alternative token field name
+        this.token = response.data.access_token;
+        this.lastTokenDate = today;
+        console.log('✅ SMS authentication token obtained successfully (access_token)');
+        console.log('✅ Token:', this.token);
+        return this.token;
+      } else if (response.data && response.data.jwt) {
+        // Handle JWT field name
+        this.token = response.data.jwt;
+        this.lastTokenDate = today;
+        console.log('✅ SMS authentication token obtained successfully (jwt)');
+        console.log('✅ Token:', this.token);
         return this.token;
       } else {
-        throw new Error('Invalid response from SMS authentication service');
+        console.log('❌ Response data structure:', response.data);
+        throw new Error(`Invalid response structure. Expected 'token', 'access_token', or 'jwt' field. Got: ${JSON.stringify(response.data)}`);
       }
     } catch (error) {
-      console.error('❌ Failed to get SMS authentication token:', error.message);
+      console.error('❌ Failed to get SMS authentication token:');
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error response:', error.response?.data);
+      console.error('❌ Error status:', error.response?.status);
+      console.error('❌ Error headers:', error.response?.headers);
+      console.error('❌ Full error:', error);
       throw error;
     }
   }
@@ -141,7 +186,15 @@ class SMSService {
       }
 
     } catch (error) {
-      console.error('❌ Failed to send SMS:', error.message);
+      console.error('❌ Failed to send SMS:');
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error code:', error.code);
+      if (error.response) {
+        console.error('❌ Response status:', error.response.status);
+        console.error('❌ Response data:', error.response.data);
+        console.error('❌ Response headers:', error.response.headers);
+      }
+      console.error('❌ Full error:', error);
       // Don't throw error - SMS failure shouldn't break attendance marking
       return null;
     }
