@@ -7,7 +7,11 @@ import {
   deleteAttendance,
   markInTime,
   markOutTime,
-  bulkCreateAttendance
+  bulkCreateAttendance,
+  getClassAttendanceSummary,
+  getAttendanceSummary,
+  getAttendanceStats,
+  getAttendanceAnalytics
 } from '../controllers/attendanceController.js';
 // import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 // import { validateClassAccess } from '../middleware/validation.js';
@@ -19,6 +23,12 @@ const router = express.Router();
 
 // Get all attendances with filtering and pagination
 router.get('/', getAllAttendances);
+
+// Get attendance summary and analytics
+router.get('/summary', getAttendanceSummary);
+router.get('/class-summary', getClassAttendanceSummary);
+router.get('/stats', getAttendanceStats);
+router.get('/analytics', getAttendanceAnalytics);
 
 // Mark student in-time (arrival) - MUST come before /:id routes
 router.post('/mark-in-time', markInTime);
