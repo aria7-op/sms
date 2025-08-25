@@ -634,12 +634,6 @@ export const markOutTime = async (req, res) => {
       console.log('🔍 Starting SMS process for student ID:', studentId);
       console.log('📱 About to call SMS service...');
       
-      // Get class information for SMS (student info already available)
-      const classInfo = await prisma.class.findUnique({
-        where: { id: BigInt(classId) },
-        select: { name: true }
-      });
-
       if (student && student.user && student.user.phone) {
         // Send SMS notification asynchronously (don't wait for it)
         smsService.sendAttendanceSMS(
@@ -650,7 +644,7 @@ export const markOutTime = async (req, res) => {
           {
             outTime: currentTime,
             date: attendanceDate,
-            className: classInfo?.name || 'Unknown Class',
+            className: student.class.name,
             status: 'DEPARTED'
           },
           'outTime' // Use campaign ID 404 for out-time
@@ -670,7 +664,18 @@ export const markOutTime = async (req, res) => {
       console.error('Failed to prepare SMS data (non-critical):', smsError.message);
     }
 
-    return createSuccessResponse(res, 'Out-time marked successfully', updatedAttendance);
+    // Serialize the attendance data to handle BigInt values
+    const serializedAttendance = {
+      ...updatedAttendance,
+      id: Number(updatedAttendance.id),
+      studentId: Number(updatedAttendance.studentId),
+      classId: Number(updatedAttendance.classId),
+      schoolId: Number(updatedAttendance.schoolId),
+      createdBy: Number(updatedAttendance.createdBy),
+      updatedBy: Number(updatedAttendance.updatedBy)
+    };
+
+    return createSuccessResponse(res, 'Out-time marked successfully', serializedAttendance);
   } catch (error) {
     console.error('Error in markOutTime:', error);
     return createErrorResponse(res, 'Failed to mark out-time', 500);
