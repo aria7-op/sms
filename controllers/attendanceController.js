@@ -1221,4 +1221,166 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
     console.error('Error in getMonthlyAttendanceMatrix:', error);
     return createErrorResponse(res, 'Failed to retrieve monthly attendance matrix', 500);
   }
-}; 
+};
+
+/**
+ * Export attendance data in various formats
+ */
+export const exportAttendanceData = async (req, res) => {
+  try {
+    console.log('🔍 exportAttendanceData called with:', { query: req.query, user: req.user });
+    
+    const { 
+      format = 'pdf', 
+      classId, 
+      startDate, 
+      endDate, 
+      schoolId: querySchoolId = 1 
+    } = req.query;
+    
+    const schoolId = req.user?.schoolId || querySchoolId;
+
+    if (!['pdf', 'excel', 'csv'].includes(format)) {
+      return createErrorResponse(res, 'Invalid export format. Supported formats: pdf, excel, csv', 400);
+    }
+
+    console.log('🔍 Exporting attendance data:', { format, classId, startDate, endDate, schoolId });
+
+    // Build where clause
+    const where = {
+      schoolId: BigInt(schoolId),
+      deletedAt: null
+    };
+
+    if (classId) where.classId = BigInt(classId);
+    if (startDate && endDate) {
+      where.date = {
+        gte: new Date(startDate),
+        lte: new Date(endDate)
+      };
+    }
+
+    // Fetch attendance data
+    const attendances = await prisma.attendance.findMany({
+      where,
+      include: {
+        student: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        class: {
+          select: {
+            name: true,
+            code: true
+          }
+        }
+      },
+      orderBy: [
+        { date: 'desc' },
+        { student: { rollNo: 'asc' } }
+      ]
+    });
+
+    console.log('🔍 Found attendance records for export:', attendances.length);
+
+    // Prepare data for export
+    const exportData = attendances.map(attendance => ({
+      date: attendance.date.toISOString().split('T')[0],
+      studentName: `${attendance.student.user.firstName} ${attendance.student.user.lastName}`,
+      rollNo: attendance.student.rollNo,
+      className: attendance.class.name,
+      status: attendance.status,
+      inTime: attendance.inTime ? attendance.inTime.toISOString().split('T')[1].substring(0, 5) : '--',
+      outTime: attendance.outTime ? attendance.outTime.toISOString().split('T')[1].substring(0, 5) : '--',
+      remarks: attendance.remarks || ''
+    }));
+
+    // Generate export based on format
+    let exportContent, contentType, filename;
+
+    switch (format) {
+      case 'csv':
+        const csvHeaders = ['Date', 'Student Name', 'Roll No', 'Class', 'Status', 'In Time', 'Out Time', 'Remarks'];
+        const csvRows = exportData.map(row => [
+          row.date,
+          row.studentName,
+          row.rollNo,
+          row.className,
+          row.status,
+          row.inTime,
+          row.outTime,
+          row.remarks
+        ]);
+        
+        exportContent = [csvHeaders, ...csvRows]
+          .map(row => row.map(field => `"${field}"`).join(','))
+          .join('\n');
+        contentType = 'text/csv';
+        filename = `attendance_${startDate || 'all'}_${endDate || 'data'}.csv`;
+        break;
+
+      case 'excel':
+        // For now, return CSV as Excel (you can implement proper Excel generation later)
+        const excelHeaders = ['Date', 'Student Name', 'Roll No', 'Class', 'Status', 'In Time', 'Out Time', 'Remarks'];
+        const excelRows = exportData.map(row => [
+          row.date,
+          row.studentName,
+          row.rollNo,
+          row.className,
+          row.status,
+          row.inTime,
+          row.outTime,
+          row.remarks
+        ]);
+        
+        exportContent = [excelHeaders, ...excelRows]
+          .map(row => row.map(field => `"${field}"`).join(','))
+          .join('\n');
+        contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        filename = `attendance_${startDate || 'all'}_${endDate || 'data'}.xlsx`;
+        break;
+
+      case 'pdf':
+      default:
+        // For now, return formatted text as PDF (you can implement proper PDF generation later)
+        const pdfContent = [
+          'ATTENDANCE REPORT',
+          '================',
+          '',
+          `Generated on: ${new Date().toLocaleDateString()}`,
+          `Class: ${classId ? 'Specific Class' : 'All Classes'}`,
+          `Date Range: ${startDate || 'All'} to ${endDate || 'All'}`,
+          `Total Records: ${exportData.length}`,
+          '',
+          ...exportData.map(row => 
+            `${row.date} | ${row.studentName} (${row.rollNo}) | ${row.className} | ${row.status} | ${row.inTime} - ${row.outTime}`
+          )
+        ].join('\n');
+        
+        exportContent = pdfContent;
+        contentType = 'application/pdf';
+        filename = `attendance_${startDate || 'all'}_${endDate || 'data'}.pdf`;
+        break;
+    }
+
+    // Set response headers for file download
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', Buffer.byteLength(exportContent, 'utf8'));
+
+    console.log('✅ Export completed successfully:', { format, filename, records: exportData.length });
+    
+    // Send the file content
+    res.send(exportContent);
+
+  } catch (error) {
+    console.error('Error in exportAttendanceData:', error);
+    return createErrorResponse(res, 'Failed to export attendance data', 500);
+  }
+
