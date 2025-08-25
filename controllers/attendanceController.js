@@ -1,4 +1,3 @@
-
 import { PrismaClient } from '../generated/prisma/client.js';
 import { createSuccessResponse, createErrorResponse } from '../utils/responseUtils.js';
 import smsService from '../services/smsService.js';
@@ -847,19 +846,27 @@ export const getClassAttendanceSummary = async (req, res) => {
         status: r.status 
       })));
       
-      const attendance = attendanceRecords.find(r => BigInt(r.studentId) === student.id);
+      const attendance = attendanceRecords.find(r => {
+        const match = BigInt(r.studentId) === student.id;
+        console.log('🔍 Attendance matching:', { 
+          attendanceStudentId: r.studentId, 
+          studentId: student.id, 
+          match 
+        });
+        return match;
+      });
       
       // Check if user data exists
       if (!student.user || !student.user.firstName || !student.user.lastName) {
         console.warn('⚠️ Student missing user data:', student.id);
-              return {
-        studentId: Number(student.id).toString(),
-        studentName: 'Unknown Student',
-        rollNo: student.rollNo || '',
-        status: attendance?.status || 'ABSENT',
-        inTime: attendance?.inTime || null,
-        outTime: attendance?.outTime || null
-      };
+        return {
+          studentId: Number(student.id).toString(),
+          studentName: 'Unknown Student',
+          rollNo: student.rollNo || '',
+          status: attendance?.status || 'ABSENT',
+          inTime: attendance?.inTime ? attendance.inTime.toISOString() : null,
+          outTime: attendance?.outTime ? attendance.outTime.toISOString() : null
+        };
       }
       
       return {
@@ -867,8 +874,8 @@ export const getClassAttendanceSummary = async (req, res) => {
         studentName: `${student.user.firstName} ${student.user.lastName}`,
         rollNo: student.rollNo || '',
         status: attendance?.status || 'ABSENT',
-        inTime: attendance?.inTime || null,
-        outTime: attendance?.outTime || null
+        inTime: attendance?.inTime ? attendance.inTime.toISOString() : null,
+        outTime: attendance?.outTime ? attendance.outTime.toISOString() : null
       };
     });
 
