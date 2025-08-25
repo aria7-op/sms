@@ -11,7 +11,8 @@ import {
   getClassAttendanceSummary,
   getAttendanceSummary,
   getAttendanceStats,
-  getAttendanceAnalytics
+  getAttendanceAnalytics,
+  getMonthlyAttendanceMatrix
 } from '../controllers/attendanceController.js';
 // import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 // import { validateClassAccess } from '../middleware/validation.js';
@@ -38,6 +39,7 @@ router.get('/summary', getAttendanceSummary);
 router.get('/class-summary', getClassAttendanceSummary);
 router.get('/stats', getAttendanceStats);
 router.get('/analytics', getAttendanceAnalytics);
+router.get('/monthly-matrix', getMonthlyAttendanceMatrix);
 
 // Mark student in-time (arrival) - MUST come before /:id routes
 router.post('/mark-in-time', markInTime);
