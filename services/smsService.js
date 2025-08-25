@@ -56,7 +56,15 @@ class SMSService {
       console.log('🔐 Response Data Type:', typeof response.data);
       console.log('🔐 Response Data Keys:', response.data ? Object.keys(response.data) : 'No data');
 
-      if (response.data && response.data.token) {
+      // Handle case where response.data is the token string directly
+      if (typeof response.data === 'string' && response.data.startsWith('eyJ')) {
+        // Direct JWT token response
+        this.token = response.data;
+        this.lastTokenDate = today;
+        console.log('✅ SMS authentication token obtained successfully (direct JWT)');
+        console.log('✅ Token:', this.token);
+        return this.token;
+      } else if (response.data && response.data.token) {
         this.token = response.data.token;
         this.lastTokenDate = today;
         console.log('✅ SMS authentication token obtained successfully');
@@ -78,7 +86,7 @@ class SMSService {
         return this.token;
       } else {
         console.log('❌ Response data structure:', response.data);
-        throw new Error(`Invalid response structure. Expected 'token', 'access_token', or 'jwt' field. Got: ${JSON.stringify(response.data)}`);
+        throw new Error(`Invalid response structure. Expected JWT string or 'token', 'access_token', or 'jwt' field. Got: ${JSON.stringify(response.data)}`);
       }
     } catch (error) {
       console.error('❌ Failed to get SMS authentication token:');
