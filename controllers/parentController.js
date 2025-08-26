@@ -646,24 +646,47 @@ class ParentController {
       const { schoolId } = req.user;
       const { id } = req.params;
 
-      const [stats, analytics, performance] = await Promise.all([
-        parentService.getParentStats(parseInt(id), schoolId),
-        parentService.getParentAnalytics(parseInt(id), schoolId, '30d'),
-        parentService.getParentPerformance(parseInt(id), schoolId)
+      // Add timeout protection for each service call
+      const timeout = 15000; // 15 seconds timeout
+      
+      const createTimeoutPromise = (promise, serviceName) => {
+        return Promise.race([
+          promise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error(`${serviceName} timeout after ${timeout}ms`)), timeout)
+          )
+        ]);
+      };
+
+      const [stats, analytics, performance] = await Promise.allSettled([
+        createTimeoutPromise(parentService.getParentStats(parseInt(id), schoolId), 'Stats'),
+        createTimeoutPromise(parentService.getParentAnalytics(parseInt(id), schoolId, '30d'), 'Analytics'),
+        createTimeoutPromise(parentService.getParentPerformance(parseInt(id), schoolId), 'Performance')
       ]);
 
+      // Handle partial failures gracefully
       const dashboard = {
-        stats,
-        analytics,
-        performance,
+        stats: stats.status === 'fulfilled' ? stats.value : null,
+        analytics: analytics.status === 'fulfilled' ? analytics.value : null,
+        performance: performance.status === 'fulfilled' ? performance.value : null,
         summary: {
-          totalStudents: stats.totalStudents,
-          totalPayments: stats.totalPayments,
-          paymentRate: performance.paymentPerformance.paymentRate,
-          averageStudentPerformance: performance.overallPerformance.averageStudentPerformance,
-          overallScore: performance.overallPerformance.combinedScore
+          totalStudents: stats.status === 'fulfilled' ? stats.value?.totalStudents : 0,
+          totalPayments: stats.status === 'fulfilled' ? stats.value?.totalPayments : 0,
+          paymentRate: performance.status === 'fulfilled' ? performance.value?.paymentPerformance?.paymentRate : 0,
+          averageStudentPerformance: performance.status === 'fulfilled' ? performance.value?.overallPerformance?.averageStudentPerformance : 0,
+          overallScore: performance.status === 'fulfilled' ? performance.value?.overallPerformance?.combinedScore : 0
+        },
+        errors: {
+          stats: stats.status === 'rejected' ? stats.reason?.message : null,
+          analytics: analytics.status === 'rejected' ? analytics.reason?.message : null,
+          performance: performance.status === 'rejected' ? performance.reason?.message : null
         }
       };
+
+      // Log any failures for debugging
+      if (stats.status === 'rejected') logger.warn(`Stats failed: ${stats.reason?.message}`);
+      if (analytics.status === 'rejected') logger.warn(`Analytics failed: ${analytics.reason?.message}`);
+      if (performance.status === 'rejected') logger.warn(`Performance failed: ${performance.reason?.message}`);
 
       return formatResponse(res, {
         success: true,
@@ -672,7 +695,8 @@ class ParentController {
         meta: {
           timestamp: new Date().toISOString(),
           parentId: parseInt(id),
-          cacheStatus: 'cached'
+          cacheStatus: 'cached',
+          partialData: stats.status === 'rejected' || analytics.status === 'rejected' || performance.status === 'rejected'
         }
       });
 
