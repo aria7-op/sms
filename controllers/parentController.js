@@ -753,6 +753,54 @@ class ParentController {
     }
   }
 
+  // Test endpoint to isolate database issues
+  async getParentTest(req, res) {
+    try {
+      logger.info('getParentTest: Starting test endpoint');
+      
+      // Test 1: Basic database connection
+      logger.info('getParentTest: Testing database connection...');
+      const startTime = Date.now();
+      
+      const testQuery = await Promise.race([
+        req.app.locals.prisma.$queryRaw`SELECT 1 as test`,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Database connection timeout')), 5000)
+        )
+      ]);
+      
+      const dbTime = Date.now() - startTime;
+      logger.info(`getParentTest: Database connection test completed in ${dbTime}ms`);
+      
+      // Test 2: Simple parent count
+      logger.info('getParentTest: Testing simple parent count...');
+      const parentCount = await req.app.locals.prisma.parent.count({
+        where: { schoolId: BigInt(req.user.schoolId) }
+      });
+      
+      logger.info(`getParentTest: Parent count: ${parentCount}`);
+      
+      return res.json({
+        success: true,
+        message: 'Test endpoint working',
+        data: {
+          databaseConnection: 'OK',
+          dbResponseTime: `${dbTime}ms`,
+          parentCount,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+    } catch (error) {
+      logger.error('getParentTest ERROR:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
   // ======================
   // PARENT PORTAL METHODS
   // ======================
