@@ -57,14 +57,15 @@ async function initializeDbPool() {
 }
 
 // Fallback query function
-async function fallbackQuery(sql, params = []) {
-  const pool = await initializeDbPool();
-  if (!pool) {
-    throw new Error('Database not connected');
-  }
-  
+async function fallbackQuery(sqlQuery, params = []) {
   try {
-    const [rows] = await pool.execute(sql, params);
+    const pool = await initializeDbPool();
+    if (!pool) {
+      throw new Error('Database not connected');
+    }
+    
+    console.log('Executing fallback query with params:', params);
+    const [rows] = await pool.execute(sqlQuery, params);
     return rows;
   } catch (error) {
     console.error('Fallback query failed:', error);
@@ -258,16 +259,26 @@ export const getAllCustomers = async (req, res) => {
         ${isPaginationRequested ? 'LIMIT ? OFFSET ?' : ''}
       `;
       
-      const sqlParams = isPaginationRequested ? [schoolIdStr, limit, offset] : [schoolIdStr];
+      // Prepare parameters in correct order
+      const sqlParams = [schoolIdStr];
+      if (isPaginationRequested) {
+        sqlParams.push(limit, offset);
+      }
       
-      customers = await fallbackQuery(sqlQuery, sqlParams);
+      console.log('SQL Query:', sqlQuery);
+      console.log('SQL Params:', sqlParams);
+      
+      const customers = await fallbackQuery(sqlQuery, sqlParams);
       const countResult = await fallbackQuery(
         'SELECT COUNT(*) as total FROM customers WHERE schoolId = ? AND deletedAt IS NULL',
         [schoolIdStr]
       );
-      total = countResult[0].total;
+      const total = countResult[0]?.total || 0;
       
-      console.log('Raw SQL fallback successful, found customers:', customers.length);
+      // Clean up any invalid dates
+      const cleanedCustomers = cleanInvalidDates(customers);
+      
+      console.log('Raw SQL fallback successful, found customers:', cleanedCustomers.length);
     }
     
     console.log('Query results:', { customersCount: customers.length, total });
@@ -283,7 +294,7 @@ export const getAllCustomers = async (req, res) => {
       message: status ? 
         'Customers retrieved successfully (status filter ignored - not available in Customer model)' : 
         'Customers retrieved successfully',
-      data: convertBigInts(patchedCustomers),
+      data: convertBigInts(cleanedCustomers || customers),
       meta: {
         total,
         page: pageNum,
@@ -300,9 +311,14 @@ export const getAllCustomers = async (req, res) => {
           tags: tags ? tags.split(',') : undefined
         },
         availableFilters: [
-          'search', 'type', 'minValue', 'maxValue', 'dateFrom', 'dateTo', 'tags'
-        ],
-        unavailableFilters: ['status'] // Status field doesn't exist in Customer model
+          'search',
+          'type',
+          'minValue',
+          'maxValue',
+          'dateFrom',
+          'dateTo',
+          'tags'
+        ]
       }
     };
     
@@ -3304,3 +3320,23 @@ export const getConversionRates = async (req, res) => {
     });
   }
 };
+
+// Function to clean up invalid datetime values
+function cleanInvalidDates(customers) {
+  return customers.map(customer => {
+    const cleaned = { ...customer };
+    
+    // Clean up invalid dates
+    if (cleaned.createdAt && (cleaned.createdAt.getTime() === 0 || isNaN(cleaned.createdAt.getTime()))) {
+      cleaned.createdAt = new Date();
+    }
+    if (cleaned.updatedAt && (cleaned.updatedAt.getTime() === 0 || isNaN(cleaned.updatedAt.getTime()))) {
+      cleaned.updatedAt = new Date();
+    }
+    if (cleaned.deletedAt && (cleaned.deletedAt.getTime() === 0 || isNaN(cleaned.deletedAt.getTime()))) {
+      cleaned.deletedAt = null;
+    }
+    
+    return cleaned;
+  });
+}
