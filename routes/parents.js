@@ -1,170 +1,559 @@
 import express from 'express';
-import { z } from 'zod';
 import parentController from '../controllers/parentController.js';
-import { 
-  parentCacheMiddleware, 
-  parentByIdCacheMiddleware,
-  parentStatsCacheMiddleware,
-  parentAnalyticsCacheMiddleware,
-  parentPerformanceCacheMiddleware,
-  parentSearchCacheMiddleware,
-  parentBySchoolCacheMiddleware
-} from '../cache/parentCache.js';
-import { 
-  authenticateToken, 
-  authorizeRoles, 
-  authorizePermissions,
-  authorizeSchoolAccess,
-  auditLog
-} from '../middleware/auth.js';
-import { 
-  validateRequest, 
-  validateParams, 
-  validateBody,
-  validateQuery,
-  sanitizeRequest,
-  idSchema,
-  paginationSchema
-} from '../middleware/validation.js';
-import { 
-  generalLimiter,
-  exportLimiter,
-  bulkLimiter,
-  analyticsLimiter,
-  cacheLimiter,
-  roleBasedLimiter,
-  defaultRoleLimits,
-  parentSearchLimiter
-} from '../middleware/rateLimit.js';
-import { 
-  ParentCreateSchema, 
-  ParentCreateWithUserSchema,
-  ParentUpdateSchema, 
-  ParentSearchSchema, 
-  ParentBulkCreateSchema, 
-  ParentBulkUpdateSchema, 
-  ParentBulkDeleteSchema 
-} from '../utils/parentUtils.js';
+import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
+import { validateParams, validateBody } from '../middleware/validation.js';
+import { parentSchemas } from '../schemas/parentSchemas.js';
 
 const router = express.Router();
 
-// ======================
-// GLOBAL MIDDLEWARE
-// ======================
-
-// Apply sanitization to all routes
-router.use(sanitizeRequest);
-
-// Apply general rate limiting
-router.use(generalLimiter);
-
-// Apply role-based rate limiting
-router.use(roleBasedLimiter(defaultRoleLimits));
-
-// ======================
-// CRUD OPERATIONS
-// ======================
+// ============================================================================
+// CRUD Operations
+// ============================================================================
 
 /**
  * @route   POST /api/parents
  * @desc    Create a new parent
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
- * @body    ParentCreateSchema
+ * @access  Private (Admin, Staff)
  * @permissions parent:create
  */
 router.post('/',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['parent:create']),
-  validateBody(ParentCreateWithUserSchema),
-  auditLog('CREATE', 'Parent'),
+  validateBody(parentSchemas.createParent),
   parentController.createParent.bind(parentController)
 );
 
 /**
  * @route   GET /api/parents
- * @desc    Get parents with pagination and filters
- * @access  Private (All authenticated users)
- * @query   ParentSearchSchema
+ * @desc    Get all parents with filtering and pagination
+ * @access  Private (Admin, Staff, Teacher)
  * @permissions parent:read
  */
 router.get('/',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  validateQuery(ParentSearchSchema),
-  parentCacheMiddleware(),
   parentController.getParents.bind(parentController)
 );
 
 /**
  * @route   GET /api/parents/:id
  * @desc    Get parent by ID
- * @access  Private (All authenticated users)
- * @params  {id} - Parent ID
- * @query   {include} - Comma-separated list of relations to include
+ * @access  Private (Admin, Staff, Teacher, Parent)
  * @permissions parent:read
  */
 router.get('/:id',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  validateParams(idSchema),
-  parentByIdCacheMiddleware(),
+  validateParams(parentSchemas.getParentById),
   parentController.getParentById.bind(parentController)
 );
 
 /**
  * @route   PUT /api/parents/:id
  * @desc    Update parent
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER, PARENT)
- * @params  {id} - Parent ID
- * @body    ParentUpdateSchema
+ * @access  Private (Admin, Staff)
  * @permissions parent:update
  */
 router.put('/:id',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'PARENT']),
   authorizePermissions(['parent:update']),
-  validateParams(idSchema),
-  validateBody(ParentUpdateSchema),
-  auditLog('UPDATE', 'Parent'),
+  validateParams(parentSchemas.getParentById),
+  validateBody(parentSchemas.updateParent),
   parentController.updateParent.bind(parentController)
 );
 
 /**
  * @route   DELETE /api/parents/:id
- * @desc    Delete parent (soft delete)
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
- * @params  {id} - Parent ID
+ * @desc    Soft delete parent
+ * @access  Private (Admin, Staff)
  * @permissions parent:delete
  */
 router.delete('/:id',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
   authorizePermissions(['parent:delete']),
-  validateParams(idSchema),
-  auditLog('DELETE', 'Parent'),
+  validateParams(parentSchemas.getParentById),
   parentController.deleteParent.bind(parentController)
 );
 
 /**
  * @route   PATCH /api/parents/:id/restore
- * @desc    Restore deleted parent
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
- * @params  {id} - Parent ID
- * @permissions parent:restore
+ * @desc    Restore soft-deleted parent
+ * @access  Private (Admin, Staff)
+ * @permissions parent:update
  */
 router.patch('/:id/restore',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  authorizePermissions(['parent:restore']),
-  validateParams(idSchema),
-  auditLog('RESTORE', 'Parent'),
+  authorizePermissions(['parent:update']),
+  validateParams(parentSchemas.getParentById),
   parentController.restoreParent.bind(parentController)
 );
 
-// ======================
-// STATISTICS & ANALYTICS
-// ======================
+// ============================================================================
+// Analytics & Statistics
+// ============================================================================
+
+/**
+ * @route   GET /api/parents/:id/stats
+ * @desc    Get parent statistics
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read
+ */
+router.get('/:id/stats',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  validateParams(parentSchemas.getParentById),
+  parentController.getParentStats.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/analytics
+ * @desc    Get parent analytics
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read
+ */
+router.get('/:id/analytics',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  validateParams(parentSchemas.getParentById),
+  parentController.getParentAnalytics.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/performance
+ * @desc    Get parent performance metrics
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read
+ */
+router.get('/:id/performance',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  validateParams(parentSchemas.getParentById),
+  parentController.getParentPerformance.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/dashboard
+ * @desc    Get parent dashboard data
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read
+ */
+router.get('/:id/dashboard',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  validateParams(parentSchemas.getParentById),
+  parentController.getParentDashboard.bind(parentController)
+);
+
+// ============================================================================
+// Bulk Operations
+// ============================================================================
+
+/**
+ * @route   POST /api/parents/bulk
+ * @desc    Bulk create parents
+ * @access  Private (Admin, Staff)
+ * @permissions parent:create
+ */
+router.post('/bulk',
+  authenticateToken,
+  authorizePermissions(['parent:create']),
+  validateBody(parentSchemas.bulkCreateParents),
+  parentController.bulkCreateParents.bind(parentController)
+);
+
+/**
+ * @route   PUT /api/parents/bulk
+ * @desc    Bulk update parents
+ * @access  Private (Admin, Staff)
+ * @permissions parent:update
+ */
+router.put('/bulk',
+  authenticateToken,
+  authorizePermissions(['parent:update']),
+  validateBody(parentSchemas.bulkUpdateParents),
+  parentController.bulkUpdateParents.bind(parentController)
+);
+
+/**
+ * @route   DELETE /api/parents/bulk
+ * @desc    Bulk delete parents
+ * @access  Private (Admin, Staff)
+ * @permissions parent:delete
+ */
+router.delete('/bulk',
+  authenticateToken,
+  authorizePermissions(['parent:delete']),
+  validateBody(parentSchemas.bulkDeleteParents),
+  parentController.bulkDeleteParents.bind(parentController)
+);
+
+// ============================================================================
+// Search & Export
+// ============================================================================
+
+/**
+ * @route   GET /api/parents/search
+ * @desc    Search parents
+ * @access  Private (Admin, Staff, Teacher)
+ * @permissions parent:read
+ */
+router.get('/search',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  parentController.searchParents.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/export
+ * @desc    Export parents data
+ * @access  Private (Admin, Staff)
+ * @permissions parent:read
+ */
+router.get('/export',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  parentController.exportParents.bind(parentController)
+);
+
+/**
+ * @route   POST /api/parents/import
+ * @desc    Import parents data
+ * @access  Private (Admin, Staff)
+ * @permissions parent:create
+ */
+router.post('/import',
+  authenticateToken,
+  authorizePermissions(['parent:create']),
+  parentController.importParents.bind(parentController)
+);
+
+// ============================================================================
+// Code Generation & Analysis
+// ============================================================================
+
+/**
+ * @route   GET /api/parents/code-suggestions
+ * @desc    Generate parent code suggestions
+ * @access  Private (Admin, Staff)
+ * @permissions parent:create
+ */
+router.get('/code-suggestions',
+  authenticateToken,
+  authorizePermissions(['parent:create']),
+  parentController.generateCodeSuggestions.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/analytics/income-range
+ * @desc    Get parent count by income range
+ * @access  Private (Admin, Staff)
+ * @permissions parent:read
+ */
+router.get('/analytics/income-range',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  parentController.getParentCountByIncomeRange.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/analytics/education
+ * @desc    Get parent count by education level
+ * @access  Private (Admin, Staff)
+ * @permissions parent:read
+ */
+router.get('/analytics/education',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  parentController.getParentCountByEducation.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/analytics/school
+ * @desc    Get parents by school
+ * @access  Private (Admin, Staff)
+ * @permissions parent:read
+ */
+router.get('/analytics/school',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  parentController.getParentsBySchool.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/analytics/report
+ * @desc    Get parent report
+ * @access  Private (Admin, Staff)
+ * @permissions parent:read
+ */
+router.get('/analytics/report',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  parentController.getParentReport.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/analytics/comparison
+ * @desc    Get parent comparison data
+ * @access  Private (Admin, Staff)
+ * @permissions parent:read
+ */
+router.get('/analytics/comparison',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  parentController.getParentComparison.bind(parentController)
+);
+
+// ============================================================================
+// Student-Related Endpoints
+// ============================================================================
+
+/**
+ * @route   GET /api/parents/:id/students
+ * @desc    Get parent's students
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, student:read_children
+ */
+router.get('/:id/students',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'student:read_children']),
+  validateParams(parentSchemas.getParentById),
+  parentController.getParentStudents.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/attendance
+ * @desc    Get student attendance for parent
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, attendance:read_children
+ */
+router.get('/:id/students/:studentId/attendance',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'attendance:read_children']),
+  validateParams(parentSchemas.getParentStudent),
+  parentController.getParentStudentAttendance.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/grades
+ * @desc    Get student grades for parent
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, grade:read_children
+ */
+router.get('/:id/students/:studentId/grades',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'grade:read_children']),
+  validateParams(parentSchemas.getParentStudent),
+  parentController.getParentStudentGrades.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/assignments
+ * @desc    Get student assignments for parent
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, assignment:read_children
+ */
+router.get('/:id/students/:studentId/assignments',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'assignment:read_children']),
+  validateParams(parentSchemas.getParentStudent),
+  parentController.getParentStudentAssignments.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/exams
+ * @desc    Get student exams for parent
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, exam:read_children
+ */
+router.get('/:id/students/:studentId/exams',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'exam:read_children']),
+  validateParams(parentSchemas.getParentStudent),
+  parentController.getParentStudentExams.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/timetable
+ * @desc    Get student timetable for parent
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, timetable:read_children
+ */
+router.get('/:id/students/:studentId/timetable',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'timetable:read_children']),
+  validateParams(parentSchemas.getParentStudent),
+  parentController.getParentStudentTimetable.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/fees
+ * @desc    Get student fees for parent
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, fee:read_children
+ */
+router.get('/:id/students/:studentId/fees',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'fee:read_children']),
+  validateParams(parentSchemas.getParentStudent),
+  parentController.getParentStudentFees.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/payments
+ * @desc    Get student payments for parent
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, payment:read_children
+ */
+router.get('/:id/students/:studentId/payments',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'payment:read_children']),
+  validateParams(parentSchemas.getParentStudent),
+  parentController.getParentStudentPayments.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/reports
+ * @desc    Get student reports for parent
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, report:read_children
+ */
+router.get('/:id/students/:studentId/reports',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'report:read_children']),
+  validateParams(parentSchemas.getParentStudent),
+  parentController.getParentStudentReports.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/documents
+ * @desc    Get student documents for parent
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, document:read_children
+ */
+router.get('/:id/students/:studentId/documents',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'document:read_children']),
+  validateParams(parentSchemas.getParentStudent),
+  parentController.getParentStudentDocuments.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/announcements
+ * @desc    Get student announcements for parent
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, announcement:read_children
+ */
+router.get('/:id/students/:studentId/announcements',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'announcement:read_children']),
+  validateParams(parentSchemas.getParentStudent),
+  parentController.getParentStudentAnnouncements.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/messages
+ * @desc    Get student messages for parent
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, message:read_children
+ */
+router.get('/:id/students/:studentId/messages',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'message:read_children']),
+  validateParams(parentSchemas.getParentStudent),
+  parentController.getParentStudentMessages.bind(parentController)
+);
+
+// ============================================================================
+// Communication & Notifications
+// ============================================================================
+
+/**
+ * @route   POST /api/parents/:id/messages
+ * @desc    Send message to parent
+ * @access  Private (Admin, Staff, Teacher)
+ * @permissions parent:read, message:create
+ */
+router.post('/:id/messages',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'message:create']),
+  validateParams(parentSchemas.getParentById),
+  validateBody(parentSchemas.sendMessage),
+  parentController.sendParentMessage.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/notifications
+ * @desc    Get parent notifications
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, notification:read
+ */
+router.get('/:id/notifications',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'notification:read']),
+  validateParams(parentSchemas.getParentById),
+  parentController.getParentNotifications.bind(parentController)
+);
+
+/**
+ * @route   PATCH /api/parents/:id/notifications/:notificationId/read
+ * @desc    Mark parent notification as read
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, notification:update
+ */
+router.patch('/:id/notifications/:notificationId/read',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'notification:update']),
+  validateParams(parentSchemas.markNotificationRead),
+  parentController.markParentNotificationAsRead.bind(parentController)
+);
+
+// ============================================================================
+// Additional Features
+// ============================================================================
+
+/**
+ * @route   GET /api/parents/:id/calendar
+ * @desc    Get parent calendar
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read
+ */
+router.get('/:id/calendar',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  validateParams(parentSchemas.getParentById),
+  parentController.getParentCalendar.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/settings
+ * @desc    Get parent settings
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read
+ */
+router.get('/:id/settings',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  validateParams(parentSchemas.getParentById),
+  parentController.getParentSettings.bind(parentController)
+);
+
+/**
+ * @route   PUT /api/parents/:id/settings
+ * @desc    Update parent settings
+ * @access  Private (Admin, Staff, Parent)
+ * @permissions parent:read, user:update_own
+ */
+router.put('/:id/settings',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'user:update_own']),
+  validateParams(parentSchemas.getParentById),
+  validateBody(parentSchemas.updateParentSettings),
+  parentController.updateParentSettings.bind(parentController)
+);
+
+// ============================================================================
+// Debug/Test Endpoints (Conditional)
+// ============================================================================
 
 /**
  * @route   GET /api/parents/debug/test
@@ -180,665 +569,5 @@ if (typeof parentController.getParentTest === 'function') {
     parentController.getParentTest.bind(parentController)
   );
 }
-
-/**
- * @route   GET /api/parents/:id/stats
- * @desc    Get parent statistics
- * @access  Private (All authenticated users)
- * @params  {id} - Parent ID
- * @permissions parent:read
- */
-router.get('/:id/stats',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  validateParams(idSchema),
-  parentStatsCacheMiddleware(),
-  parentController.getParentStats.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/analytics
- * @desc    Get parent analytics
- * @access  Private (All authenticated users)
- * @params  {id} - Parent ID
- * @query   {period} - Analytics period (7d, 30d, 90d, 1y)
- * @permissions parent:read
- */
-router.get('/:id/analytics',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  validateParams(idSchema),
-  analyticsLimiter,
-  parentAnalyticsCacheMiddleware(),
-  parentController.getParentAnalytics.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/performance
- * @desc    Get parent performance metrics
- * @access  Private (All authenticated users)
- * @params  {id} - Parent ID
- * @permissions parent:read
- */
-router.get('/:id/performance',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  validateParams(idSchema),
-  parentPerformanceCacheMiddleware(),
-  parentController.getParentPerformance.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/dashboard
- * @desc    Get parent dashboard with comprehensive data
- * @access  Private (All authenticated users)
- * @params  {id} - Parent ID
- * @permissions parent:read
- */
-router.get('/:id/dashboard',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  validateParams(idSchema),
-  parentController.getParentDashboard.bind(parentController)
-);
-
-// ======================
-// BULK OPERATIONS
-// ======================
-
-/**
- * @route   POST /api/parents/bulk/create
- * @desc    Bulk create parents
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
- * @body    ParentBulkCreateSchema
- * @permissions parent:create
- */
-router.post('/bulk/create',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  authorizePermissions(['parent:create']),
-  bulkLimiter,
-  validateBody(ParentBulkCreateSchema),
-  auditLog('BULK_CREATE', 'Parent'),
-  parentController.bulkCreateParents.bind(parentController)
-);
-
-/**
- * @route   PUT /api/parents/bulk/update
- * @desc    Bulk update parents
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
- * @body    ParentBulkUpdateSchema
- * @permissions parent:update
- */
-router.put('/bulk/update',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  authorizePermissions(['parent:update']),
-  bulkLimiter,
-  validateBody(ParentBulkUpdateSchema),
-  auditLog('BULK_UPDATE', 'Parent'),
-  parentController.bulkUpdateParents.bind(parentController)
-);
-
-/**
- * @route   DELETE /api/parents/bulk/delete
- * @desc    Bulk delete parents
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
- * @body    ParentBulkDeleteSchema
- * @permissions parent:delete
- */
-router.delete('/bulk/delete',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  authorizePermissions(['parent:delete']),
-  bulkLimiter,
-  validateBody(ParentBulkDeleteSchema),
-  auditLog('BULK_DELETE', 'Parent'),
-  parentController.bulkDeleteParents.bind(parentController)
-);
-
-// ======================
-// SEARCH & FILTER
-// ======================
-
-/**
- * @route   GET /api/parents/search
- * @desc    Search parents with advanced filters
- * @access  Private (All authenticated users)
- * @query   {q} - Search query (minimum 2 characters)
- * @query   {include} - Comma-separated list of relations to include
- * @permissions parent:read
- */
-router.get('/search',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  parentSearchLimiter,
-  parentSearchCacheMiddleware(),
-  parentController.searchParents.bind(parentController)
-);
-
-// ======================
-// EXPORT & IMPORT
-// ======================
-
-/**
- * @route   GET /api/parents/export
- * @desc    Export parents data
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
- * @query   {format} - Export format (json, csv)
- * @query   {...ParentSearchSchema} - Filters for export
- * @permissions parent:export
- */
-router.get('/export',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  authorizePermissions(['parent:export']),
-  exportLimiter,
-  parentController.exportParents.bind(parentController)
-);
-
-/**
- * @route   POST /api/parents/import
- * @desc    Import parents data
- * @access  Private (SUPER_ADMIN)
- * @body    {parents: ParentCreateSchema[], user: User}
- * @permissions parent:import
- */
-router.post('/import',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN']),
-  authorizePermissions(['parent:import']),
-  bulkLimiter,
-  auditLog('IMPORT', 'Parent'),
-  parentController.importParents.bind(parentController)
-);
-
-// ======================
-// UTILITY ENDPOINTS
-// ======================
-
-/**
- * @route   GET /api/parents/suggestions/code
- * @desc    Generate parent code suggestions
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
- * @query   {name} - Parent name for code generation
- * @permissions parent:create
- */
-router.get('/suggestions/code',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
-  authorizePermissions(['parent:create']),
-  parentController.generateCodeSuggestions.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/stats/income-range
- * @desc    Get parent count by income range
- * @access  Private (All authenticated users)
- * @permissions parent:read
- */
-router.get('/stats/income-range',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  parentController.getParentCountByIncomeRange.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/stats/education
- * @desc    Get parent count by education
- * @access  Private (All authenticated users)
- * @permissions parent:read
- */
-router.get('/stats/education',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  parentController.getParentCountByEducation.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/school/:schoolId
- * @desc    Get parents by school
- * @access  Private (All authenticated users)
- * @params  {schoolId} - School ID
- * @query   {include} - Comma-separated list of relations to include
- * @permissions parent:read
- */
-router.get('/school/:schoolId',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  validateParams({ schoolId: idSchema.shape.id }),
-  authorizeSchoolAccess('schoolId'),
-  parentBySchoolCacheMiddleware(),
-  parentController.getParentsBySchool.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/report
- * @desc    Generate comprehensive parent report
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
- * @query   {...ParentSearchSchema} - Filters for report
- * @permissions parent:report
- */
-router.get('/report',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  authorizePermissions(['parent:report']),
-  analyticsLimiter,
-  parentController.getParentReport.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/comparison
- * @desc    Compare multiple parents
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
- * @query   {parentIds} - Array of parent IDs to compare
- * @permissions parent:read
- */
-router.get('/comparison',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  authorizePermissions(['parent:read']),
-  analyticsLimiter,
-  parentController.getParentComparison.bind(parentController)
-);
-
-// ======================
-// CACHE MANAGEMENT
-// ======================
-
-/**
- * @route   GET /api/parents/cache/stats
- * @desc    Get cache statistics
- * @access  Private (SUPER_ADMIN)
- * @permissions system:cache_manage
- */
-router.get('/cache/stats',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN']),
-  authorizePermissions(['system:cache_manage']),
-  parentController.getCacheStats.bind(parentController)
-);
-
-/**
- * @route   POST /api/parents/cache/warm
- * @desc    Warm up cache
- * @access  Private (SUPER_ADMIN)
- * @body    {parentId?} - Optional specific parent ID to warm
- * @permissions system:cache_manage
- */
-router.post('/cache/warm',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN']),
-  authorizePermissions(['system:cache_manage']),
-  cacheLimiter,
-  parentController.warmCache.bind(parentController)
-);
-
-/**
- * @route   DELETE /api/parents/cache/clear
- * @desc    Clear cache
- * @access  Private (SUPER_ADMIN)
- * @query   {all} - Clear all cache (not just school-specific)
- * @permissions system:cache_manage
- */
-router.delete('/cache/clear',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN']),
-  authorizePermissions(['system:cache_manage']),
-  cacheLimiter,
-  parentController.clearCache.bind(parentController)
-);
-
-// ======================
-// ADVANCED FEATURES
-// ======================
-
-/**
- * @route   GET /api/parents/analytics/overview
- * @desc    Get comprehensive parent analytics overview
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
- * @query   {period} - Analytics period (7d, 30d, 90d, 1y)
- * @permissions parent:analytics
- */
-router.get('/analytics/overview',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  authorizePermissions(['parent:analytics']),
-  analyticsLimiter,
-  parentController.getParentReport.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/performance/leaderboard
- * @desc    Get parent performance leaderboard
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
- * @query   {limit} - Number of top parents to return
- * @query   {metric} - Performance metric (payment_rate, student_performance, overall)
- * @permissions parent:read
- */
-router.get('/performance/leaderboard',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
-  authorizePermissions(['parent:read']),
-  analyticsLimiter,
-  parentController.getParentReport.bind(parentController)
-);
-
-// ======================
-// PARENT PORTAL ROUTES
-// ======================
-
-/**
- * @route   GET /api/parents/:id/students
- * @desc    Get parent's students
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID
- * @permissions parent:read, student:read_children
- */
-router.get('/:id/students',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children']),
-  validateParams(idSchema),
-  parentController.getParentStudents.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/students/:studentId/attendance
- * @desc    Get student attendance for parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read_children, attendance:read
- */
-router.get('/:id/students/:studentId/attendance',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'attendance:read']),
-  validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
-  parentController.getParentStudentAttendance.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/students/:studentId/grades
- * @desc    Get student grades for parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read_children, grade:read
- */
-router.get('/:id/students/:studentId/grades',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'grade:read']),
-  validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
-  parentController.getParentStudentGrades.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/students/:studentId/assignments
- * @desc    Get student assignments for parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read_children, assignment:read
- */
-router.get('/:id/students/:studentId/assignments',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'assignment:read']),
-  validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
-  parentController.getParentStudentAssignments.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/students/:studentId/exams
- * @desc    Get student exams for parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read_children, exam:read_children
- */
-router.get('/:id/students/:studentId/exams',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'exam:read']),
-  validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
-  parentController.getParentStudentExams.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/students/:studentId/timetable
- * @desc    Get student timetable for parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read, timetable:read
- */
-router.get('/:id/students/:studentId/timetable',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'timetable:read']),
-  validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
-  parentController.getParentStudentTimetable.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/students/:studentId/fees
- * @desc    Get student fees for parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read, fee:read
- */
-router.get('/:id/students/:studentId/fees',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'fee:read']),
-  parentController.getParentStudentFees.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/students/:studentId/payments
- * @desc    Get student payments for parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read, payment:read
- */
-router.get('/:id/students/:studentId/payments',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'payment:read']),
-  parentController.getParentStudentPayments.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/students/:studentId/reports
- * @desc    Get student reports for parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read, report:read
- */
-router.get('/:id/students/:studentId/reports',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'report:read']),
-  parentController.getParentStudentReports.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/students/:studentId/documents
- * @desc    Get student documents for parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read, document:read
- */
-router.get('/:id/students/:studentId/documents',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'document:read']),
-  parentController.getParentStudentDocuments.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/students/:studentId/announcements
- * @desc    Get student announcements for parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read, announcement:read
- */
-router.get('/:id/students/:studentId/announcements',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'announcement:read']),
-  parentController.getParentStudentAnnouncements.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/students/:studentId/messages
- * @desc    Get student messages for parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read, message:read
- */
-router.get('/:id/students/:studentId/messages',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'message:read']),
-  parentController.getParentStudentMessages.bind(parentController)
-);
-
-/**
- * @route   POST /api/parents/:id/messages
- * @desc    Send message from parent
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID
- * @permissions parent:read, message:create
- */
-router.post('/:id/messages',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'message:create']),
-  validateParams(idSchema),
-  parentController.sendParentMessage.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/notifications
- * @desc    Get parent notifications
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID
- * @permissions parent:read, notification:read
- */
-router.get('/:id/notifications',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'notification:read']),
-  validateParams(idSchema),
-  parentController.getParentNotifications.bind(parentController)
-);
-
-/**
- * @route   PATCH /api/parents/:id/notifications/:notificationId/read
- * @desc    Mark notification as read
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID, {notificationId} - Notification ID
- * @permissions parent:read, notification:update
- */
-router.patch('/:id/notifications/:notificationId/read',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'notification:update']),
-  validateParams({ ...idSchema.shape, notificationId: idSchema.shape.id }),
-  parentController.markParentNotificationAsRead.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/dashboard
- * @desc    Get parent dashboard data
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID
- * @permissions parent:read
- */
-router.get('/:id/dashboard',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read']),
-  validateParams(idSchema),
-  parentController.getParentDashboard.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/calendar
- * @desc    Get parent calendar data
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID
- * @permissions parent:read
- */
-router.get('/:id/calendar',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read']),
-  validateParams(idSchema),
-  parentController.getParentCalendar.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/settings
- * @desc    Get parent settings
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID
- * @permissions parent:read
- */
-router.get('/:id/settings',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read']),
-  validateParams(idSchema),
-  parentController.getParentSettings.bind(parentController)
-);
-
-/**
- * @route   PUT /api/parents/:id/settings
- * @desc    Update parent settings
- * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
- * @params  {id} - Parent ID
- * @permissions parent:read, parent:update
- */
-router.put('/:id/settings',
-  authenticateToken,
-  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'parent:update']),
-  validateParams(idSchema),
-  parentController.updateParentSettings.bind(parentController)
-);
-
-// ======================
-// ERROR HANDLING MIDDLEWARE
-// ======================
-
-// Handle 404 for undefined routes
-router.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'Route not found',
-    message: `Cannot ${req.method} ${req.originalUrl}`,
-    meta: {
-      timestamp: new Date().toISOString(),
-      method: req.method,
-      url: req.originalUrl
-    }
-  });
-});
-
-// Global error handler
-router.use((error, req, res, next) => {
-  console.error('Parent route error:', error);
-  
-  res.status(error.status || 500).json({
-    success: false,
-    error: error.message || 'Internal server error',
-    meta: {
-      timestamp: new Date().toISOString(),
-      method: req.method,
-      url: req.originalUrl,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    }
-  });
-});
 
 export default router; 
