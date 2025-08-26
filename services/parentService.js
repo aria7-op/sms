@@ -681,37 +681,40 @@ class ParentService {
       const cached = await this.getFromCache(cacheKey);
       if (cached) return cached;
 
-      // First get the parent record to get the userId
-      const parent = await this.prisma.parent.findFirst({
-        where: { 
-          id: BigInt(parentId), 
-          schoolId: BigInt(schoolId), 
-          deletedAt: null 
+      // Resolve parent either by id or by userId
+      let parent = await this.prisma.parent.findFirst({
+        where: {
+          id: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
         },
-        include: {
-          user: true,
-          students: {
-            include: {
-              user: true,
-              class: true,
-              section: true
-            }
-          },
-          payments: true
-        }
+        select: { id: true, userId: true, annualIncome: true }
       });
+
+      if (!parent) {
+        parent = await this.prisma.parent.findFirst({
+          where: {
+            userId: BigInt(parentId),
+            schoolId: BigInt(schoolId),
+            deletedAt: null
+          },
+          select: { id: true, userId: true, annualIncome: true }
+        });
+      }
 
       if (!parent) {
         throw new Error('Parent not found');
       }
 
+      const actualParentId = parent.id;
+
       // Get students and payments count
       const [studentsCount, payments] = await Promise.all([
         this.prisma.student.count({
-          where: { parentId: BigInt(parentId), schoolId: BigInt(schoolId), deletedAt: null }
+          where: { parentId: actualParentId, schoolId: BigInt(schoolId), deletedAt: null }
         }),
         this.prisma.payment.findMany({
-          where: { parentId: BigInt(parentId), schoolId: BigInt(schoolId) },
+          where: { parentId: actualParentId, schoolId: BigInt(schoolId) },
           select: {
             amount: true,
             status: true,
@@ -722,7 +725,7 @@ class ParentService {
       ]);
 
       const stats = {
-        parentId,
+        parentId: actualParentId.toString(),
         totalStudents: studentsCount,
         totalPayments: payments.length,
         totalPaid: payments.filter(p => p.status === 'PAID').reduce((sum, p) => sum + Number(p.amount), 0),
@@ -778,8 +781,8 @@ class ParentService {
 
       const payments = await this.prisma.payment.findMany({
         where: {
-          parentId,
-          schoolId,
+          parentId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
           paymentDate: {
             gte: startDate,
             lte: now
@@ -843,27 +846,37 @@ class ParentService {
       const cached = await this.getFromCache(cacheKey);
       if (cached) return cached;
 
-      // First get the parent record
-      const parent = await this.prisma.parent.findFirst({
-        where: { 
-          id: BigInt(parentId), 
-          schoolId: BigInt(schoolId), 
-          deletedAt: null 
+      // Resolve parent by id or userId
+      let parent = await this.prisma.parent.findFirst({
+        where: {
+          id: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
         },
-        include: {
-          user: true
-        }
+        select: { id: true, userId: true }
       });
+
+      if (!parent) {
+        parent = await this.prisma.parent.findFirst({
+          where: {
+            userId: BigInt(parentId),
+            schoolId: BigInt(schoolId),
+            deletedAt: null
+          },
+          select: { id: true, userId: true }
+        });
+      }
 
       if (!parent) {
         throw new Error('Parent not found');
       }
+      const actualParentId = parent.id;
 
       // Get students and payments
       const [students, payments] = await Promise.all([
         this.prisma.student.findMany({
           where: { 
-            parentId: BigInt(parentId), 
+            parentId: actualParentId, 
             schoolId: BigInt(schoolId), 
             deletedAt: null 
           },
@@ -884,7 +897,7 @@ class ParentService {
         }),
         this.prisma.payment.findMany({
           where: { 
-            parentId: BigInt(parentId), 
+            parentId: actualParentId, 
             schoolId: BigInt(schoolId) 
           },
           select: {
@@ -1222,15 +1235,26 @@ class ParentService {
     try {
       const { limit = 10, offset = 0, unreadOnly = false, type } = filters;
       
-      // First get the parent record to get the userId
-      const parent = await this.prisma.parent.findFirst({
-        where: { 
-          id: BigInt(parentId), 
-          schoolId: BigInt(schoolId), 
-          deletedAt: null 
+      // Resolve parent to get the userId (by id or userId)
+      let parent = await this.prisma.parent.findFirst({
+        where: {
+          id: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
         },
-        select: { userId: true }
+        select: { id: true, userId: true }
       });
+
+      if (!parent) {
+        parent = await this.prisma.parent.findFirst({
+          where: {
+            userId: BigInt(parentId),
+            schoolId: BigInt(schoolId),
+            deletedAt: null
+          },
+          select: { id: true, userId: true }
+        });
+      }
 
       if (!parent) {
         throw new Error('Parent not found');
