@@ -1394,23 +1394,38 @@ class ParentService {
       const cached = await this.getFromCache(cacheKey);
       if (cached) return cached;
 
-      // First get the parent record to get the userId
-      const parent = await this.prisma.parent.findFirst({
+      // First try to find parent by ID, then by userId if not found
+      let parent = await this.prisma.parent.findFirst({
         where: { 
           id: BigInt(parentId), 
           schoolId: BigInt(schoolId), 
           deletedAt: null 
         },
-        select: { userId: true }
+        select: { id: true, userId: true }
       });
+
+      // If not found by ID, try to find by userId
+      if (!parent) {
+        parent = await this.prisma.parent.findFirst({
+          where: { 
+            userId: BigInt(parentId), 
+            schoolId: BigInt(schoolId), 
+            deletedAt: null 
+          },
+          select: { id: true, userId: true }
+        });
+      }
 
       if (!parent) {
         throw new Error('Parent not found');
       }
 
+      // Use the actual parent record ID for student queries
+      const actualParentId = parent.id;
+
       const students = await this.prisma.student.findMany({
         where: {
-          parentId: BigInt(parentId),
+          parentId: actualParentId,
           schoolId: BigInt(schoolId),
           deletedAt: null
         },
