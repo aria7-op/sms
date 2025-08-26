@@ -728,6 +728,552 @@ class ParentController {
       return handleError(res, error);
     }
   }
+
+  // ======================
+  // PARENT PORTAL METHODS
+  // ======================
+
+  async getParentStudents(req, res) {
+    try {
+      const { id } = req.params;
+
+      console.log('🔍 getParentStudents called with parentId:', id);
+
+      // Call the service without schoolId requirement
+      const students = await parentService.getParentStudents(parseInt(id));
+
+      console.log('✅ Found students:', students.length);
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Parent students retrieved successfully',
+        data: students,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          totalStudents: students.length
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent students controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentStudentAttendance(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, studentId } = req.params;
+      const { startDate, endDate, period } = req.query;
+
+      const attendance = await parentService.getParentStudentAttendance(
+        parseInt(id), 
+        parseInt(studentId), 
+        schoolId, 
+        { startDate, endDate, period }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Student attendance retrieved successfully',
+        data: attendance,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          studentId: parseInt(studentId),
+          filters: { startDate, endDate, period }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent student attendance controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentStudentGrades(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, studentId } = req.params;
+      const { academicYear, term, subject } = req.query;
+
+      const grades = await parentService.getParentStudentGrades(
+        parseInt(id), 
+        parseInt(studentId), 
+        schoolId, 
+        { academicYear, term, subject }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Student grades retrieved successfully',
+        data: grades,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          studentId: parseInt(studentId),
+          filters: { academicYear, term, subject }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent student grades controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentStudentAssignments(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, studentId } = req.params;
+      const { status, subject, dueDate } = req.query;
+
+      const assignments = await parentService.getParentStudentAssignments(
+        parseInt(id), 
+        parseInt(studentId), 
+        schoolId, 
+        { status, subject, dueDate }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Student assignments retrieved successfully',
+        data: assignments,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          studentId: parseInt(studentId),
+          filters: { status, subject, dueDate }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent student assignments controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentStudentExams(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, studentId } = req.params;
+      const { academicYear, term, subject } = req.query;
+
+      const exams = await parentService.getParentStudentExams(
+        parseInt(id), 
+        parseInt(studentId), 
+        schoolId, 
+        { academicYear, term, subject }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Student exams retrieved successfully',
+        data: exams,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          studentId: parseInt(studentId),
+          filters: { academicYear, term, subject }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent student exams controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentStudentTimetable(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, studentId } = req.params;
+      const { weekStart, weekEnd } = req.query;
+
+      const timetable = await parentService.getParentStudentTimetable(
+        parseInt(id), 
+        parseInt(studentId), 
+        schoolId, 
+        { weekStart, weekEnd }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Student timetable retrieved successfully',
+        data: timetable,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          studentId: parseInt(studentId),
+          filters: { weekStart, weekEnd }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent student timetable controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentStudentFees(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, studentId } = req.params;
+      const { status, academicYear, term } = req.query;
+
+      const fees = await parentService.getParentStudentFees(
+        parseInt(id), 
+        parseInt(studentId), 
+        schoolId, 
+        { status, academicYear, term }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Student fees retrieved successfully',
+        data: fees,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          studentId: parseInt(studentId),
+          filters: { status, academicYear, term }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent student fees controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentStudentPayments(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, studentId } = req.params;
+      const { startDate, endDate, status } = req.query;
+
+      const payments = await parentService.getParentStudentPayments(
+        parseInt(id), 
+        parseInt(studentId), 
+        schoolId, 
+        { startDate, endDate, status }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Student payments retrieved successfully',
+        data: payments,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          studentId: parseInt(studentId),
+          filters: { startDate, endDate, status }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent student payments controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentStudentReports(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, studentId } = req.params;
+      const { academicYear, term, type } = req.query;
+
+      const reports = await parentService.getParentStudentReports(
+        parseInt(id), 
+        parseInt(studentId), 
+        schoolId, 
+        { academicYear, term, type }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Student reports retrieved successfully',
+        data: reports,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          studentId: parseInt(studentId),
+          filters: { academicYear, term, type }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent student reports controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentStudentDocuments(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, studentId } = req.params;
+      const { type, academicYear, subject } = req.query;
+
+      const documents = await parentService.getParentStudentDocuments(
+        parseInt(id), 
+        parseInt(studentId), 
+        schoolId, 
+        { type, academicYear, subject }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Student documents retrieved successfully',
+        data: documents,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          studentId: parseInt(studentId),
+          filters: { type, academicYear, subject }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent student documents controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentStudentAnnouncements(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, studentId } = req.params;
+      const { limit, offset, type } = req.query;
+
+      const announcements = await parentService.getParentStudentAnnouncements(
+        parseInt(id), 
+        parseInt(studentId), 
+        schoolId, 
+        { limit: parseInt(limit) || 10, offset: parseInt(offset) || 0, type }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Student announcements retrieved successfully',
+        data: announcements,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          studentId: parseInt(studentId),
+          filters: { limit, offset, type }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent student announcements controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentStudentMessages(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, studentId } = req.params;
+      const { limit, offset, unreadOnly } = req.query;
+
+      const messages = await parentService.getParentStudentMessages(
+        parseInt(id), 
+        parseInt(studentId), 
+        schoolId, 
+        { limit: parseInt(limit) || 10, offset: parseInt(offset) || 0, unreadOnly: unreadOnly === 'true' }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Student messages retrieved successfully',
+        data: messages,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          studentId: parseInt(studentId),
+          filters: { limit, offset, unreadOnly }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent student messages controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async sendParentMessage(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const userId = req.user.id;
+      const { id } = req.params;
+      const { recipientId, subject, message, priority, attachments } = req.body;
+
+      const result = await parentService.sendParentMessage(
+        parseInt(id),
+        { recipientId, subject, message, priority, attachments },
+        userId,
+        schoolId
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Message sent successfully',
+        data: result,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          sentBy: userId,
+          recipientId
+        }
+      }, 201);
+
+    } catch (error) {
+      logger.error('Send parent message controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentNotifications(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id } = req.params;
+      const { limit, offset, unreadOnly, type } = req.query;
+
+      const notifications = await parentService.getParentNotifications(
+        parseInt(id), 
+        schoolId, 
+        { limit: parseInt(limit) || 10, offset: parseInt(offset) || 0, unreadOnly: unreadOnly === 'true', type }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Parent notifications retrieved successfully',
+        data: notifications,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          filters: { limit, offset, unreadOnly, type }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent notifications controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async markParentNotificationAsRead(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id, notificationId } = req.params;
+
+      const result = await parentService.markParentNotificationAsRead(
+        parseInt(id),
+        parseInt(notificationId),
+        parseInt(notificationId),
+        schoolId
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Notification marked as read successfully',
+        data: result,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          notificationId: parseInt(notificationId)
+        }
+      });
+
+    } catch (error) {
+      logger.error('Mark parent notification as read controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentCalendar(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id } = req.params;
+      const { startDate, endDate, type } = req.query;
+
+      const calendar = await parentService.getParentCalendar(
+        parseInt(id), 
+        schoolId, 
+        { startDate, endDate, type }
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Parent calendar retrieved successfully',
+        data: calendar,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          filters: { startDate, endDate, type }
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent calendar controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async getParentSettings(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id } = req.params;
+
+      const settings = await parentService.getParentSettings(parseInt(id), schoolId);
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Parent settings retrieved successfully',
+        data: settings,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id)
+        }
+      });
+
+    } catch (error) {
+      logger.error('Get parent settings controller error:', error);
+      return handleError(res, error);
+    }
+  }
+
+  async updateParentSettings(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const userId = req.user.id;
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const result = await parentService.updateParentSettings(
+        parseInt(id),
+        updateData,
+        userId,
+        schoolId
+      );
+
+      return formatResponse(res, {
+        success: true,
+        message: 'Parent settings updated successfully',
+        data: result,
+        meta: {
+          timestamp: new Date().toISOString(),
+          parentId: parseInt(id),
+          updatedBy: userId
+        }
+      });
+
+    } catch (error) {
+      logger.error('Update parent settings controller error:', error);
+      return handleError(res, error);
+    }
+  }
 }
 
 export default new ParentController(); 
