@@ -1422,6 +1422,9 @@ class ParentService {
 
       // Use the actual parent record ID for student queries
       const actualParentId = parent.id;
+      
+      console.log('🔍 Found parent record:', { id: parent.id.toString(), userId: parent.userId.toString() });
+      console.log('🔍 Looking for students with parentId:', actualParentId.toString());
 
       const students = await this.prisma.student.findMany({
         where: {
@@ -1457,6 +1460,9 @@ class ParentService {
         }
       });
 
+      console.log('🔍 Raw students from database:', students);
+      console.log('🔍 Students count:', students?.length || 0);
+
       const formattedStudents = students.map(student => ({
         id: student.id.toString(),
         userId: student.userId.toString(),
@@ -1484,6 +1490,9 @@ class ParentService {
         students: formattedStudents,
         total: formattedStudents.length
       };
+
+      console.log('🔍 Final result:', JSON.stringify(result, null, 2));
+      console.log('🔍 Returning result with', result.students?.length || 0, 'students');
 
       await this.setCache(cacheKey, result, 900); // 15 minutes
       return result;
