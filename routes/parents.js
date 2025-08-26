@@ -171,12 +171,15 @@ router.patch('/:id/restore',
  * @desc    Test endpoint to isolate database issues
  * @access  Private (All authenticated users)
  * @permissions parent:read
+ * Note: Only attach if method exists to avoid startup crashes
  */
-router.get('/debug/test',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  parentController.getParentTest.bind(parentController)
-);
+if (typeof parentController.getParentTest === 'function') {
+  router.get('/debug/test',
+    authenticateToken,
+    authorizePermissions(['parent:read']),
+    parentController.getParentTest.bind(parentController)
+  );
+}
 
 /**
  * @route   GET /api/parents/:id/stats
