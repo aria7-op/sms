@@ -822,18 +822,18 @@ class ParentController {
       }
 
       // Call the service with both parentId and schoolId
-      const students = await parentService.getParentStudents(parseInt(id), parsedSchoolId);
+      const result = await parentService.getParentStudents(parseInt(id), parsedSchoolId);
 
-      console.log('✅ Found students:', students.length);
+      console.log('✅ Found students:', result.total);
 
       return formatResponse(res, {
         success: true,
         message: 'Parent students retrieved successfully',
-        data: students,
+        data: result,
         meta: {
           timestamp: new Date().toISOString(),
           parentId: parseInt(id),
-          totalStudents: students.length
+          totalStudents: result.total
         }
       });
 
