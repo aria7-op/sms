@@ -545,12 +545,12 @@ router.get('/:id/students',
  * @desc    Get student attendance for parent
  * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
  * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read_children, attendance:read_children
+ * @permissions parent:read, student:read_children, attendance:read
  */
 router.get('/:id/students/:studentId/attendance',
   authenticateToken,
   authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'attendance:read_children']),
+  authorizePermissions(['parent:read', 'student:read_children', 'attendance:read']),
   validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
   parentController.getParentStudentAttendance.bind(parentController)
 );
@@ -560,12 +560,12 @@ router.get('/:id/students/:studentId/attendance',
  * @desc    Get student grades for parent
  * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
  * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read_children, grade:read_children
+ * @permissions parent:read, student:read_children, grade:read
  */
 router.get('/:id/students/:studentId/grades',
   authenticateToken,
   authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'grade:read_children']),
+  authorizePermissions(['parent:read', 'student:read_children', 'grade:read']),
   validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
   parentController.getParentStudentGrades.bind(parentController)
 );
@@ -575,12 +575,12 @@ router.get('/:id/students/:studentId/grades',
  * @desc    Get student assignments for parent
  * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
  * @params  {id} - Parent ID, {studentId} - Student ID
- * @permissions parent:read, student:read_children, assignment:read_children
+ * @permissions parent:read, student:read_children, assignment:read
  */
 router.get('/:id/students/:studentId/assignments',
   authenticateToken,
   authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'assignment:read_children']),
+  authorizePermissions(['parent:read', 'student:read_children', 'assignment:read']),
   validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
   parentController.getParentStudentAssignments.bind(parentController)
 );
@@ -595,7 +595,7 @@ router.get('/:id/students/:studentId/assignments',
 router.get('/:id/students/:studentId/exams',
   authenticateToken,
   authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'exam:read_children']),
+  authorizePermissions(['parent:read', 'student:read_children', 'exam:read']),
   validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
   parentController.getParentStudentExams.bind(parentController)
 );
@@ -610,7 +610,7 @@ router.get('/:id/students/:studentId/exams',
 router.get('/:id/students/:studentId/timetable',
   authenticateToken,
   authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'timetable:read_children']),
+  authorizePermissions(['parent:read', 'student:read_children', 'timetable:read']),
   validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
   parentController.getParentStudentTimetable.bind(parentController)
 );
@@ -625,7 +625,7 @@ router.get('/:id/students/:studentId/timetable',
 router.get('/:id/students/:studentId/fees',
   authenticateToken,
   authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'fee:read_children']),
+  authorizePermissions(['parent:read', 'student:read_children', 'fee:read']),
   parentController.getParentStudentFees.bind(parentController)
 );
 
@@ -639,7 +639,7 @@ router.get('/:id/students/:studentId/fees',
 router.get('/:id/students/:studentId/payments',
   authenticateToken,
   authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'payment:read_children']),
+  authorizePermissions(['parent:read', 'student:read_children', 'payment:read']),
   parentController.getParentStudentPayments.bind(parentController)
 );
 
@@ -653,7 +653,7 @@ router.get('/:id/students/:studentId/payments',
 router.get('/:id/students/:studentId/reports',
   authenticateToken,
   authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'report:read_children']),
+  authorizePermissions(['parent:read', 'student:read_children', 'report:read']),
   parentController.getParentStudentReports.bind(parentController)
 );
 
@@ -667,7 +667,7 @@ router.get('/:id/students/:studentId/reports',
 router.get('/:id/students/:studentId/documents',
   authenticateToken,
   authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'document:read_children']),
+  authorizePermissions(['parent:read', 'student:read_children', 'document:read']),
   parentController.getParentStudentDocuments.bind(parentController)
 );
 
@@ -681,7 +681,7 @@ router.get('/:id/students/:studentId/documents',
 router.get('/:id/students/:studentId/announcements',
   authenticateToken,
   authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'announcement:read_children']),
+  authorizePermissions(['parent:read', 'student:read_children', 'announcement:read']),
   parentController.getParentStudentAnnouncements.bind(parentController)
 );
 
@@ -695,7 +695,7 @@ router.get('/:id/students/:studentId/announcements',
 router.get('/:id/students/:studentId/messages',
   authenticateToken,
   authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
-  authorizePermissions(['parent:read', 'student:read_children', 'message:read_children']),
+  authorizePermissions(['parent:read', 'student:read_children', 'message:read']),
   parentController.getParentStudentMessages.bind(parentController)
 );
 
