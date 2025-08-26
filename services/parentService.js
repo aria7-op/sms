@@ -45,37 +45,6 @@ class ParentService {
     this.prisma = prisma;
   }
 
-  // Helper method to convert user ID to parent record ID
-  async getParentRecordIdByUserId(userId, schoolId) {
-    try {
-      logger.info(`getParentRecordIdByUserId: Looking up parent record for user ${userId} in school ${schoolId}`);
-      
-      const parent = await Promise.race([
-        this.prisma.parent.findFirst({
-          where: { 
-            userId: BigInt(userId), 
-            schoolId: BigInt(schoolId), 
-            deletedAt: null 
-          }
-        }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Parent lookup timeout after 5 seconds')), 5000)
-        )
-      ]);
-      
-      if (!parent) {
-        logger.warn(`getParentRecordIdByUserId: Parent not found for user ${userId} in school ${schoolId}`);
-        throw new Error('Parent not found');
-      }
-      
-      logger.info(`getParentRecordIdByUserId: Found parent record ${parent.id} for user ${userId}`);
-      return parent.id;
-    } catch (error) {
-      logger.error('Error getting parent record ID:', error);
-      throw error;
-    }
-  }
-
   // ======================
   // CACHE OPERATIONS
   // ======================
@@ -339,58 +308,31 @@ class ParentService {
 
   async getParentById(parentId, schoolId, include = null) {
     try {
-      logger.info(`getParentById START: parentId=${parentId}, schoolId=${schoolId}, include=${include}`);
-      
       const cacheKey = `byId:${parentId}:${include}`;
-      logger.debug(`getParentById: Checking cache for key: ${cacheKey}`);
-      
       const cached = await this.getFromCache(cacheKey);
-      if (cached) {
-        logger.info(`getParentById: Cache hit for key: ${cacheKey}`);
-        return cached;
-      }
+      if (cached) return cached;
 
-      logger.debug(`getParentById: Cache miss, building include query`);
       const includeObj = buildParentIncludeQuery(include);
-      logger.debug(`getParentById: Include object:`, includeObj);
 
-      logger.info(`getParentById: Executing database query...`);
-      const startTime = Date.now();
-      
-      // Add timeout protection to the database query
-      const parent = await Promise.race([
-        this.prisma.parent.findFirst({
-          where: {
-            id: parentId,
-            schoolId: BigInt(schoolId),
-            deletedAt: null
-          },
-          include: includeObj
-        }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Database query timeout after 10 seconds')), 10000)
-        )
-      ]);
-
-      const queryTime = Date.now() - startTime;
-      logger.info(`getParentById: Database query completed in ${queryTime}ms`);
+      const parent = await this.prisma.parent.findFirst({
+        where: {
+          id: parentId,
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        include: includeObj
+      });
 
       if (!parent) {
-        logger.warn(`getParentById: Parent not found for id=${parentId}, schoolId=${schoolId}`);
         throw new Error('Parent not found');
       }
 
-      logger.debug(`getParentById: Formatting response`);
       const result = formatParentResponse(parent, { includeStats: true });
-      
-      logger.debug(`getParentById: Setting cache for key: ${cacheKey}`);
       await this.setCache(cacheKey, result);
-      
-      logger.info(`getParentById END: Successfully retrieved parent ${parentId}`);
       return result;
 
     } catch (error) {
-      logger.error(`getParentById ERROR: parentId=${parentId}, schoolId=${schoolId}:`, error);
+      logger.error('Get parent by ID error:', error);
       throw error;
     }
   }
@@ -735,63 +677,38 @@ class ParentService {
 
   async getParentStats(parentId, schoolId) {
     try {
-      logger.info(`getParentStats: Starting stats retrieval for parent ${parentId}`);
-      
-      // Use the same cache key format as the middleware
-      const cacheKey = `parent:stats:${parentId}:schoolId:${schoolId}`;
+      const cacheKey = `stats:${parentId}`;
       const cached = await this.getFromCache(cacheKey);
-      if (cached) {
-        logger.info(`getParentStats: Cache hit for parent ${parentId}`);
-        return cached;
-      }
-      
-      logger.info(`getParentStats: Cache miss, fetching from database for parent ${parentId}`);
+      if (cached) return cached;
 
-      // Convert user ID to parent record ID
-      logger.info(`getParentStats: Converting user ID ${parentId} to parent record ID`);
-      const actualParentId = await this.getParentRecordIdByUserId(parentId, schoolId);
-      logger.info(`getParentStats: Parent record ID: ${actualParentId}`);
-
-      // Add timeout protection to database queries
-      const queryTimeout = 10000; // 10 seconds
-      
-      logger.info(`getParentStats: Executing database queries with ${queryTimeout}ms timeout`);
-      
-      const [parent, students, payments] = await Promise.race([
-        Promise.all([
-          this.prisma.parent.findFirst({
-            where: { id: actualParentId, schoolId: BigInt(schoolId), deletedAt: null },
-            include: {
-              user: true,
-              students: {
-                include: {
-                  user: true,
-                  class: true,
-                  section: true
-                }
-              },
-              payments: true
-            }
-          }),
-          this.prisma.student.count({
-            where: { parentId: actualParentId, schoolId: BigInt(schoolId), deletedAt: null }
-          }),
-          this.prisma.payment.findMany({
-            where: { parentId: actualParentId, schoolId: BigInt(schoolId) },
-            select: {
-              amount: true,
-              status: true,
-              paymentDate: true,
-              dueDate: true
-            }
-          })
-        ]),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error(`Database query timeout after ${queryTimeout}ms`)), queryTimeout)
-        )
+      const [parent, students, payments] = await Promise.all([
+        this.prisma.parent.findFirst({
+          where: { id: parentId, schoolId: BigInt(schoolId), deletedAt: null },
+          include: {
+            user: true,
+            students: {
+              include: {
+                user: true,
+                class: true,
+                section: true
+              }
+            },
+            payments: true
+          }
+        }),
+        this.prisma.student.count({
+          where: { parentId, schoolId: BigInt(schoolId), deletedAt: null }
+        }),
+        this.prisma.payment.findMany({
+          where: { parentId, schoolId },
+          select: {
+            amount: true,
+            status: true,
+            paymentDate: true,
+            dueDate: true
+          }
+        })
       ]);
-      
-      logger.info(`getParentStats: Database queries completed successfully`);
 
       if (!parent) {
         throw new Error('Parent not found');
@@ -817,9 +734,7 @@ class ParentService {
         nextDuePayment: payments.filter(p => p.status === 'UNPAID' || p.status === 'PARTIALLY_PAID' || p.status === 'OVERDUE').sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0] || null
       };
 
-      logger.info(`getParentStats: Storing stats in cache for parent ${parentId}`);
-      await this.setCache(cacheKey, stats, 900); // 15 minutes - using middleware-compatible key format
-      logger.info(`getParentStats: Stats retrieval completed successfully for parent ${parentId}`);
+      await this.setCache(cacheKey, stats, 900); // 15 minutes
       return stats;
 
     } catch (error) {
@@ -830,20 +745,9 @@ class ParentService {
 
   async getParentAnalytics(parentId, schoolId, period = '30d') {
     try {
-      logger.info(`getParentAnalytics: Starting analytics retrieval for parent ${parentId}, period ${period}`);
-      
-      // Use the same cache key format as the middleware
-      const cacheKey = `parent:analytics:${parentId}:schoolId:${schoolId}:period:${period}`;
+      const cacheKey = `analytics:${parentId}:${period}`;
       const cached = await this.getFromCache(cacheKey);
-      if (cached) {
-        logger.info(`getParentAnalytics: Cache hit for parent ${parentId}, period ${period}`);
-        return cached;
-      }
-      
-      logger.info(`getParentAnalytics: Cache miss, fetching from database for parent ${parentId}, period ${period}`);
-
-      // Convert user ID to parent record ID
-      const actualParentId = await this.getParentRecordIdByUserId(parentId, schoolId);
+      if (cached) return cached;
 
       const now = new Date();
       let startDate;
@@ -865,32 +769,23 @@ class ParentService {
           startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       }
 
-      logger.info(`getParentAnalytics: Executing payment query with timeout protection`);
-      
-      const payments = await Promise.race([
-        this.prisma.payment.findMany({
-          where: {
-            parentId: actualParentId,
-            schoolId: BigInt(schoolId),
-            paymentDate: {
-              gte: startDate,
-              lte: now
-            }
-          },
-          select: {
-            amount: true,
-            status: true,
-            paymentDate: true,
-            method: true
-          },
-          orderBy: { paymentDate: 'asc' }
-        }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Payment query timeout after 10 seconds')), 10000)
-        )
-      ]);
-      
-      logger.info(`getParentAnalytics: Payment query completed successfully, found ${payments.length} payments`);
+      const payments = await this.prisma.payment.findMany({
+        where: {
+          parentId,
+          schoolId,
+          paymentDate: {
+            gte: startDate,
+            lte: now
+          }
+        },
+        select: {
+          amount: true,
+          status: true,
+          paymentDate: true,
+          method: true
+        },
+        orderBy: { paymentDate: 'asc' }
+      });
 
       // Group payments by date
       const dailyPayments = {};
@@ -926,9 +821,7 @@ class ParentService {
         }, {})
       };
 
-      logger.info(`getParentAnalytics: Storing analytics in cache for parent ${parentId}, period ${period}`);
       await this.setCache(cacheKey, analytics, 1800); // 30 minutes
-      logger.info(`getParentAnalytics: Analytics retrieval completed successfully for parent ${parentId}, period ${period}`);
       return analytics;
 
     } catch (error) {
@@ -939,74 +832,54 @@ class ParentService {
 
   async getParentPerformance(parentId, schoolId) {
     try {
-      logger.info(`getParentPerformance: Starting performance retrieval for parent ${parentId}`);
-      
-      // Use the same cache key format as the middleware
-      const cacheKey = `parent:performance:${parentId}:schoolId:${schoolId}`;
+      const cacheKey = `performance:${parentId}`;
       const cached = await this.getFromCache(cacheKey);
-      if (cached) {
-        logger.info(`getParentPerformance: Cache hit for parent ${parentId}`);
-        return cached;
-      }
-      
-      logger.info(`getParentPerformance: Cache miss, fetching from database for parent ${parentId}`);
+      if (cached) return cached;
 
-      // Convert user ID to parent record ID
-      const actualParentId = await this.getParentRecordIdByUserId(parentId, schoolId);
-
-      logger.info(`getParentPerformance: Executing database queries with timeout protection`);
-      
-      const [parent, students, payments] = await Promise.race([
-        Promise.all([
-          this.prisma.parent.findFirst({
-            where: { id: actualParentId, schoolId: BigInt(schoolId), deletedAt: null },
-            include: {
-              user: true,
-              students: {
-                include: {
-                  grades: {
-                    include: {
-                      exam: true,
-                      subject: true
-                    }
+      const [parent, students, payments] = await Promise.all([
+        this.prisma.parent.findFirst({
+          where: { id: parentId, schoolId: BigInt(schoolId), deletedAt: null },
+          include: {
+            user: true,
+            students: {
+              include: {
+                grades: {
+                  include: {
+                    exam: true,
+                    subject: true
                   }
                 }
               }
             }
-          }),
-          this.prisma.student.findMany({
-            where: { parentId: actualParentId, schoolId: BigInt(schoolId), deletedAt: null },
-            include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true
-                }
-              },
-              grades: {
-                include: {
-                  exam: true,
-                  subject: true
-                }
+          }
+        }),
+        this.prisma.student.findMany({
+          where: { parentId, schoolId: BigInt(schoolId), deletedAt: null },
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            },
+            grades: {
+              include: {
+                exam: true,
+                subject: true
               }
             }
-          }),
-          this.prisma.payment.findMany({
-            where: { parentId: actualParentId, schoolId: BigInt(schoolId) },
-            select: {
-              amount: true,
-              status: true,
-              paymentDate: true,
-              dueDate: true
-            }
-          })
-        ]),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Performance database query timeout after 10 seconds')), 10000)
-        )
+          }
+        }),
+        this.prisma.payment.findMany({
+          where: { parentId, schoolId },
+          select: {
+            amount: true,
+            status: true,
+            paymentDate: true,
+            dueDate: true
+          }
+        })
       ]);
-      
-      logger.info(`getParentPerformance: Database queries completed successfully`);
 
       if (!parent) {
         throw new Error('Parent not found');
@@ -1023,7 +896,7 @@ class ParentService {
         const lastName = student.user?.lastName || 'Student';
         
         return {
-          studentId: student.id?.toString?.() || String(student.id),
+          studentId: student.id,
           studentName: `${firstName} ${lastName}`,
           totalExams: grades.length,
           averageMarks,
@@ -1058,9 +931,7 @@ class ParentService {
         }
       };
 
-      logger.info(`getParentPerformance: Storing performance in cache for parent ${parentId}`);
       await this.setCache(cacheKey, performance, 3600); // 1 hour
-      logger.info(`getParentPerformance: Performance retrieval completed successfully for parent ${parentId}`);
       return performance;
 
     } catch (error) {
@@ -1333,747 +1204,123 @@ class ParentService {
   }
 
   // ======================
-  // PARENT PORTAL METHODS
+  // NOTIFICATION METHODS
   // ======================
-
-  async getParentStudents(parentId) {
-    try {
-      console.log('🔍 getParentStudents called with parentId:', parentId);
-      
-      const cacheKey = `students:${parentId}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) {
-        console.log('✅ Returning cached students:', cached.length);
-        return cached;
-      }
-
-      // First, let's verify the parent exists
-      const parent = await this.prisma.parent.findFirst({
-        where: {
-          userId: BigInt(parentId),
-          deletedAt: null
-        }
-      });
-
-      if (!parent) {
-        console.log('❌ Parent not found for user ID:', parentId);
-        return [];
-      }
-
-      console.log('✅ Found parent record:', parent.id);
-
-      // Now find students linked to this parent
-      const students = await this.prisma.student.findMany({
-        where: {
-          parentId: BigInt(parentId),
-          deletedAt: null
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              username: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-              status: true
-            }
-          },
-          class: {
-            select: { 
-              id: true,
-              name: true, 
-              level: true,
-              section: true
-            }
-          }
-        },
-        orderBy: { 
-          user: { firstName: 'asc' } 
-        }
-      });
-
-      console.log('🔍 Found students:', students.length);
-
-      const result = students.map(student => ({
-        id: student.id.toString(),
-        userId: student.userId.toString(),
-        username: student.user?.username || 'Unknown',
-        firstName: student.user?.firstName || student.user?.username || 'Unknown',
-        lastName: student.user?.lastName || '',
-        email: student.user?.email || '',
-        admissionNo: student.admissionNo || '',
-        rollNo: student.rollNo || '',
-        status: student.user?.status || 'ACTIVE',
-        class: student.class ? {
-          id: student.class.id.toString(),
-          name: student.class.name || 'Unknown',
-          level: student.class.level || 0,
-          section: student.class.section || ''
-        } : null,
-        parentId: student.parentId.toString()
-      }));
-
-      console.log('✅ Processed students:', result.length);
-      console.log('📋 Student details:', result);
-
-      await this.setCache(cacheKey, result, 900); // 15 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent students error:', error);
-      console.error('❌ getParentStudents error:', error);
-      throw error;
-    }
-  }
-
-  async getParentStudentAttendance(parentId, studentId, schoolId, filters = {}) {
-    try {
-      const { startDate, endDate, period } = filters;
-      const cacheKey = `attendance:${parentId}:${studentId}:${startDate}:${endDate}:${period}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        studentId: BigInt(studentId),
-        schoolId: BigInt(schoolId)
-      };
-
-      if (startDate && endDate) {
-        whereClause.date = {
-          gte: new Date(startDate),
-          lte: new Date(endDate)
-        };
-      }
-
-      const attendance = await this.prisma.attendance.findMany({
-        where: whereClause,
-        include: {
-          student: {
-            select: { firstName: true, lastName: true, studentId: true }
-          },
-          class: {
-            select: { name: true, grade: true }
-          }
-        },
-        orderBy: { date: 'desc' }
-      });
-
-      const result = attendance.map(record => ({
-        id: record.id,
-        date: record.date,
-        status: record.status,
-        reason: record.reason,
-        student: record.student,
-        class: record.class,
-        period: record.period
-      }));
-
-      await this.setCache(cacheKey, result, 300); // 5 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent student attendance error:', error);
-      throw error;
-    }
-  }
-
-  async getParentStudentGrades(parentId, studentId, schoolId, filters = {}) {
-    try {
-      const { academicYear, term, subject } = filters;
-      const cacheKey = `grades:${parentId}:${studentId}:${academicYear}:${term}:${subject}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        studentId: BigInt(studentId),
-        schoolId: BigInt(schoolId)
-      };
-
-      if (academicYear) whereClause.academicYearId = BigInt(academicYear);
-      if (term) whereClause.term = term;
-      if (subject) whereClause.subjectId = BigInt(subject);
-
-      const grades = await this.prisma.grade.findMany({
-        where: whereClause,
-        include: {
-          student: {
-            select: { firstName: true, lastName: true, studentId: true }
-          },
-          subject: {
-            select: { name: true, code: true }
-          },
-          academicYear: {
-            select: { name: true, startDate: true, endDate: true }
-          }
-        },
-        orderBy: [{ academicYearId: 'desc' }, { term: 'asc' }, { subjectId: 'asc' }]
-      });
-
-      const result = grades.map(grade => ({
-        id: grade.id,
-        score: grade.score,
-        maxScore: grade.maxScore,
-        percentage: grade.percentage,
-        grade: grade.grade,
-        term: grade.term,
-        subject: grade.subject,
-        academicYear: grade.academicYear,
-        assessmentDate: grade.assessmentDate,
-        comments: grade.comments
-      }));
-
-      await this.setCache(cacheKey, result, 900); // 15 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent student grades error:', error);
-      throw error;
-    }
-  }
-
-  async getParentStudentAssignments(parentId, studentId, schoolId, filters = {}) {
-    try {
-      const { status, subject, dueDate } = filters;
-      const cacheKey = `assignments:${parentId}:${studentId}:${status}:${subject}:${dueDate}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        studentId: BigInt(studentId),
-        schoolId: BigInt(schoolId)
-      };
-
-      if (status) whereClause.status = status;
-      if (subject) whereClause.subjectId = BigInt(subject);
-      if (dueDate) whereClause.dueDate = new Date(dueDate);
-
-      const assignments = await this.prisma.assignment.findMany({
-        where: whereClause,
-        include: {
-          student: {
-            select: { firstName: true, lastName: true, studentId: true }
-          },
-          subject: {
-            select: { name: true, code: true }
-          },
-          class: {
-            select: { name: true, grade: true }
-          }
-        },
-        orderBy: { dueDate: 'asc' }
-      });
-
-      const result = assignments.map(assignment => ({
-        id: assignment.id,
-        title: assignment.title,
-        description: assignment.description,
-        dueDate: assignment.dueDate,
-        status: assignment.status,
-        score: assignment.score,
-        maxScore: assignment.maxScore,
-        subject: assignment.subject,
-        class: assignment.class,
-        assignedDate: assignment.assignedDate,
-        submittedDate: assignment.submittedDate
-      }));
-
-      await this.setCache(cacheKey, result, 600); // 10 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent student assignments error:', error);
-      throw error;
-    }
-  }
-
-  async getParentStudentExams(parentId, studentId, schoolId, filters = {}) {
-    try {
-      const { academicYear, term, subject } = filters;
-      const cacheKey = `exams:${parentId}:${studentId}:${academicYear}:${term}:${subject}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        studentId: BigInt(studentId),
-        schoolId: BigInt(schoolId)
-      };
-
-      if (academicYear) whereClause.academicYearId = BigInt(academicYear);
-      if (term) whereClause.term = term;
-      if (subject) whereClause.subjectId = BigInt(subject);
-
-      const exams = await this.prisma.exam.findMany({
-        where: whereClause,
-        include: {
-          student: {
-            select: { firstName: true, lastName: true, studentId: true }
-          },
-          subject: {
-            select: { name: true, code: true }
-          },
-          academicYear: {
-            select: { name: true, startDate: true, endDate: true }
-          }
-        },
-        orderBy: [{ examDate: 'desc' }, { subjectId: 'asc' }]
-      });
-
-      const result = exams.map(exam => ({
-        id: exam.id,
-        title: exam.title,
-        examDate: exam.examDate,
-        score: exam.score,
-        maxScore: exam.maxScore,
-        percentage: exam.percentage,
-        grade: exam.grade,
-        term: exam.term,
-        subject: exam.subject,
-        academicYear: exam.academicYear,
-        comments: exam.comments
-      }));
-
-      await this.setCache(cacheKey, result, 900); // 15 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent student exams error:', error);
-      throw error;
-    }
-  }
-
-  async getParentStudentTimetable(parentId, studentId, schoolId, filters = {}) {
-    try {
-      const { weekStart, weekEnd } = filters;
-      const cacheKey = `timetable:${parentId}:${studentId}:${weekStart}:${weekEnd}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        studentId: BigInt(studentId),
-        schoolId: BigInt(schoolId)
-      };
-
-      if (weekStart && weekEnd) {
-        whereClause.date = {
-          gte: new Date(weekStart),
-          lte: new Date(weekEnd)
-        };
-      }
-
-      const timetable = await this.prisma.timetable.findMany({
-        where: whereClause,
-        include: {
-          subject: {
-            select: { name: true, code: true }
-          },
-          teacher: {
-            select: { firstName: true, lastName: true }
-          },
-          class: {
-            select: { name: true, grade: true }
-          }
-        },
-        orderBy: [{ date: 'asc' }, { startTime: 'asc' }]
-      });
-
-      const result = timetable.map(slot => ({
-        id: slot.id,
-        date: slot.date,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        subject: slot.subject,
-        teacher: slot.teacher,
-        class: slot.class,
-        room: slot.room,
-        dayOfWeek: slot.dayOfWeek
-      }));
-
-      await this.setCache(cacheKey, result, 1800); // 30 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent student timetable error:', error);
-      throw error;
-    }
-  }
-
-  async getParentStudentFees(parentId, studentId, schoolId, filters = {}) {
-    try {
-      const { status, academicYear, term } = filters;
-      const cacheKey = `fees:${parentId}:${studentId}:${status}:${academicYear}:${term}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        studentId: BigInt(studentId),
-        schoolId: BigInt(schoolId)
-      };
-
-      if (status) whereClause.status = status;
-      if (academicYear) whereClause.academicYearId = BigInt(academicYear);
-      if (term) whereClause.term = term;
-
-      const fees = await this.prisma.fee.findMany({
-        where: whereClause,
-        include: {
-          student: {
-            select: { firstName: true, lastName: true, studentId: true }
-          },
-          academicYear: {
-            select: { name: true, startDate: true, endDate: true }
-          }
-        },
-        orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }]
-      });
-
-      const result = fees.map(fee => ({
-        id: fee.id,
-        description: fee.description,
-        amount: fee.amount,
-        dueDate: fee.dueDate,
-        status: fee.status,
-        academicYear: fee.academicYear,
-        term: fee.term,
-        createdAt: fee.createdAt
-      }));
-
-      await this.setCache(cacheKey, result, 900); // 15 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent student fees error:', error);
-      throw error;
-    }
-  }
-
-  async getParentStudentPayments(parentId, studentId, schoolId, filters = {}) {
-    try {
-      const { startDate, endDate, status } = filters;
-      const cacheKey = `payments:${parentId}:${studentId}:${startDate}:${endDate}:${status}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        studentId: BigInt(studentId),
-        schoolId: BigInt(schoolId)
-      };
-
-      if (startDate && endDate) {
-        whereClause.paymentDate = {
-          gte: new Date(startDate),
-          lte: new Date(endDate)
-        };
-      }
-      if (status) whereClause.status = status;
-
-      const payments = await this.prisma.payment.findMany({
-        where: whereClause,
-        include: {
-          student: {
-            select: { firstName: true, lastName: true, studentId: true }
-          },
-          fee: {
-            select: { description: true, amount: true }
-          }
-        },
-        orderBy: { paymentDate: 'desc' }
-      });
-
-      const result = payments.map(payment => ({
-        id: payment.id,
-        amount: payment.amount,
-        paymentDate: payment.paymentDate,
-        status: payment.status,
-        method: payment.method,
-        reference: payment.reference,
-        student: payment.student,
-        fee: payment.fee,
-        createdAt: payment.createdAt
-      }));
-
-      await this.setCache(cacheKey, result, 900); // 15 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent student payments error:', error);
-      throw error;
-    }
-  }
-
-  async getParentStudentReports(parentId, studentId, schoolId, filters = {}) {
-    try {
-      const { academicYear, term, type } = filters;
-      const cacheKey = `reports:${parentId}:${studentId}:${academicYear}:${term}:${type}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        studentId: BigInt(studentId),
-        schoolId: BigInt(schoolId)
-      };
-
-      if (academicYear) whereClause.academicYearId = BigInt(academicYear);
-      if (term) whereClause.term = term;
-      if (type) whereClause.type = type;
-
-      const reports = await this.prisma.report.findMany({
-        where: whereClause,
-        include: {
-          student: {
-            select: { firstName: true, lastName: true, studentId: true }
-          },
-          academicYear: {
-            select: { name: true, startDate: true, endDate: true }
-          }
-        },
-        orderBy: [{ academicYearId: 'desc' }, { term: 'asc' }, { createdAt: 'desc' }]
-      });
-
-      const result = reports.map(report => ({
-        id: report.id,
-        title: report.title,
-        content: report.content,
-        type: report.type,
-        term: report.term,
-        academicYear: report.academicYear,
-        createdAt: report.createdAt,
-        updatedAt: report.updatedAt
-      }));
-
-      await this.setCache(cacheKey, result, 1800); // 30 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent student reports error:', error);
-      throw error;
-    }
-  }
-
-  async getParentStudentDocuments(parentId, studentId, schoolId, filters = {}) {
-    try {
-      const { type, academicYear, subject } = filters;
-      const cacheKey = `documents:${parentId}:${studentId}:${type}:${academicYear}:${subject}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        studentId: BigInt(studentId),
-        schoolId: BigInt(schoolId)
-      };
-
-      if (type) whereClause.type = type;
-      if (academicYear) whereClause.academicYearId = BigInt(academicYear);
-      if (subject) whereClause.subjectId = BigInt(subject);
-
-      const documents = await this.prisma.document.findMany({
-        where: whereClause,
-        include: {
-          student: {
-            select: { firstName: true, lastName: true, studentId: true }
-          },
-          subject: {
-            select: { name: true, code: true }
-          }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-
-      const result = documents.map(doc => ({
-        id: doc.id,
-        title: doc.title,
-        description: doc.description,
-        type: doc.type,
-        fileName: doc.fileName,
-        fileSize: doc.fileSize,
-        fileUrl: doc.fileUrl,
-        subject: doc.subject,
-        createdAt: doc.createdAt,
-        updatedAt: doc.updatedAt
-      }));
-
-      await this.setCache(cacheKey, result, 1800); // 30 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent student documents error:', error);
-      throw error;
-    }
-  }
-
-  async getParentStudentAnnouncements(parentId, studentId, schoolId, filters = {}) {
-    try {
-      const { limit = 10, offset = 0, type } = filters;
-      const cacheKey = `announcements:${parentId}:${studentId}:${type}:${limit}:${offset}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        schoolId: BigInt(schoolId),
-        OR: [
-          { targetAudience: 'ALL' },
-          { targetAudience: 'PARENTS' },
-          { targetAudience: 'STUDENTS' }
-        ]
-      };
-
-      if (type) whereClause.type = type;
-
-      const announcements = await this.prisma.announcement.findMany({
-        where: whereClause,
-        include: {
-          createdBy: {
-            select: { firstName: true, lastName: true, role: true }
-          }
-        },
-        orderBy: { createdAt: 'desc' },
-        take: parseInt(limit),
-        skip: parseInt(offset)
-      });
-
-      const result = announcements.map(announcement => ({
-        id: announcement.id,
-        title: announcement.title,
-        content: announcement.content,
-        type: announcement.type,
-        priority: announcement.priority,
-        targetAudience: announcement.targetAudience,
-        createdBy: announcement.createdBy,
-        createdAt: announcement.createdAt,
-        updatedAt: announcement.updatedAt
-      }));
-
-      await this.setCache(cacheKey, result, 300); // 5 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent student announcements error:', error);
-      throw error;
-    }
-  }
-
-  async getParentStudentMessages(parentId, studentId, schoolId, filters = {}) {
-    try {
-      const { limit = 10, offset = 0, unreadOnly = false } = filters;
-      const cacheKey = `messages:${parentId}:${studentId}:${unreadOnly}:${limit}:${offset}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        OR: [
-          { senderId: BigInt(parentId) },
-          { recipientId: BigInt(parentId) }
-        ],
-        schoolId: BigInt(schoolId)
-      };
-
-      if (unreadOnly) {
-        whereClause.isRead = false;
-      }
-
-      const messages = await this.prisma.message.findMany({
-        where: whereClause,
-        include: {
-          sender: {
-            select: { firstName: true, lastName: true, role: true }
-          },
-          recipient: {
-            select: { firstName: true, lastName: true, role: true }
-          }
-        },
-        orderBy: { createdAt: 'desc' },
-        take: parseInt(limit),
-        skip: parseInt(offset)
-      });
-
-      const result = messages.map(message => ({
-        id: message.id,
-        subject: message.subject,
-        content: message.content,
-        isRead: message.isRead,
-        priority: message.priority,
-        sender: message.sender,
-        recipient: message.recipient,
-        createdAt: message.createdAt,
-        updatedAt: message.updatedAt
-      }));
-
-      await this.setCache(cacheKey, result, 300); // 5 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent student messages error:', error);
-      throw error;
-    }
-  }
-
-  async sendParentMessage(parentId, messageData, userId, schoolId) {
-    try {
-      const { recipientId, subject, message, priority, attachments } = messageData;
-
-      const result = await this.prisma.message.create({
-        data: {
-          senderId: BigInt(parentId),
-          recipientId: BigInt(recipientId),
-          subject,
-          content: message,
-          priority: priority || 'NORMAL',
-          schoolId: BigInt(schoolId),
-          attachments: attachments || []
-        }
-      });
-
-      // Invalidate message cache
-      await this.deleteCache(`messages:${parentId}:*`);
-
-      return result;
-
-    } catch (error) {
-      logger.error('Send parent message error:', error);
-      throw error;
-    }
-  }
 
   async getParentNotifications(parentId, schoolId, filters = {}) {
     try {
       const { limit = 10, offset = 0, unreadOnly = false, type } = filters;
-      const cacheKey = `notifications:${parentId}:${unreadOnly}:${type}:${limit}:${offset}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
+      
+      // First get the parent record to get the userId
+      const parent = await this.prisma.parent.findFirst({
+        where: { 
+          id: BigInt(parentId), 
+          schoolId: BigInt(schoolId), 
+          deletedAt: null 
+        },
+        select: { userId: true }
+      });
 
-      const whereClause = {
-        recipientId: BigInt(parentId),
-        schoolId: BigInt(schoolId)
+      if (!parent) {
+        throw new Error('Parent not found');
+      }
+
+      // Build where clause for notifications
+      const where = {
+        schoolId: BigInt(schoolId),
+        deletedAt: null,
+        recipients: {
+          some: {
+            userId: BigInt(parent.userId)
+          }
+        }
       };
 
-      if (unreadOnly) whereClause.isRead = false;
-      if (type) whereClause.type = type;
+      // Add type filter if specified
+      if (type) {
+        where.type = type;
+      }
+
+      // Add unread filter if specified
+      if (unreadOnly) {
+        where.recipients = {
+          some: {
+            userId: BigInt(parent.userId),
+            readAt: null
+          }
+        };
+      }
 
       const notifications = await this.prisma.notification.findMany({
-        where: whereClause,
+        where,
         include: {
           sender: {
-            select: { firstName: true, lastName: true, role: true }
+            select: {
+              firstName: true,
+              lastName: true,
+              role: true
+            }
+          },
+          recipients: {
+            where: {
+              userId: BigInt(parent.userId)
+            },
+            select: {
+              status: true,
+              readAt: true,
+              deliveredAt: true,
+              channel: true
+            }
           }
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: {
+          createdAt: 'desc'
+        },
         take: parseInt(limit),
         skip: parseInt(offset)
       });
 
-      const result = notifications.map(notification => ({
-        id: notification.id,
-        title: notification.title,
-        content: notification.content,
-        type: notification.type,
-        isRead: notification.isRead,
-        sender: notification.sender,
-        createdAt: notification.createdAt,
-        updatedAt: notification.updatedAt
-      }));
+      // Format the response
+      const formattedNotifications = notifications.map(notification => {
+        const recipient = notification.recipients[0]; // Should only be one for this user
+        return {
+          id: notification.id,
+          uuid: notification.uuid,
+          type: notification.type,
+          title: notification.title,
+          message: notification.message,
+          summary: notification.summary,
+          priority: notification.priority,
+          status: notification.status,
+          entityType: notification.entityType,
+          entityId: notification.entityId,
+          entityAction: notification.entityAction,
+          expiresAt: notification.expiresAt,
+          scheduledAt: notification.scheduledAt,
+          createdAt: notification.createdAt,
+          updatedAt: notification.updatedAt,
+          sender: notification.sender ? {
+            firstName: notification.sender.firstName,
+            lastName: notification.sender.lastName,
+            role: notification.sender.role
+          } : null,
+          recipient: recipient ? {
+            status: recipient.status,
+            readAt: recipient.readAt,
+            deliveredAt: recipient.deliveredAt,
+            channel: recipient.channel
+          } : null
+        };
+      });
 
-      await this.setCache(cacheKey, result, 300); // 5 minutes
-      return result;
+      return {
+        notifications: formattedNotifications,
+        pagination: {
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          total: formattedNotifications.length
+        }
+      };
 
     } catch (error) {
       logger.error('Get parent notifications error:', error);
@@ -2081,153 +1328,47 @@ class ParentService {
     }
   }
 
-  async markParentNotificationAsRead(parentId, notificationId, schoolId) {
+  async markParentNotificationAsRead(parentId, notificationId, userId, schoolId) {
     try {
-      const result = await this.prisma.notification.update({
-        where: {
-          id: BigInt(notificationId),
-          recipientId: BigInt(parentId),
-          schoolId: BigInt(schoolId)
+      // First get the parent record to get the userId
+      const parent = await this.prisma.parent.findFirst({
+        where: { 
+          id: BigInt(parentId), 
+          schoolId: BigInt(schoolId), 
+          deletedAt: null 
         },
-        data: {
-          isRead: true,
-          readAt: new Date()
-        }
-      });
-
-      // Invalidate notification cache
-      await this.deleteCache(`notifications:${parentId}:*`);
-
-      return result;
-
-    } catch (error) {
-      logger.error('Mark parent notification as read error:', error);
-      throw error;
-    }
-  }
-
-  async getParentCalendar(parentId, schoolId, filters = {}) {
-    try {
-      const { startDate, endDate, type } = filters;
-      const cacheKey = `calendar:${parentId}:${startDate}:${endDate}:${type}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const whereClause = {
-        schoolId: BigInt(schoolId),
-        OR: [
-          { targetAudience: 'ALL' },
-          { targetAudience: 'PARENTS' }
-        ]
-      };
-
-      if (startDate && endDate) {
-        whereClause.date = {
-          gte: new Date(startDate),
-          lte: new Date(endDate)
-        };
-      }
-      if (type) whereClause.type = type;
-
-      const events = await this.prisma.event.findMany({
-        where: whereClause,
-        include: {
-          createdBy: {
-            select: { firstName: true, lastName: true, role: true }
-          }
-        },
-        orderBy: { date: 'asc' }
-      });
-
-      const result = events.map(event => ({
-        id: event.id,
-        title: event.title,
-        description: event.description,
-        date: event.date,
-        startTime: event.startTime,
-        endTime: event.endTime,
-        type: event.type,
-        location: event.location,
-        createdBy: event.createdBy
-      }));
-
-      await this.setCache(cacheKey, result, 900); // 15 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent calendar error:', error);
-      throw error;
-    }
-  }
-
-  async getParentSettings(parentId, schoolId) {
-    try {
-      const cacheKey = `settings:${parentId}:${schoolId}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      const parent = await this.prisma.parent.findUnique({
-        where: {
-          id: BigInt(parentId),
-          schoolId: BigInt(schoolId)
-        },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          phone: true,
-          preferences: true,
-          notificationSettings: true,
-          privacySettings: true
-        }
+        select: { userId: true }
       });
 
       if (!parent) {
         throw new Error('Parent not found');
       }
 
-      const result = {
-        ...parent,
-        preferences: parent.preferences || {},
-        notificationSettings: parent.notificationSettings || {},
-        privacySettings: parent.privacySettings || {}
-      };
-
-      await this.setCache(cacheKey, result, 1800); // 30 minutes
-      return result;
-
-    } catch (error) {
-      logger.error('Get parent settings error:', error);
-      throw error;
-    }
-  }
-
-  async updateParentSettings(parentId, updateData, userId, schoolId) {
-    try {
-      const { preferences, notificationSettings, privacySettings } = updateData;
-
-      const result = await this.prisma.parent.update({
+      // Update the notification recipient status
+      const result = await this.prisma.notificationRecipient.updateMany({
         where: {
-          id: BigInt(parentId),
-          schoolId: BigInt(schoolId)
+          notificationId: BigInt(notificationId),
+          userId: BigInt(parent.userId)
         },
         data: {
-          preferences: preferences || {},
-          notificationSettings: notificationSettings || {},
-          privacySettings: privacySettings || {},
-          updatedAt: new Date(),
-          updatedBy: BigInt(userId)
+          status: 'READ',
+          readAt: new Date()
         }
       });
 
-      // Invalidate settings cache
-      await this.deleteCache(`settings:${parentId}:${schoolId}`);
+      if (result.count === 0) {
+        throw new Error('Notification not found or already read');
+      }
 
-      return result;
+      return {
+        success: true,
+        message: 'Notification marked as read successfully',
+        notificationId: parseInt(notificationId),
+        readAt: new Date()
+      };
 
     } catch (error) {
-      logger.error('Update parent settings error:', error);
+      logger.error('Mark parent notification as read error:', error);
       throw error;
     }
   }
