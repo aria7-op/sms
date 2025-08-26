@@ -167,6 +167,18 @@ router.patch('/:id/restore',
 // ======================
 
 /**
+ * @route   GET /api/parents/debug/test
+ * @desc    Test endpoint to isolate database issues
+ * @access  Private (All authenticated users)
+ * @permissions parent:read
+ */
+router.get('/debug/test',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  parentController.getParentTest.bind(parentController)
+);
+
+/**
  * @route   GET /api/parents/:id/stats
  * @desc    Get parent statistics
  * @access  Private (All authenticated users)
@@ -225,18 +237,6 @@ router.get('/:id/dashboard',
   authorizePermissions(['parent:read']),
   validateParams(idSchema),
   parentController.getParentDashboard.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/test
- * @desc    Test endpoint to isolate database issues
- * @access  Private (All authenticated users)
- * @permissions parent:read
- */
-router.get('/test',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  parentController.getParentTest.bind(parentController)
 );
 
 // ======================
