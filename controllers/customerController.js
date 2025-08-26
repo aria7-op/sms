@@ -254,6 +254,9 @@ export const getAllCustomers = async (req, res) => {
     let customers, total;
     let cleanedCustomers;
     
+    // Convert BigInt schoolId to string for SQL and ensure proper types
+    const schoolIdStr = schoolId.toString();
+    
     try {
       // Try Prisma first
       [customers, total] = await Promise.all([
@@ -266,9 +269,6 @@ export const getAllCustomers = async (req, res) => {
       // Fallback to raw SQL to avoid datetime issues
       const offset = isPaginationRequested ? (pageNum - 1) * limitNum : 0;
       const limit = isPaginationRequested ? limitNum : 1000;
-      
-      // Convert BigInt schoolId to string for SQL and ensure proper types
-      const schoolIdStr = schoolId.toString();
       
       const sqlQuery = `
         SELECT id, uuid, name, serialNumber, email, phone, gender, source, purpose, 
@@ -302,24 +302,6 @@ export const getAllCustomers = async (req, res) => {
       cleanedCustomers = cleanInvalidDates(customers);
       
       console.log('Raw SQL fallback successful, found customers:', cleanedCustomers.length);
-    } catch (fallbackError) {
-      console.error('Fallback query also failed:', fallbackError);
-      
-      // Try with an even simpler query as last resort
-      try {
-        console.log('Trying simplest possible query...');
-        const simpleQuery = 'SELECT * FROM customers WHERE schoolId = ? LIMIT 10';
-        const simpleCustomers = await fallbackQuery(simpleQuery, [schoolIdStr]);
-        const simpleCount = await fallbackQuery('SELECT COUNT(*) as total FROM customers WHERE schoolId = ?', [schoolIdStr]);
-        
-        customers = simpleCustomers;
-        total = parseInt(simpleCount[0]?.total) || 0;
-        
-        console.log('Simple fallback successful, found customers:', customers.length);
-      } catch (simpleError) {
-        console.error('All fallback approaches failed:', simpleError);
-        throw new Error('Unable to retrieve customers from database');
-      }
     }
     
     // Ensure we have valid data
