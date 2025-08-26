@@ -982,7 +982,7 @@
   };
 
   /**
-   * Get attendance statistics and analytics
+   * Get comprehensive attendance statistics and analytics
    */
   export const getAttendanceStats = async (req, res) => {
     try {
@@ -1006,10 +1006,28 @@
 
       const attendances = await prisma.attendance.findMany({
         where,
+        include: {
+          student: {
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true
+                }
+              }
+            }
+          },
+          class: {
+            select: {
+              name: true,
+              code: true
+            }
+          }
+        },
         orderBy: { date: 'asc' }
       });
 
-      // Calculate statistics
+      // Calculate basic statistics
       const totalDays = new Set(attendances.map(r => r.date.toISOString().split('T')[0])).size;
       const totalPresent = attendances.filter(r => r.status === 'PRESENT').length;
       const totalAbsent = attendances.filter(r => r.status === 'ABSENT').length;
@@ -1017,7 +1035,7 @@
       const totalExcused = attendances.filter(r => r.status === 'EXCUSED').length;
       const averageAttendanceRate = totalDays > 0 ? Math.round((totalPresent / (totalPresent + totalAbsent)) * 100) : 0;
 
-      // Calculate total hours
+      // Calculate total hours and average time
       const totalHours = attendances.reduce((total, record) => {
         if (record.inTime && record.outTime) {
           const diffMs = new Date(record.outTime) - new Date(record.inTime);
@@ -1026,20 +1044,203 @@
         return total;
       }, 0);
 
-      const stats = {
+      // Daily attendance trends
+      const dailyTrends = {};
+      attendances.forEach(record => {
+        const date = record.date.toISOString().split('T')[0];
+        if (!dailyTrends[date]) {
+          dailyTrends[date] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+        }
+        
+        dailyTrends[date].total++;
+        if (record.status === 'PRESENT') dailyTrends[date].present++;
+        else if (record.status === 'ABSENT') dailyTrends[date].absent++;
+        else if (record.status === 'LATE') dailyTrends[date].late++;
+        else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
+      });
+
+      // Weekly patterns
+      const weeklyPatterns = {};
+      attendances.forEach(record => {
+        const date = new Date(record.date);
+        const weekStart = new Date(date);
+        weekStart.setDate(date.getDate() - date.getDay());
+        const weekKey = weekStart.toISOString().split('T')[0];
+        
+        if (!weeklyPatterns[weekKey]) {
+          weeklyPatterns[weekKey] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+        }
+        
+        weeklyPatterns[weekKey].total++;
+        if (record.status === 'PRESENT') weeklyPatterns[weekKey].present++;
+        else if (record.status === 'ABSENT') weeklyPatterns[weekKey].absent++;
+        else if (record.status === 'LATE') weeklyPatterns[weekKey].late++;
+        else if (record.status === 'EXCUSED') weeklyPatterns[weekKey].excused++;
+      });
+
+      // Monthly trends
+      const monthlyTrends = {};
+      attendances.forEach(record => {
+        const date = new Date(record.date);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        
+        if (!monthlyTrends[monthKey]) {
+          monthlyTrends[monthKey] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+        }
+        
+        monthlyTrends[monthKey].total++;
+        if (record.status === 'PRESENT') monthlyTrends[monthKey].present++;
+        else if (record.status === 'ABSENT') monthlyTrends[monthKey].absent++;
+        else if (record.status === 'LATE') monthlyTrends[monthKey].late++;
+        else if (record.status === 'EXCUSED') monthlyTrends[monthKey].excused++;
+      });
+
+      // Student performance ranking
+      const studentStats = {};
+      attendances.forEach(record => {
+        const studentId = record.studentId.toString();
+        if (!studentStats[studentId]) {
+          studentStats[studentId] = {
+            studentId,
+            studentName: `${record.student.user.firstName} ${record.student.user.lastName}`,
+            present: 0,
+            absent: 0,
+            late: 0,
+            excused: 0,
+            total: 0,
+            averageTime: 0,
+            totalTime: 0
+          };
+        }
+        
+        studentStats[studentId].total++;
+        if (record.status === 'PRESENT') studentStats[studentId].present++;
+        else if (record.status === 'ABSENT') studentStats[studentId].absent++;
+        else if (record.status === 'LATE') studentStats[studentId].late++;
+        else if (record.status === 'EXCUSED') studentStats[studentId].excused++;
+        
+        if (record.inTime && record.outTime) {
+          const diffMs = new Date(record.outTime) - new Date(record.inTime);
+          const hours = diffMs / (1000 * 60 * 60);
+          studentStats[studentId].totalTime += hours;
+        }
+      });
+
+      // Calculate averages and rankings
+      Object.values(studentStats).forEach(student => {
+        if (student.total > 0) {
+          student.averageTime = Math.round((student.totalTime / student.total) * 100) / 100;
+          student.attendanceRate = Math.round((student.present / student.total) * 100);
+        }
+      });
+
+      // Sort students by attendance rate
+      const topStudents = Object.values(studentStats)
+        .sort((a, b) => b.attendanceRate - a.attendanceRate)
+        .slice(0, 10);
+
+      const bottomStudents = Object.values(studentStats)
+        .sort((a, b) => a.attendanceRate - b.attendanceRate)
+        .slice(0, 10);
+
+      // Time-based analysis
+      const timeAnalysis = {
+        earlyArrivals: 0, // Before 8 AM
+        onTime: 0, // 8 AM - 8:30 AM
+        lateArrivals: 0, // After 8:30 AM
+        earlyDepartures: 0, // Before 3 PM
+        onTimeDepartures: 0, // 3 PM - 3:30 PM
+        lateDepartures: 0 // After 3:30 PM
+      };
+
+      attendances.forEach(record => {
+        if (record.inTime) {
+          const hour = new Date(record.inTime).getHours();
+          const minutes = new Date(record.inTime).getMinutes();
+          const timeInMinutes = hour * 60 + minutes;
+          
+          if (timeInMinutes < 480) timeAnalysis.earlyArrivals++; // Before 8 AM
+          else if (timeInMinutes <= 510) timeAnalysis.onTime++; // 8 AM - 8:30 AM
+          else timeAnalysis.lateArrivals++; // After 8:30 AM
+        }
+        
+        if (record.outTime) {
+          const hour = new Date(record.outTime).getHours();
+          const minutes = new Date(record.outTime).getMinutes();
+          const timeInMinutes = hour * 60 + minutes;
+          
+          if (timeInMinutes < 900) timeAnalysis.earlyDepartures++; // Before 3 PM
+          else if (timeInMinutes <= 930) timeAnalysis.onTimeDepartures++; // 3 PM - 3:30 PM
+          else timeAnalysis.lateDepartures++; // After 3:30 PM
+        }
+      });
+
+      // Predictive analytics
+      const recentTrend = Object.values(dailyTrends)
+        .slice(-7) // Last 7 days
+        .reduce((sum, day) => sum + (day.present / day.total), 0) / 7;
+
+      const trendDirection = recentTrend > (averageAttendanceRate / 100) ? 'improving' : 'declining';
+      const trendPercentage = Math.abs(recentTrend - (averageAttendanceRate / 100)) * 100;
+
+      const comprehensiveStats = {
+        // Basic stats
         totalDays,
         totalPresent,
         totalAbsent,
         totalLate,
         totalExcused,
         averageAttendanceRate,
-        bestAttendanceDay: '', // TODO: Implement calculation
-        worstAttendanceDay: '', // TODO: Implement calculation
-        consecutivePresentDays: 0, // TODO: Implement calculation
-        totalHours: Math.round(totalHours * 100) / 100
+        totalHours: Math.round(totalHours * 100) / 100,
+        
+        // Trends
+        dailyTrends: Object.entries(dailyTrends).map(([date, data]) => ({
+          date,
+          ...data,
+          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+        })),
+        weeklyPatterns: Object.entries(weeklyPatterns).map(([week, data]) => ({
+          week,
+          ...data,
+          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+        })),
+        monthlyTrends: Object.entries(monthlyTrends).map(([month, data]) => ({
+          month,
+          ...data,
+          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+        })),
+        
+        // Student performance
+        studentStats: Object.values(studentStats),
+        topStudents,
+        bottomStudents,
+        
+        // Time analysis
+        timeAnalysis,
+        
+        // Predictive analytics
+        recentTrend: Math.round(recentTrend * 100),
+        trendDirection,
+        trendPercentage: Math.round(trendPercentage * 100) / 100,
+        
+        // Insights
+        insights: {
+          bestDay: Object.entries(dailyTrends).reduce((best, [date, data]) => 
+            data.total > 0 && (data.present / data.total) > (best.rate || 0) 
+              ? { date, rate: data.present / data.total } 
+              : best, { date: '', rate: 0 }
+          ),
+          worstDay: Object.entries(dailyTrends).reduce((worst, [date, data]) => 
+            data.total > 0 && (data.present / data.total) < (worst.rate || 1) 
+              ? { date, rate: data.present / data.total } 
+              : worst, { date: '', rate: 1 }
+          ),
+          mostPunctualStudent: topStudents[0] || null,
+          needsAttention: bottomStudents.slice(0, 3) || []
+        }
       };
 
-      return createSuccessResponse(res, 'Attendance statistics retrieved successfully', stats);
+      return createSuccessResponse(res, 'Comprehensive attendance statistics retrieved successfully', comprehensiveStats);
     } catch (error) {
       console.error('Error in getAttendanceStats:', error);
       return createErrorResponse(res, 'Failed to retrieve attendance statistics', 500);
@@ -1047,11 +1248,13 @@
   };
 
   /**
-   * Get attendance trends and analytics
+   * Get comprehensive attendance analytics with chart data
    */
   export const getAttendanceAnalytics = async (req, res) => {
     try {
-      const { classId, period = 'daily', startDate, endDate, schoolId: querySchoolId = 1 } = req.query;
+      console.log('🔍 getAttendanceAnalytics called with:', { query: req.query, user: req.user });
+      
+      const { classId, period = 'daily', startDate, endDate, schoolId: querySchoolId = 1, chartType = 'all' } = req.query;
       const effectiveSchoolId = req.user?.schoolId || querySchoolId;
 
       const where = {
@@ -1069,29 +1272,222 @@
 
       const attendances = await prisma.attendance.findMany({
         where,
+        include: {
+          student: {
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true
+                }
+              }
+            }
+          },
+          class: {
+            select: {
+              name: true,
+              code: true
+            }
+          }
+        },
         orderBy: { date: 'asc' }
       });
 
-      // Group by date and calculate daily trends
-      const dailyTrends = {};
-      attendances.forEach(record => {
-        const date = record.date.toISOString().split('T')[0];
-        if (!dailyTrends[date]) {
-          dailyTrends[date] = { present: 0, absent: 0, late: 0, excused: 0 };
+      // Generate chart data based on requested type
+      let chartData = {};
+
+      if (chartType === 'all' || chartType === 'daily') {
+        // Daily attendance trends
+        const dailyTrends = {};
+        attendances.forEach(record => {
+          const date = record.date.toISOString().split('T')[0];
+          if (!dailyTrends[date]) {
+            dailyTrends[date] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+          }
+          
+          dailyTrends[date].total++;
+          if (record.status === 'PRESENT') dailyTrends[date].present++;
+          else if (record.status === 'ABSENT') dailyTrends[date].absent++;
+          else if (record.status === 'LATE') dailyTrends[date].late++;
+          else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
+        });
+
+        chartData.daily = Object.entries(dailyTrends).map(([date, data]) => ({
+          date,
+          ...data,
+          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+        }));
+      }
+
+      if (chartType === 'all' || chartType === 'weekly') {
+        // Weekly patterns
+        const weeklyPatterns = {};
+        attendances.forEach(record => {
+          const date = new Date(record.date);
+          const weekStart = new Date(date);
+          weekStart.setDate(date.getDate() - date.getDay());
+          const weekKey = weekStart.toISOString().split('T')[0];
+          
+          if (!weeklyPatterns[weekKey]) {
+            weeklyPatterns[weekKey] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+          }
+          
+          weeklyPatterns[weekKey].total++;
+          if (record.status === 'PRESENT') weeklyPatterns[weekKey].present++;
+          else if (record.status === 'ABSENT') weeklyPatterns[weekKey].absent++;
+          else if (record.status === 'LATE') weeklyPatterns[weekKey].late++;
+          else if (record.status === 'EXCUSED') weeklyPatterns[weekKey].excused++;
+        });
+
+        chartData.weekly = Object.entries(weeklyPatterns).map(([week, data]) => ({
+          week,
+          ...data,
+          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+        }));
+      }
+
+      if (chartType === 'all' || chartType === 'monthly') {
+        // Monthly trends
+        const monthlyTrends = {};
+        attendances.forEach(record => {
+          const date = new Date(record.date);
+          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          
+          if (!monthlyTrends[monthKey]) {
+            monthlyTrends[monthKey] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+          }
+          
+          monthlyTrends[monthKey].total++;
+          if (record.status === 'PRESENT') monthlyTrends[monthKey].present++;
+          else if (record.status === 'ABSENT') monthlyTrends[monthKey].absent++;
+          else if (record.status === 'LATE') monthlyTrends[monthKey].late++;
+          else if (record.status === 'EXCUSED') monthlyTrends[monthKey].excused++;
+        });
+
+        chartData.monthly = Object.entries(monthlyTrends).map(([month, data]) => ({
+          month,
+          ...data,
+          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+        }));
+      }
+
+      if (chartType === 'all' || chartType === 'student') {
+        // Student performance ranking
+        const studentStats = {};
+        attendances.forEach(record => {
+          const studentId = record.studentId.toString();
+          if (!studentStats[studentId]) {
+            studentStats[studentId] = {
+              studentId,
+              studentName: `${record.student.user.firstName} ${record.student.user.lastName}`,
+              present: 0,
+              absent: 0,
+              late: 0,
+              excused: 0,
+              total: 0,
+              attendanceRate: 0
+            };
+          }
+          
+          studentStats[studentId].total++;
+          if (record.status === 'PRESENT') studentStats[studentId].present++;
+          else if (record.status === 'ABSENT') studentStats[studentId].absent++;
+          else if (record.status === 'LATE') studentStats[studentId].late++;
+          else if (record.status === 'EXCUSED') studentStats[studentId].excused++;
+        });
+
+        // Calculate attendance rates
+        Object.values(studentStats).forEach(student => {
+          if (student.total > 0) {
+            student.attendanceRate = Math.round((student.present / student.total) * 100);
+          }
+        });
+
+        chartData.student = Object.values(studentStats);
+      }
+
+      if (chartType === 'all' || chartType === 'time') {
+        // Time-based analysis
+        const timeAnalysis = {
+          earlyArrivals: 0, // Before 8 AM
+          onTime: 0, // 8 AM - 8:30 AM
+          lateArrivals: 0, // After 8:30 AM
+          earlyDepartures: 0, // Before 3 PM
+          onTimeDepartures: 0, // 3 PM - 3:30 PM
+          lateDepartures: 0 // After 3:30 PM
+        };
+
+        attendances.forEach(record => {
+          if (record.inTime) {
+            const hour = new Date(record.inTime).getHours();
+            const minutes = new Date(record.inTime).getMinutes();
+            const timeInMinutes = hour * 60 + minutes;
+            
+            if (timeInMinutes < 480) timeAnalysis.earlyArrivals++;
+            else if (timeInMinutes <= 510) timeAnalysis.onTime++;
+            else timeAnalysis.lateArrivals++;
+          }
+          
+          if (record.outTime) {
+            const hour = new Date(record.outTime).getHours();
+            const minutes = new Date(record.outTime).getMinutes();
+            const timeInMinutes = hour * 60 + minutes;
+            
+            if (timeInMinutes < 900) timeAnalysis.earlyDepartures++;
+            else if (timeInMinutes <= 930) timeAnalysis.onTimeDepartures++;
+            else timeAnalysis.lateDepartures++;
+          }
+        });
+
+        chartData.time = timeAnalysis;
+      }
+
+      if (chartType === 'all' || chartType === 'comparison') {
+        // Class comparison (if multiple classes)
+        const classStats = {};
+        attendances.forEach(record => {
+          const className = record.class.name;
+          if (!classStats[className]) {
+            classStats[className] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+          }
+          
+          classStats[className].total++;
+          if (record.status === 'PRESENT') classStats[className].present++;
+          else if (record.status === 'ABSENT') classStats[className].absent++;
+          else if (record.status === 'LATE') classStats[className].late++;
+          else if (record.status === 'EXCUSED') classStats[className].excused++;
+        });
+
+        // Calculate rates
+        Object.values(classStats).forEach(cls => {
+          if (cls.total > 0) {
+            cls.rate = Math.round((cls.present / cls.total) * 100);
+          }
+        });
+
+        chartData.comparison = Object.entries(classStats).map(([className, data]) => ({
+          className,
+          ...data
+        }));
+      }
+
+      // Add metadata
+      const analytics = {
+        chartData,
+        metadata: {
+          totalRecords: attendances.length,
+          dateRange: {
+            start: startDate || 'all',
+            end: endDate || 'all'
+          },
+          classId: classId || 'all',
+          period,
+          chartType,
+          generatedAt: new Date().toISOString()
         }
-        
-        if (record.status === 'PRESENT') dailyTrends[date].present++;
-        else if (record.status === 'ABSENT') dailyTrends[date].absent++;
-        else if (record.status === 'LATE') dailyTrends[date].late++;
-        else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
-      });
+      };
 
-      const trends = Object.entries(dailyTrends).map(([date, counts]) => ({
-        date,
-        ...counts
-      }));
-
-      return createSuccessResponse(res, 'Attendance analytics retrieved successfully', trends);
+      return createSuccessResponse(res, 'Attendance analytics retrieved successfully', analytics);
     } catch (error) {
       console.error('Error in getAttendanceAnalytics:', error);
       return createErrorResponse(res, 'Failed to retrieve attendance analytics', 500);
