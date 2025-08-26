@@ -725,7 +725,7 @@ class ParentService {
           where: { parentId: actualParentId, schoolId: BigInt(schoolId), deletedAt: null }
         }),
         this.prisma.payment.findMany({
-          where: { parentId: actualParentId, schoolId },
+          where: { parentId: actualParentId, schoolId: BigInt(schoolId) },
           select: {
             amount: true,
             status: true,
@@ -800,7 +800,7 @@ class ParentService {
       const payments = await this.prisma.payment.findMany({
         where: {
           parentId: actualParentId,
-          schoolId,
+          schoolId: BigInt(schoolId),
           paymentDate: {
             gte: startDate,
             lte: now
@@ -902,7 +902,7 @@ class ParentService {
           }
         }),
         this.prisma.payment.findMany({
-          where: { parentId: actualParentId, schoolId },
+          where: { parentId: actualParentId, schoolId: BigInt(schoolId) },
           select: {
             amount: true,
             status: true,
