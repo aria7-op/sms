@@ -542,6 +542,11 @@ export function getUserPermissions(role) {
       'school:read', 'student:read_children', 'attendance:read_children',
       'grade:read_children', 'assignment:read_children', 'parent:read',
       
+      // Additional permissions for comprehensive parent access
+      'exam:read_children', 'timetable:read_children', 'fee:read_children',
+      'payment:read_children', 'report:read_children', 'document:read_children',
+      'announcement:read_children', 'message:read_children',
+      
       // Limited actions
       'user:update_own'
     ],
