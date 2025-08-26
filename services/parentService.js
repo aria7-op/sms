@@ -43,6 +43,18 @@ class ParentService {
     this.cachePrefix = 'parent';
     this.cacheTTL = 1800; // 30 minutes
     this.prisma = prisma;
+    this.logger = logger;
+  }
+
+  // Helper method to safely convert values to BigInt
+  toBigInt(value) {
+    if (value === null || value === undefined) {
+      throw new Error('Cannot convert null or undefined to BigInt');
+    }
+    if (typeof value === 'object') {
+      return BigInt(value.toString());
+    }
+    return BigInt(value);
   }
 
   // ======================
@@ -684,8 +696,8 @@ class ParentService {
       // Resolve parent either by id or by userId
       let parent = await this.prisma.parent.findFirst({
         where: {
-          id: BigInt(parentId),
-          schoolId: BigInt(schoolId),
+          id: this.toBigInt(parentId),
+          schoolId: this.toBigInt(schoolId),
           deletedAt: null
         },
         select: { id: true, userId: true, annualIncome: true }
@@ -694,8 +706,8 @@ class ParentService {
       if (!parent) {
         parent = await this.prisma.parent.findFirst({
           where: {
-            userId: BigInt(parentId),
-            schoolId: BigInt(schoolId),
+            userId: this.toBigInt(parentId),
+            schoolId: this.toBigInt(schoolId),
             deletedAt: null
           },
           select: { id: true, userId: true, annualIncome: true }
@@ -711,10 +723,10 @@ class ParentService {
       // Get students and payments count
       const [studentsCount, payments] = await Promise.all([
         this.prisma.student.count({
-          where: { parentId: actualParentId, schoolId: BigInt(schoolId), deletedAt: null }
+          where: { parentId: actualParentId, schoolId: this.toBigInt(schoolId), deletedAt: null }
         }),
         this.prisma.payment.findMany({
-          where: { parentId: actualParentId, schoolId: BigInt(schoolId) },
+          where: { parentId: actualParentId, schoolId: this.toBigInt(schoolId) },
           select: {
             amount: true,
             status: true,
@@ -748,7 +760,7 @@ class ParentService {
       return stats;
 
     } catch (error) {
-      logger.error('Get parent stats error:', error);
+      this.logger.error('Get parent stats error:', error);
       throw error;
     }
   }
@@ -781,8 +793,8 @@ class ParentService {
 
       const payments = await this.prisma.payment.findMany({
         where: {
-          parentId: BigInt(parentId),
-          schoolId: BigInt(schoolId),
+          parentId: this.toBigInt(parentId),
+          schoolId: this.toBigInt(schoolId),
           paymentDate: {
             gte: startDate,
             lte: now
@@ -849,8 +861,8 @@ class ParentService {
       // Resolve parent by id or userId
       let parent = await this.prisma.parent.findFirst({
         where: {
-          id: BigInt(parentId),
-          schoolId: BigInt(schoolId),
+          id: this.toBigInt(parentId),
+          schoolId: this.toBigInt(schoolId),
           deletedAt: null
         },
         select: { id: true, userId: true }
@@ -859,8 +871,8 @@ class ParentService {
       if (!parent) {
         parent = await this.prisma.parent.findFirst({
           where: {
-            userId: BigInt(parentId),
-            schoolId: BigInt(schoolId),
+            userId: this.toBigInt(parentId),
+            schoolId: this.toBigInt(schoolId),
             deletedAt: null
           },
           select: { id: true, userId: true }
@@ -1238,8 +1250,8 @@ class ParentService {
       // Resolve parent to get the userId (by id or userId)
       let parent = await this.prisma.parent.findFirst({
         where: {
-          id: BigInt(parentId),
-          schoolId: BigInt(schoolId),
+          id: this.toBigInt(parentId),
+          schoolId: this.toBigInt(schoolId),
           deletedAt: null
         },
         select: { id: true, userId: true }
@@ -1248,8 +1260,8 @@ class ParentService {
       if (!parent) {
         parent = await this.prisma.parent.findFirst({
           where: {
-            userId: BigInt(parentId),
-            schoolId: BigInt(schoolId),
+            userId: this.toBigInt(parentId),
+            schoolId: this.toBigInt(schoolId),
             deletedAt: null
           },
           select: { id: true, userId: true }
@@ -1262,11 +1274,11 @@ class ParentService {
 
       // Build where clause for notifications
       const where = {
-        schoolId: BigInt(schoolId),
+        schoolId: this.toBigInt(schoolId),
         deletedAt: null,
         recipients: {
           some: {
-            userId: BigInt(parent.userId)
+            userId: this.toBigInt(parent.userId)
           }
         }
       };
@@ -1280,7 +1292,7 @@ class ParentService {
       if (unreadOnly) {
         where.recipients = {
           some: {
-            userId: BigInt(parent.userId),
+            userId: this.toBigInt(parent.userId),
             readAt: null
           }
         };
@@ -1298,7 +1310,7 @@ class ParentService {
           },
           recipients: {
             where: {
-              userId: BigInt(parent.userId)
+              userId: this.toBigInt(parent.userId)
             },
             select: {
               status: true,
@@ -1319,7 +1331,7 @@ class ParentService {
       const formattedNotifications = notifications.map(notification => {
         const recipient = notification.recipients[0]; // Should only be one for this user
         return {
-          id: notification.id,
+          id: notification.id.toString(),
           uuid: notification.uuid,
           type: notification.type,
           title: notification.title,
@@ -1412,29 +1424,26 @@ class ParentService {
   // PARENT STUDENT METHODS
   // ======================
 
-  async getParentStudents(parentId, schoolId) {
+  async getParentStudents(parentId, schoolId, filters = {}) {
     try {
-      const cacheKey = `students:${parentId}`;
-      const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
-
-      // First try to find parent by ID, then by userId if not found
+      const { limit = 10, offset = 0, includeDeleted = false } = filters;
+      
+      // Resolve parent to get the userId (by id or userId)
       let parent = await this.prisma.parent.findFirst({
-        where: { 
-          id: BigInt(parentId), 
-          schoolId: BigInt(schoolId), 
-          deletedAt: null 
+        where: {
+          id: this.toBigInt(parentId),
+          schoolId: this.toBigInt(schoolId),
+          deletedAt: null
         },
         select: { id: true, userId: true }
       });
 
-      // If not found by ID, try to find by userId
       if (!parent) {
         parent = await this.prisma.parent.findFirst({
-          where: { 
-            userId: BigInt(parentId), 
-            schoolId: BigInt(schoolId), 
-            deletedAt: null 
+          where: {
+            userId: this.toBigInt(parentId),
+            schoolId: this.toBigInt(schoolId),
+            deletedAt: null
           },
           select: { id: true, userId: true }
         });
@@ -1444,18 +1453,24 @@ class ParentService {
         throw new Error('Parent not found');
       }
 
-      // Use the actual parent record ID for student queries
       const actualParentId = parent.id;
-      
+
       console.log('🔍 Found parent record:', { id: parent.id.toString(), userId: parent.userId.toString() });
       console.log('🔍 Looking for students with parentId:', actualParentId.toString());
 
+      // Build where clause for students
+      const where = {
+        parentId: actualParentId,
+        schoolId: this.toBigInt(schoolId),
+        deletedAt: includeDeleted ? undefined : null
+      };
+
+      // Get total count
+      const total = await this.prisma.student.count({ where });
+
+      // Get students with pagination
       const students = await this.prisma.student.findMany({
-        where: {
-          parentId: actualParentId,
-          schoolId: BigInt(schoolId),
-          deletedAt: null
-        },
+        where,
         include: {
           user: {
             select: {
@@ -1469,60 +1484,61 @@ class ParentService {
           class: {
             select: {
               name: true,
-              code: true
+              roomNumber: true
             }
           },
-                  section: {
-          select: {
-            name: true,
-            roomNumber: true
+          section: {
+            select: {
+              name: true,
+              roomNumber: true
+            }
           }
-        }
         },
         orderBy: {
           createdAt: 'desc'
-        }
+        },
+        take: parseInt(limit),
+        skip: parseInt(offset)
       });
 
       console.log('🔍 Raw students from database:', students);
       console.log('🔍 Students count:', students?.length || 0);
 
+      // Format the response
       const formattedStudents = students.map(student => ({
         id: student.id.toString(),
         userId: student.userId.toString(),
-        username: student.user.username,
-        firstName: student.user.firstName,
-        lastName: student.user.lastName,
-        email: student.user.email,
-        admissionNo: student.admissionNo,
-        rollNo: student.rollNo,
-        status: student.user.status,
-        class: student.class ? {
-          name: student.class.name,
-          code: student.class.code
-        } : null,
-        section: student.section ? {
-          name: student.section.name,
-          roomNumber: student.section.roomNumber
-        } : null,
+        studentId: student.studentId,
+        firstName: student.user?.firstName || '',
+        lastName: student.user?.lastName || '',
+        email: student.user?.email || '',
+        username: student.user?.username || '',
+        status: student.user?.status || 'INACTIVE',
         parentId: student.parentId.toString(),
+        classId: student.classId?.toString() || null,
+        sectionId: student.sectionId?.toString() || null,
+        className: student.class?.name || '',
+        sectionName: student.section?.name || '',
+        roomNumber: student.class?.roomNumber || student.section?.roomNumber || '',
+        admissionDate: student.admissionDate,
         createdAt: student.createdAt,
         updatedAt: student.updatedAt
       }));
 
       const result = {
         students: formattedStudents,
-        total: formattedStudents.length
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset)
       };
 
       console.log('🔍 Final result:', JSON.stringify(result, null, 2));
       console.log('🔍 Returning result with', result.students?.length || 0, 'students');
 
-      await this.setCache(cacheKey, result, 900); // 15 minutes
       return result;
 
     } catch (error) {
-      logger.error('Get parent students error:', error);
+      this.logger.error('Get parent students error:', error);
       throw error;
     }
   }
