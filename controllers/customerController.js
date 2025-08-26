@@ -36,7 +36,7 @@ async function initializeDbPool() {
     try {
       const dbConfig = {
         host: process.env.DB_HOST || 'localhost',
-        port: process.env.DB_PORT || 3306,
+        port: parseInt(process.env.DB_PORT) || 3306,
         user: process.env.DB_USER || 'school',
         password: process.env.DB_PASSWORD || 'YourName123!',
         database: process.env.DB_NAME || 'school',
@@ -44,13 +44,31 @@ async function initializeDbPool() {
         connectionLimit: 10,
         queueLimit: 0,
         acquireTimeout: 30000,
-        connectTimeout: 30000
+        connectTimeout: 30000,
+        timeout: 30000,
+        charset: 'utf8mb4',
+        supportBigNumbers: true,
+        bigNumberStrings: true
       };
       
+      console.log('Initializing database pool with config:', {
+        host: dbConfig.host,
+        port: dbConfig.port,
+        user: dbConfig.user,
+        database: dbConfig.database
+      });
+      
       dbPool = mysql.createPool(dbConfig);
+      
+      // Test the connection
+      const testConnection = await dbPool.getConnection();
+      await testConnection.ping();
+      testConnection.release();
+      
       console.log('Database pool initialized for customer controller fallback');
     } catch (error) {
       console.error('Failed to initialize database pool:', error);
+      dbPool = null;
     }
   }
   return dbPool;
@@ -65,7 +83,10 @@ async function fallbackQuery(sqlQuery, params = []) {
     }
     
     console.log('Executing fallback query with params:', params);
-    const [rows] = await pool.execute(sqlQuery, params);
+    console.log('Param types:', params.map(p => typeof p));
+    
+    // Use query instead of execute for better parameter handling
+    const [rows] = await pool.query(sqlQuery, params);
     return rows;
   } catch (error) {
     console.error('Fallback query failed:', error);
@@ -231,6 +252,7 @@ export const getAllCustomers = async (req, res) => {
     console.log('Final query options:', JSON.stringify(logQueryOptions, null, 2));
     
     let customers, total;
+    let cleanedCustomers;
     
     try {
       // Try Prisma first
@@ -245,7 +267,7 @@ export const getAllCustomers = async (req, res) => {
       const offset = isPaginationRequested ? (pageNum - 1) * limitNum : 0;
       const limit = isPaginationRequested ? limitNum : 1000;
       
-      // Convert BigInt schoolId to string for SQL
+      // Convert BigInt schoolId to string for SQL and ensure proper types
       const schoolIdStr = schoolId.toString();
       
       const sqlQuery = `
@@ -259,26 +281,53 @@ export const getAllCustomers = async (req, res) => {
         ${isPaginationRequested ? 'LIMIT ? OFFSET ?' : ''}
       `;
       
-      // Prepare parameters in correct order
+      // Prepare parameters in correct order with proper types
       const sqlParams = [schoolIdStr];
       if (isPaginationRequested) {
-        sqlParams.push(limit, offset);
+        sqlParams.push(parseInt(limit), parseInt(offset));
       }
       
       console.log('SQL Query:', sqlQuery);
       console.log('SQL Params:', sqlParams);
+      console.log('SQL Param types:', sqlParams.map(p => typeof p));
       
-      const customers = await fallbackQuery(sqlQuery, sqlParams);
+      customers = await fallbackQuery(sqlQuery, sqlParams);
       const countResult = await fallbackQuery(
         'SELECT COUNT(*) as total FROM customers WHERE schoolId = ? AND deletedAt IS NULL',
         [schoolIdStr]
       );
-      const total = countResult[0]?.total || 0;
+      total = parseInt(countResult[0]?.total) || 0;
       
       // Clean up any invalid dates
-      const cleanedCustomers = cleanInvalidDates(customers);
+      cleanedCustomers = cleanInvalidDates(customers);
       
       console.log('Raw SQL fallback successful, found customers:', cleanedCustomers.length);
+    } catch (fallbackError) {
+      console.error('Fallback query also failed:', fallbackError);
+      
+      // Try with an even simpler query as last resort
+      try {
+        console.log('Trying simplest possible query...');
+        const simpleQuery = 'SELECT * FROM customers WHERE schoolId = ? LIMIT 10';
+        const simpleCustomers = await fallbackQuery(simpleQuery, [schoolIdStr]);
+        const simpleCount = await fallbackQuery('SELECT COUNT(*) as total FROM customers WHERE schoolId = ?', [schoolIdStr]);
+        
+        customers = simpleCustomers;
+        total = parseInt(simpleCount[0]?.total) || 0;
+        
+        console.log('Simple fallback successful, found customers:', customers.length);
+      } catch (simpleError) {
+        console.error('All fallback approaches failed:', simpleError);
+        throw new Error('Unable to retrieve customers from database');
+      }
+    }
+    
+    // Ensure we have valid data
+    if (!customers) {
+      customers = [];
+    }
+    if (!total) {
+      total = 0;
     }
     
     console.log('Query results:', { customersCount: customers.length, total });
