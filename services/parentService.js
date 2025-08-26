@@ -252,7 +252,7 @@ class ParentService {
 
       // Build where clause with school filter
       const baseWhere = {
-        schoolId: BigInt(schoolId),
+        schoolId: this.toBigInt(schoolId),
         deletedAt: null
       };
 
@@ -329,7 +329,7 @@ class ParentService {
       const parent = await this.prisma.parent.findFirst({
         where: {
           id: parentId,
-          schoolId: BigInt(schoolId),
+          schoolId: this.toBigInt(schoolId),
           deletedAt: null
         },
         include: includeObj
@@ -353,7 +353,7 @@ class ParentService {
     try {
       // Check if parent exists and user has permission
       const existingParent = await this.prisma.parent.findFirst({
-        where: { id: parentId, schoolId: BigInt(schoolId), deletedAt: null },
+        where: { id: parentId, schoolId: this.toBigInt(schoolId), deletedAt: null },
         include: { user: true }
       });
 
@@ -457,7 +457,7 @@ class ParentService {
   async deleteParent(parentId, userId, schoolId) {
     try {
       const parent = await this.prisma.parent.findFirst({
-        where: { id: parentId, schoolId: BigInt(schoolId), deletedAt: null },
+        where: { id: parentId, schoolId: this.toBigInt(schoolId), deletedAt: null },
         include: { user: true }
       });
 
@@ -469,7 +469,7 @@ class ParentService {
       const activeStudents = await this.prisma.student.count({
         where: {
           parentId,
-          schoolId: BigInt(schoolId),
+          schoolId: this.toBigInt(schoolId),
           deletedAt: null,
           user: { status: 'ACTIVE' }
         }
@@ -528,7 +528,7 @@ class ParentService {
   async restoreParent(parentId, userId, schoolId) {
     try {
       const parent = await this.prisma.parent.findFirst({
-        where: { id: parentId, schoolId: BigInt(schoolId) },
+        where: { id: parentId, schoolId: this.toBigInt(schoolId) },
         include: { user: true }
       });
 
@@ -889,7 +889,7 @@ class ParentService {
         this.prisma.student.findMany({
           where: { 
             parentId: actualParentId, 
-            schoolId: BigInt(schoolId), 
+            schoolId: this.toBigInt(schoolId), 
             deletedAt: null 
           },
           include: {
@@ -910,7 +910,7 @@ class ParentService {
         this.prisma.payment.findMany({
           where: { 
             parentId: actualParentId, 
-            schoolId: BigInt(schoolId) 
+            schoolId: this.toBigInt(schoolId) 
           },
           select: {
             amount: true,
@@ -990,7 +990,7 @@ class ParentService {
 
       const parents = await this.prisma.parent.findMany({
         where: {
-          schoolId: BigInt(schoolId),
+          schoolId: this.toBigInt(schoolId),
           deletedAt: null,
           OR: [
             { user: { firstName: { contains: query, mode: 'insensitive' } } },
@@ -1023,7 +1023,7 @@ class ParentService {
     try {
       // Build where clause with school filter
       const baseWhere = {
-        schoolId: BigInt(schoolId),
+        schoolId: this.toBigInt(schoolId),
         deletedAt: null
       };
 
@@ -1164,7 +1164,7 @@ class ParentService {
       if (cached) return cached;
 
       const parents = await this.prisma.parent.findMany({
-        where: { schoolId: BigInt(schoolId), deletedAt: null },
+        where: { schoolId: this.toBigInt(schoolId), deletedAt: null },
         select: { annualIncome: true }
       });
 
@@ -1197,7 +1197,7 @@ class ParentService {
 
       const distribution = await this.prisma.parent.groupBy({
         by: ['education'],
-        where: { schoolId: BigInt(schoolId), deletedAt: null },
+        where: { schoolId: this.toBigInt(schoolId), deletedAt: null },
         _count: { education: true }
       });
 
@@ -1224,7 +1224,7 @@ class ParentService {
       const includeObj = buildParentIncludeQuery(include);
 
       const parents = await this.prisma.parent.findMany({
-        where: { schoolId: BigInt(schoolId), deletedAt: null },
+        where: { schoolId: this.toBigInt(schoolId), deletedAt: null },
         include: includeObj,
         orderBy: { createdAt: 'desc' }
       });
@@ -1380,8 +1380,8 @@ class ParentService {
       // First get the parent record to get the userId
       const parent = await this.prisma.parent.findFirst({
         where: { 
-          id: BigInt(parentId), 
-          schoolId: BigInt(schoolId), 
+          id: this.toBigInt(parentId), 
+          schoolId: this.toBigInt(schoolId), 
           deletedAt: null 
         },
         select: { userId: true }
@@ -1394,8 +1394,8 @@ class ParentService {
       // Update the notification recipient status
       const result = await this.prisma.notificationRecipient.updateMany({
         where: {
-          notificationId: BigInt(notificationId),
-          userId: BigInt(parent.userId)
+          notificationId: this.toBigInt(notificationId),
+          userId: this.toBigInt(parent.userId)
         },
         data: {
           status: 'READ',
@@ -1552,9 +1552,9 @@ class ParentService {
       // Verify parent has access to this student
       const student = await this.prisma.student.findFirst({
         where: {
-          id: BigInt(studentId),
-          parentId: BigInt(parentId),
-          schoolId: BigInt(schoolId),
+          id: this.toBigInt(studentId),
+          parentId: this.toBigInt(parentId),
+          schoolId: this.toBigInt(schoolId),
           deletedAt: null
         }
       });
@@ -1586,8 +1586,8 @@ class ParentService {
 
       const attendance = await this.prisma.attendance.findMany({
         where: {
-          studentId: BigInt(studentId),
-          schoolId: BigInt(schoolId),
+          studentId: this.toBigInt(studentId),
+          schoolId: this.toBigInt(schoolId),
           ...dateFilter
         },
         include: {
@@ -1652,9 +1652,9 @@ class ParentService {
       // Verify parent has access to this student
       const student = await this.prisma.student.findFirst({
         where: {
-          id: BigInt(studentId),
-          parentId: BigInt(parentId),
-          schoolId: BigInt(schoolId),
+          id: this.toBigInt(studentId),
+          parentId: this.toBigInt(parentId),
+          schoolId: this.toBigInt(schoolId),
           deletedAt: null
         }
       });
@@ -1665,14 +1665,14 @@ class ParentService {
 
       const { examId, subjectId, termId, academicSessionId } = filters;
       let where = {
-        studentId: BigInt(studentId),
-        schoolId: BigInt(schoolId)
+        studentId: this.toBigInt(studentId),
+        schoolId: this.toBigInt(schoolId)
       };
 
-      if (examId) where.examId = BigInt(examId);
-      if (subjectId) where.subjectId = BigInt(subjectId);
-      if (termId) where.termId = BigInt(termId);
-      if (academicSessionId) where.academicSessionId = BigInt(academicSessionId);
+      if (examId) where.examId = this.toBigInt(examId);
+      if (subjectId) where.subjectId = this.toBigInt(subjectId);
+      if (termId) where.termId = this.toBigInt(termId);
+      if (academicSessionId) where.academicSessionId = this.toBigInt(academicSessionId);
 
       const grades = await this.prisma.grade.findMany({
         where,
