@@ -1,8 +1,8 @@
 import express from 'express';
 import parentController from '../controllers/parentController.js';
 import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
-import { validateParams, validateBody } from '../middleware/validation.js';
-import { parentSchemas } from '../schemas/parentSchemas.js';
+import { validateParams, validateBody, idSchema, paginationSchema } from '../middleware/validation.js';
+import { z } from 'zod';
 
 const router = express.Router();
 
@@ -19,7 +19,6 @@ const router = express.Router();
 router.post('/',
   authenticateToken,
   authorizePermissions(['parent:create']),
-  validateBody(parentSchemas.createParent),
   parentController.createParent.bind(parentController)
 );
 
@@ -44,7 +43,7 @@ router.get('/',
 router.get('/:id',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  validateParams(parentSchemas.getParentById),
+  validateParams(idSchema),
   parentController.getParentById.bind(parentController)
 );
 
@@ -57,8 +56,7 @@ router.get('/:id',
 router.put('/:id',
   authenticateToken,
   authorizePermissions(['parent:update']),
-  validateParams(parentSchemas.getParentById),
-  validateBody(parentSchemas.updateParent),
+  validateParams(idSchema),
   parentController.updateParent.bind(parentController)
 );
 
@@ -71,7 +69,7 @@ router.put('/:id',
 router.delete('/:id',
   authenticateToken,
   authorizePermissions(['parent:delete']),
-  validateParams(parentSchemas.getParentById),
+  validateParams(idSchema),
   parentController.deleteParent.bind(parentController)
 );
 
@@ -84,7 +82,7 @@ router.delete('/:id',
 router.patch('/:id/restore',
   authenticateToken,
   authorizePermissions(['parent:update']),
-  validateParams(parentSchemas.getParentById),
+  validateParams(idSchema),
   parentController.restoreParent.bind(parentController)
 );
 
@@ -101,7 +99,7 @@ router.patch('/:id/restore',
 router.get('/:id/stats',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  validateParams(parentSchemas.getParentById),
+  validateParams(idSchema),
   parentController.getParentStats.bind(parentController)
 );
 
@@ -114,7 +112,7 @@ router.get('/:id/stats',
 router.get('/:id/analytics',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  validateParams(parentSchemas.getParentById),
+  validateParams(idSchema),
   parentController.getParentAnalytics.bind(parentController)
 );
 
@@ -127,7 +125,7 @@ router.get('/:id/analytics',
 router.get('/:id/performance',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  validateParams(parentSchemas.getParentById),
+  validateParams(idSchema),
   parentController.getParentPerformance.bind(parentController)
 );
 
@@ -140,7 +138,7 @@ router.get('/:id/performance',
 router.get('/:id/dashboard',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  validateParams(parentSchemas.getParentById),
+  validateParams(idSchema),
   parentController.getParentDashboard.bind(parentController)
 );
 
@@ -157,7 +155,6 @@ router.get('/:id/dashboard',
 router.post('/bulk',
   authenticateToken,
   authorizePermissions(['parent:create']),
-  validateBody(parentSchemas.bulkCreateParents),
   parentController.bulkCreateParents.bind(parentController)
 );
 
@@ -170,7 +167,6 @@ router.post('/bulk',
 router.put('/bulk',
   authenticateToken,
   authorizePermissions(['parent:update']),
-  validateBody(parentSchemas.bulkUpdateParents),
   parentController.bulkUpdateParents.bind(parentController)
 );
 
@@ -183,7 +179,6 @@ router.put('/bulk',
 router.delete('/bulk',
   authenticateToken,
   authorizePermissions(['parent:delete']),
-  validateBody(parentSchemas.bulkDeleteParents),
   parentController.bulkDeleteParents.bind(parentController)
 );
 
@@ -316,7 +311,7 @@ router.get('/analytics/comparison',
 router.get('/:id/students',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  validateParams(parentSchemas.getParentById),
+  validateParams(idSchema),
   parentController.getParentStudents.bind(parentController)
 );
 
@@ -329,7 +324,7 @@ router.get('/:id/students',
 router.get('/:id/students/:studentId/attendance',
   authenticateToken,
   authorizePermissions(['parent:read', 'attendance:read_children']),
-  validateParams(parentSchemas.getParentStudent),
+  validateParams(z.object({ id: idSchema.shape.id, studentId: idSchema.shape.id })),
   parentController.getParentStudentAttendance.bind(parentController)
 );
 
@@ -342,7 +337,7 @@ router.get('/:id/students/:studentId/attendance',
 router.get('/:id/students/:studentId/grades',
   authenticateToken,
   authorizePermissions(['parent:read', 'grade:read_children']),
-  validateParams(parentSchemas.getParentStudent),
+  validateParams(z.object({ id: idSchema.shape.id, studentId: idSchema.shape.id })),
   parentController.getParentStudentGrades.bind(parentController)
 );
 
@@ -355,7 +350,7 @@ router.get('/:id/students/:studentId/grades',
 router.get('/:id/students/:studentId/assignments',
   authenticateToken,
   authorizePermissions(['parent:read', 'assignment:read_children']),
-  validateParams(parentSchemas.getParentStudent),
+  validateParams(z.object({ id: idSchema.shape.id, studentId: idSchema.shape.id })),
   parentController.getParentStudentAssignments.bind(parentController)
 );
 
@@ -368,7 +363,7 @@ router.get('/:id/students/:studentId/assignments',
 router.get('/:id/students/:studentId/exams',
   authenticateToken,
   authorizePermissions(['parent:read', 'exam:read_children']),
-  validateParams(parentSchemas.getParentStudent),
+  validateParams(z.object({ id: idSchema.shape.id, studentId: idSchema.shape.id })),
   parentController.getParentStudentExams.bind(parentController)
 );
 
@@ -381,7 +376,7 @@ router.get('/:id/students/:studentId/exams',
 router.get('/:id/students/:studentId/timetable',
   authenticateToken,
   authorizePermissions(['parent:read', 'timetable:read_children']),
-  validateParams(parentSchemas.getParentStudent),
+  validateParams(z.object({ id: idSchema.shape.id, studentId: idSchema.shape.id })),
   parentController.getParentStudentTimetable.bind(parentController)
 );
 
@@ -394,7 +389,7 @@ router.get('/:id/students/:studentId/timetable',
 router.get('/:id/students/:studentId/fees',
   authenticateToken,
   authorizePermissions(['parent:read', 'fee:read_children']),
-  validateParams(parentSchemas.getParentStudent),
+  validateParams(z.object({ id: idSchema.shape.id, studentId: idSchema.shape.id })),
   parentController.getParentStudentFees.bind(parentController)
 );
 
@@ -407,7 +402,7 @@ router.get('/:id/students/:studentId/fees',
 router.get('/:id/students/:studentId/payments',
   authenticateToken,
   authorizePermissions(['parent:read', 'payment:read_children']),
-  validateParams(parentSchemas.getParentStudent),
+  validateParams(z.object({ id: idSchema.shape.id, studentId: idSchema.shape.id })),
   parentController.getParentStudentPayments.bind(parentController)
 );
 
@@ -420,7 +415,7 @@ router.get('/:id/students/:studentId/payments',
 router.get('/:id/students/:studentId/reports',
   authenticateToken,
   authorizePermissions(['parent:read', 'report:read_children']),
-  validateParams(parentSchemas.getParentStudent),
+  validateParams(z.object({ id: idSchema.shape.id, studentId: idSchema.shape.id })),
   parentController.getParentStudentReports.bind(parentController)
 );
 
@@ -433,7 +428,7 @@ router.get('/:id/students/:studentId/reports',
 router.get('/:id/students/:studentId/documents',
   authenticateToken,
   authorizePermissions(['parent:read', 'document:read_children']),
-  validateParams(parentSchemas.getParentStudent),
+  validateParams(z.object({ id: idSchema.shape.id, studentId: idSchema.shape.id })),
   parentController.getParentStudentDocuments.bind(parentController)
 );
 
@@ -446,7 +441,7 @@ router.get('/:id/students/:studentId/documents',
 router.get('/:id/students/:studentId/announcements',
   authenticateToken,
   authorizePermissions(['parent:read', 'announcement:read_children']),
-  validateParams(parentSchemas.getParentStudent),
+  validateParams(z.object({ id: idSchema.shape.id, studentId: idSchema.shape.id })),
   parentController.getParentStudentAnnouncements.bind(parentController)
 );
 
@@ -459,7 +454,7 @@ router.get('/:id/students/:studentId/announcements',
 router.get('/:id/students/:studentId/messages',
   authenticateToken,
   authorizePermissions(['parent:read', 'message:read_children']),
-  validateParams(parentSchemas.getParentStudent),
+  validateParams(z.object({ id: idSchema.shape.id, studentId: idSchema.shape.id })),
   parentController.getParentStudentMessages.bind(parentController)
 );
 
@@ -476,8 +471,7 @@ router.get('/:id/students/:studentId/messages',
 router.post('/:id/messages',
   authenticateToken,
   authorizePermissions(['parent:read', 'message:create']),
-  validateParams(parentSchemas.getParentById),
-  validateBody(parentSchemas.sendMessage),
+  validateParams(idSchema),
   parentController.sendParentMessage.bind(parentController)
 );
 
@@ -490,7 +484,7 @@ router.post('/:id/messages',
 router.get('/:id/notifications',
   authenticateToken,
   authorizePermissions(['parent:read', 'notification:read']),
-  validateParams(parentSchemas.getParentById),
+  validateParams(idSchema),
   parentController.getParentNotifications.bind(parentController)
 );
 
@@ -503,7 +497,7 @@ router.get('/:id/notifications',
 router.patch('/:id/notifications/:notificationId/read',
   authenticateToken,
   authorizePermissions(['parent:read', 'notification:update']),
-  validateParams(parentSchemas.markNotificationRead),
+  validateParams(z.object({ id: idSchema.shape.id, notificationId: idSchema.shape.id })),
   parentController.markParentNotificationAsRead.bind(parentController)
 );
 
@@ -520,7 +514,7 @@ router.patch('/:id/notifications/:notificationId/read',
 router.get('/:id/calendar',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  validateParams(parentSchemas.getParentById),
+  validateParams(idSchema),
   parentController.getParentCalendar.bind(parentController)
 );
 
@@ -533,7 +527,7 @@ router.get('/:id/calendar',
 router.get('/:id/settings',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  validateParams(parentSchemas.getParentById),
+  validateParams(idSchema),
   parentController.getParentSettings.bind(parentController)
 );
 
@@ -546,8 +540,7 @@ router.get('/:id/settings',
 router.put('/:id/settings',
   authenticateToken,
   authorizePermissions(['parent:read', 'user:update_own']),
-  validateParams(parentSchemas.getParentById),
-  validateBody(parentSchemas.updateParentSettings),
+  validateParams(idSchema),
   parentController.updateParentSettings.bind(parentController)
 );
 
