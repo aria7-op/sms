@@ -1207,11 +1207,11 @@ class ParentService {
   // PARENT PORTAL METHODS
   // ======================
 
-  async getParentStudents(parentId, schoolId) {
+  async getParentStudents(parentId) {
     try {
-      console.log('🔍 getParentStudents called with:', { parentId, schoolId });
+      console.log('🔍 getParentStudents called with parentId:', parentId);
       
-      const cacheKey = `students:${parentId}:${schoolId}`;
+      const cacheKey = `students:${parentId}`;
       const cached = await this.getFromCache(cacheKey);
       if (cached) {
         console.log('✅ Returning cached students:', cached.length);
