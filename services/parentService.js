@@ -927,7 +927,7 @@ class ParentService {
         const lastName = student.user?.lastName || 'Student';
         
         return {
-          studentId: student.id,
+          studentId: student.id?.toString?.() || String(student.id),
           studentName: `${firstName} ${lastName}`,
           totalExams: grades.length,
           averageMarks,
