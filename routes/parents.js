@@ -138,12 +138,14 @@ router.get('/:id/performance',
  * @access  Private (Admin, Staff, Parent)
  * @permissions parent:read
  */
-router.get('/:id/dashboard',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  validateParams(idSchema),
-  parentController.getParentDashboard.bind(parentController)
-);
+if (typeof parentController.getParentDashboard === 'function') {
+  router.get('/:id/dashboard',
+    authenticateToken,
+    authorizePermissions(['parent:read']),
+    validateParams(idSchema),
+    parentController.getParentDashboard.bind(parentController)
+  );
+}
 
 // ============================================================================
 // Notifications
