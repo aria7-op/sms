@@ -681,26 +681,37 @@ class ParentService {
       const cached = await this.getFromCache(cacheKey);
       if (cached) return cached;
 
-      const [parent, students, payments] = await Promise.all([
-        this.prisma.parent.findFirst({
-          where: { id: parentId, schoolId: BigInt(schoolId), deletedAt: null },
-          include: {
-            user: true,
-            students: {
-              include: {
-                user: true,
-                class: true,
-                section: true
-              }
-            },
-            payments: true
-          }
-        }),
+      // First get the parent record to get the userId
+      const parent = await this.prisma.parent.findFirst({
+        where: { 
+          id: BigInt(parentId), 
+          schoolId: BigInt(schoolId), 
+          deletedAt: null 
+        },
+        include: {
+          user: true,
+          students: {
+            include: {
+              user: true,
+              class: true,
+              section: true
+            }
+          },
+          payments: true
+        }
+      });
+
+      if (!parent) {
+        throw new Error('Parent not found');
+      }
+
+      // Get students and payments count
+      const [studentsCount, payments] = await Promise.all([
         this.prisma.student.count({
-          where: { parentId, schoolId: BigInt(schoolId), deletedAt: null }
+          where: { parentId: BigInt(parentId), schoolId: BigInt(schoolId), deletedAt: null }
         }),
         this.prisma.payment.findMany({
-          where: { parentId, schoolId },
+          where: { parentId: BigInt(parentId), schoolId: BigInt(schoolId) },
           select: {
             amount: true,
             status: true,
@@ -710,13 +721,9 @@ class ParentService {
         })
       ]);
 
-      if (!parent) {
-        throw new Error('Parent not found');
-      }
-
       const stats = {
         parentId,
-        totalStudents: students,
+        totalStudents: studentsCount,
         totalPayments: payments.length,
         totalPaid: payments.filter(p => p.status === 'PAID').reduce((sum, p) => sum + Number(p.amount), 0),
         totalPending: payments.filter(p => p.status === 'UNPAID' || p.status === 'PARTIALLY_PAID').reduce((sum, p) => sum + Number(p.amount), 0),
@@ -836,25 +843,30 @@ class ParentService {
       const cached = await this.getFromCache(cacheKey);
       if (cached) return cached;
 
-      const [parent, students, payments] = await Promise.all([
-        this.prisma.parent.findFirst({
-          where: { id: parentId, schoolId: BigInt(schoolId), deletedAt: null },
-          include: {
-            user: true,
-            students: {
-              include: {
-                grades: {
-                  include: {
-                    exam: true,
-                    subject: true
-                  }
-                }
-              }
-            }
-          }
-        }),
+      // First get the parent record
+      const parent = await this.prisma.parent.findFirst({
+        where: { 
+          id: BigInt(parentId), 
+          schoolId: BigInt(schoolId), 
+          deletedAt: null 
+        },
+        include: {
+          user: true
+        }
+      });
+
+      if (!parent) {
+        throw new Error('Parent not found');
+      }
+
+      // Get students and payments
+      const [students, payments] = await Promise.all([
         this.prisma.student.findMany({
-          where: { parentId, schoolId: BigInt(schoolId), deletedAt: null },
+          where: { 
+            parentId: BigInt(parentId), 
+            schoolId: BigInt(schoolId), 
+            deletedAt: null 
+          },
           include: {
             user: {
               select: {
@@ -871,7 +883,10 @@ class ParentService {
           }
         }),
         this.prisma.payment.findMany({
-          where: { parentId, schoolId },
+          where: { 
+            parentId: BigInt(parentId), 
+            schoolId: BigInt(schoolId) 
+          },
           select: {
             amount: true,
             status: true,
@@ -880,10 +895,6 @@ class ParentService {
           }
         })
       ]);
-
-      if (!parent) {
-        throw new Error('Parent not found');
-      }
 
       // Calculate student performance
       const studentPerformance = students.map(student => {
@@ -1369,6 +1380,302 @@ class ParentService {
 
     } catch (error) {
       logger.error('Mark parent notification as read error:', error);
+      throw error;
+    }
+  }
+
+  // ======================
+  // PARENT STUDENT METHODS
+  // ======================
+
+  async getParentStudents(parentId, schoolId) {
+    try {
+      const cacheKey = `students:${parentId}`;
+      const cached = await this.getFromCache(cacheKey);
+      if (cached) return cached;
+
+      // First get the parent record to get the userId
+      const parent = await this.prisma.parent.findFirst({
+        where: { 
+          id: BigInt(parentId), 
+          schoolId: BigInt(schoolId), 
+          deletedAt: null 
+        },
+        select: { userId: true }
+      });
+
+      if (!parent) {
+        throw new Error('Parent not found');
+      }
+
+      const students = await this.prisma.student.findMany({
+        where: {
+          parentId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        include: {
+          user: {
+            select: {
+              firstName: true,
+              lastName: true,
+              email: true,
+              username: true,
+              status: true
+            }
+          },
+          class: {
+            select: {
+              name: true,
+              code: true
+            }
+          },
+          section: {
+            select: {
+              name: true,
+              code: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      const formattedStudents = students.map(student => ({
+        id: student.id.toString(),
+        userId: student.userId.toString(),
+        username: student.user.username,
+        firstName: student.user.firstName,
+        lastName: student.user.lastName,
+        email: student.user.email,
+        admissionNo: student.admissionNo,
+        rollNo: student.rollNo,
+        status: student.user.status,
+        class: student.class ? {
+          name: student.class.name,
+          code: student.class.code
+        } : null,
+        section: student.section ? {
+          name: student.section.name,
+          code: student.section.code
+        } : null,
+        parentId: student.parentId.toString(),
+        createdAt: student.createdAt,
+        updatedAt: student.updatedAt
+      }));
+
+      const result = {
+        students: formattedStudents,
+        total: formattedStudents.length
+      };
+
+      await this.setCache(cacheKey, result, 900); // 15 minutes
+      return result;
+
+    } catch (error) {
+      logger.error('Get parent students error:', error);
+      throw error;
+    }
+  }
+
+  async getParentStudentAttendance(parentId, studentId, schoolId, filters = {}) {
+    try {
+      const cacheKey = `attendance:${parentId}:${studentId}:${JSON.stringify(filters)}`;
+      const cached = await this.getFromCache(cacheKey);
+      if (cached) return cached;
+
+      // Verify parent has access to this student
+      const student = await this.prisma.student.findFirst({
+        where: {
+          id: BigInt(studentId),
+          parentId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        }
+      });
+
+      if (!student) {
+        throw new Error('Student not found or access denied');
+      }
+
+      const { startDate, endDate, month, year } = filters;
+      let dateFilter = {};
+
+      if (startDate && endDate) {
+        dateFilter = {
+          date: {
+            gte: new Date(startDate),
+            lte: new Date(endDate)
+          }
+        };
+      } else if (month && year) {
+        const start = new Date(year, month - 1, 1);
+        const end = new Date(year, month, 0);
+        dateFilter = {
+          date: {
+            gte: start,
+            lte: end
+          }
+        };
+      }
+
+      const attendance = await this.prisma.attendance.findMany({
+        where: {
+          studentId: BigInt(studentId),
+          schoolId: BigInt(schoolId),
+          ...dateFilter
+        },
+        include: {
+          class: {
+            select: {
+              name: true,
+              code: true
+            }
+          },
+          subject: {
+            select: {
+              name: true,
+              code: true
+            }
+          }
+        },
+        orderBy: {
+          date: 'desc'
+        }
+      });
+
+      const formattedAttendance = attendance.map(record => ({
+        id: record.id.toString(),
+        date: record.date,
+        status: record.status,
+        remarks: record.remarks,
+        class: record.class ? {
+          name: record.class.name,
+          code: record.class.code
+        } : null,
+        subject: record.subject ? {
+          name: record.subject.name,
+          code: record.subject.code
+        } : null,
+        createdAt: record.createdAt
+      }));
+
+      const result = {
+        studentId: studentId.toString(),
+        attendance: formattedAttendance,
+        total: formattedAttendance.length,
+        present: formattedAttendance.filter(a => a.status === 'PRESENT').length,
+        absent: formattedAttendance.filter(a => a.status === 'ABSENT').length,
+        late: formattedAttendance.filter(a => a.status === 'LATE').length
+      };
+
+      await this.setCache(cacheKey, result, 900); // 15 minutes
+      return result;
+
+    } catch (error) {
+      logger.error('Get parent student attendance error:', error);
+      throw error;
+    }
+  }
+
+  async getParentStudentGrades(parentId, studentId, schoolId, filters = {}) {
+    try {
+      const cacheKey = `grades:${parentId}:${studentId}:${JSON.stringify(filters)}`;
+      const cached = await this.getFromCache(cacheKey);
+      if (cached) return cached;
+
+      // Verify parent has access to this student
+      const student = await this.prisma.student.findFirst({
+        where: {
+          id: BigInt(studentId),
+          parentId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        }
+      });
+
+      if (!student) {
+        throw new Error('Student not found or access denied');
+      }
+
+      const { examId, subjectId, termId, academicSessionId } = filters;
+      let where = {
+        studentId: BigInt(studentId),
+        schoolId: BigInt(schoolId)
+      };
+
+      if (examId) where.examId = BigInt(examId);
+      if (subjectId) where.subjectId = BigInt(subjectId);
+      if (termId) where.termId = BigInt(termId);
+      if (academicSessionId) where.academicSessionId = BigInt(academicSessionId);
+
+      const grades = await this.prisma.grade.findMany({
+        where,
+        include: {
+          exam: {
+            select: {
+              name: true,
+              type: true,
+              date: true
+            }
+          },
+          subject: {
+            select: {
+              name: true,
+              code: true
+            }
+          },
+          term: {
+            select: {
+              name: true,
+              type: true
+            }
+          }
+        },
+        orderBy: [
+          { exam: { date: 'desc' } },
+          { createdAt: 'desc' }
+        ]
+      });
+
+      const formattedGrades = grades.map(grade => ({
+        id: grade.id.toString(),
+        marks: grade.marks,
+        maxMarks: grade.maxMarks,
+        percentage: grade.percentage,
+        grade: grade.grade,
+        remarks: grade.remarks,
+        exam: grade.exam ? {
+          name: grade.exam.name,
+          type: grade.exam.type,
+          date: grade.exam.date
+        } : null,
+        subject: grade.subject ? {
+          name: grade.subject.name,
+          code: grade.subject.code
+        } : null,
+        term: grade.term ? {
+          name: grade.term.name,
+          type: grade.term.type
+        } : null,
+        createdAt: grade.createdAt
+      }));
+
+      const result = {
+        studentId: studentId.toString(),
+        grades: formattedGrades,
+        total: formattedGrades.length,
+        average: formattedGrades.length > 0 
+          ? formattedGrades.reduce((sum, g) => sum + (g.percentage || 0), 0) / formattedGrades.length 
+          : 0
+      };
+
+      await this.setCache(cacheKey, result, 1800); // 30 minutes
+      return result;
+
+    } catch (error) {
+      logger.error('Get parent student grades error:', error);
       throw error;
     }
   }
