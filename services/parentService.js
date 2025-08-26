@@ -1445,12 +1445,12 @@ class ParentService {
               code: true
             }
           },
-          section: {
-            select: {
-              name: true,
-              code: true
-            }
+                  section: {
+          select: {
+            name: true,
+            roomNumber: true
           }
+        }
         },
         orderBy: {
           createdAt: 'desc'
@@ -1473,7 +1473,7 @@ class ParentService {
         } : null,
         section: student.section ? {
           name: student.section.name,
-          code: student.section.code
+          roomNumber: student.section.roomNumber
         } : null,
         parentId: student.parentId.toString(),
         createdAt: student.createdAt,
