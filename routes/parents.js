@@ -187,11 +187,11 @@ router.get('/:id/stats',
  * @access  Private (All authenticated users)
  * @params  {id} - Parent ID
  * @query   {period} - Analytics period (7d, 30d, 90d, 1y)
- * @permissions parent:analytics
+ * @permissions parent:read
  */
 router.get('/:id/analytics',
   authenticateToken,
-  authorizePermissions(['parent:analytics']),
+  authorizePermissions(['parent:read']),
   validateParams(idSchema),
   analyticsLimiter,
   parentAnalyticsCacheMiddleware(),
@@ -507,6 +507,289 @@ router.get('/performance/leaderboard',
   authorizePermissions(['parent:read']),
   analyticsLimiter,
   parentController.getParentReport.bind(parentController)
+);
+
+// ======================
+// PARENT PORTAL ROUTES
+// ======================
+
+/**
+ * @route   GET /api/parents/:id/students
+ * @desc    Get parent's students
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID
+ * @permissions parent:read, student:read
+ */
+router.get('/:id/students',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read']),
+  validateParams(idSchema),
+  parentController.getParentStudents.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/attendance
+ * @desc    Get student attendance for parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {studentId} - Student ID
+ * @permissions parent:read, student:read, attendance:read
+ */
+router.get('/:id/students/:studentId/attendance',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read', 'attendance:read']),
+  validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
+  parentController.getParentStudentAttendance.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/grades
+ * @desc    Get student grades for parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {studentId} - Student ID
+ * @permissions parent:read, student:read, grade:read
+ */
+router.get('/:id/students/:studentId/grades',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read', 'grade:read']),
+  validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
+  parentController.getParentStudentGrades.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/assignments
+ * @desc    Get student assignments for parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {studentId} - Student ID
+ * @permissions parent:read, student:read, assignment:read
+ */
+router.get('/:id/students/:studentId/assignments',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read', 'assignment:read']),
+  validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
+  parentController.getParentStudentAssignments.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/exams
+ * @desc    Get student exams for parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {studentId} - Student ID
+ * @permissions parent:read, student:read, exam:read
+ */
+router.get('/:id/students/:studentId/exams',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read', 'exam:read']),
+  validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
+  parentController.getParentStudentExams.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/timetable
+ * @desc    Get student timetable for parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {studentId} - Student ID
+ * @permissions parent:read, student:read, timetable:read
+ */
+router.get('/:id/students/:studentId/timetable',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read', 'timetable:read']),
+  validateParams({ ...idSchema.shape, studentId: idSchema.shape.id }),
+  parentController.getParentStudentTimetable.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/fees
+ * @desc    Get student fees for parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {studentId} - Student ID
+ * @permissions parent:read, student:read, fee:read
+ */
+router.get('/:id/students/:studentId/fees',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read', 'fee:read']),
+  parentController.getParentStudentFees.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/payments
+ * @desc    Get student payments for parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {studentId} - Student ID
+ * @permissions parent:read, student:read, payment:read
+ */
+router.get('/:id/students/:studentId/payments',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read', 'payment:read']),
+  parentController.getParentStudentPayments.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/reports
+ * @desc    Get student reports for parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {studentId} - Student ID
+ * @permissions parent:read, student:read, report:read
+ */
+router.get('/:id/students/:studentId/reports',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read', 'report:read']),
+  parentController.getParentStudentReports.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/documents
+ * @desc    Get student documents for parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {studentId} - Student ID
+ * @permissions parent:read, student:read, document:read
+ */
+router.get('/:id/students/:studentId/documents',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read', 'document:read']),
+  parentController.getParentStudentDocuments.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/announcements
+ * @desc    Get student announcements for parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {studentId} - Student ID
+ * @permissions parent:read, student:read, announcement:read
+ */
+router.get('/:id/students/:studentId/announcements',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read', 'announcement:read']),
+  parentController.getParentStudentAnnouncements.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/students/:studentId/messages
+ * @desc    Get student messages for parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {studentId} - Student ID
+ * @permissions parent:read, student:read, message:read
+ */
+router.get('/:id/students/:studentId/messages',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'student:read', 'message:read']),
+  parentController.getParentStudentMessages.bind(parentController)
+);
+
+/**
+ * @route   POST /api/parents/:id/messages
+ * @desc    Send message from parent
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID
+ * @permissions parent:read, message:create
+ */
+router.post('/:id/messages',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'message:create']),
+  validateParams(idSchema),
+  parentController.sendParentMessage.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/notifications
+ * @desc    Get parent notifications
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID
+ * @permissions parent:read, notification:read
+ */
+router.get('/:id/notifications',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'notification:read']),
+  validateParams(idSchema),
+  parentController.getParentNotifications.bind(parentController)
+);
+
+/**
+ * @route   PATCH /api/parents/:id/notifications/:notificationId/read
+ * @desc    Mark notification as read
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID, {notificationId} - Notification ID
+ * @permissions parent:read, notification:update
+ */
+router.patch('/:id/notifications/:notificationId/read',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'notification:update']),
+  validateParams({ ...idSchema.shape, notificationId: idSchema.shape.id }),
+  parentController.markParentNotificationAsRead.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/dashboard
+ * @desc    Get parent dashboard data
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID
+ * @permissions parent:read
+ */
+router.get('/:id/dashboard',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read']),
+  validateParams(idSchema),
+  parentController.getParentDashboard.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/calendar
+ * @desc    Get parent calendar data
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID
+ * @permissions parent:read
+ */
+router.get('/:id/calendar',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read']),
+  validateParams(idSchema),
+  parentController.getParentCalendar.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:id/settings
+ * @desc    Get parent settings
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID
+ * @permissions parent:read
+ */
+router.get('/:id/settings',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read']),
+  validateParams(idSchema),
+  parentController.getParentSettings.bind(parentController)
+);
+
+/**
+ * @route   PUT /api/parents/:id/settings
+ * @desc    Update parent settings
+ * @access  Private (PARENT, TEACHER, SCHOOL_ADMIN, SUPER_ADMIN)
+ * @params  {id} - Parent ID
+ * @permissions parent:read, parent:update
+ */
+router.put('/:id/settings',
+  authenticateToken,
+  authorizeRoles(['PARENT', 'TEACHER', 'SCHOOL_ADMIN', 'SUPER_ADMIN']),
+  authorizePermissions(['parent:read', 'parent:update']),
+  validateParams(idSchema),
+  parentController.updateParentSettings.bind(parentController)
 );
 
 // ======================
