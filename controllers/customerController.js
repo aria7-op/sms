@@ -244,6 +244,9 @@ export const getAllCustomers = async (req, res) => {
       const offset = isPaginationRequested ? (pageNum - 1) * limitNum : 0;
       const limit = isPaginationRequested ? limitNum : 1000;
       
+      // Convert BigInt schoolId to string for SQL
+      const schoolIdStr = schoolId.toString();
+      
       const sqlQuery = `
         SELECT id, uuid, name, serialNumber, email, phone, gender, source, purpose, 
                department, referredTo, referredById, metadata, ownerId, schoolId, 
@@ -255,12 +258,12 @@ export const getAllCustomers = async (req, res) => {
         ${isPaginationRequested ? 'LIMIT ? OFFSET ?' : ''}
       `;
       
-      const sqlParams = isPaginationRequested ? [schoolId, limit, offset] : [schoolId];
+      const sqlParams = isPaginationRequested ? [schoolIdStr, limit, offset] : [schoolIdStr];
       
       customers = await fallbackQuery(sqlQuery, sqlParams);
       const countResult = await fallbackQuery(
         'SELECT COUNT(*) as total FROM customers WHERE schoolId = ? AND deletedAt IS NULL',
-        [schoolId]
+        [schoolIdStr]
       );
       total = countResult[0].total;
       
@@ -283,6 +286,9 @@ export const getAllCustomers = async (req, res) => {
       data: convertBigInts(patchedCustomers),
       meta: {
         total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
         filters: {
           search,
           status: status ? 'not_available' : undefined, // Status field doesn't exist in Customer model
@@ -302,12 +308,9 @@ export const getAllCustomers = async (req, res) => {
     
     // Only include pagination info if pagination was requested
     if (isPaginationRequested) {
-      result.pagination = {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        pages: Math.ceil(total / limitNum)
-      };
+      result.meta.page = pageNum;
+      result.meta.limit = limitNum;
+      result.meta.totalPages = Math.ceil(total / limitNum);
     }
 
     logger.info(`Retrieved ${customers.length} customers`);
