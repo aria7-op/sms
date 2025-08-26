@@ -811,7 +811,9 @@ class ParentController {
       const { schoolId } = req.user;
 
       console.log('🔍 getParentStudents called with parentId:', id, 'schoolId:', schoolId);
-      console.log('🔍 req.user:', JSON.stringify(req.user, null, 2));
+      console.log('🔍 req.user keys:', Object.keys(req.user || {}));
+      console.log('🔍 req.user.schoolId type:', typeof req.user?.schoolId);
+      console.log('🔍 req.user.schoolId value:', req.user?.schoolId?.toString());
 
       // Ensure schoolId is properly converted
       const parsedSchoolId = parseInt(schoolId);
