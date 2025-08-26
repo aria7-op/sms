@@ -330,31 +330,58 @@ class ParentService {
 
   async getParentById(parentId, schoolId, include = null) {
     try {
+      logger.info(`getParentById START: parentId=${parentId}, schoolId=${schoolId}, include=${include}`);
+      
       const cacheKey = `byId:${parentId}:${include}`;
+      logger.debug(`getParentById: Checking cache for key: ${cacheKey}`);
+      
       const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
+      if (cached) {
+        logger.info(`getParentById: Cache hit for key: ${cacheKey}`);
+        return cached;
+      }
 
+      logger.debug(`getParentById: Cache miss, building include query`);
       const includeObj = buildParentIncludeQuery(include);
+      logger.debug(`getParentById: Include object:`, includeObj);
 
-      const parent = await this.prisma.parent.findFirst({
-        where: {
-          id: parentId,
-          schoolId: BigInt(schoolId),
-          deletedAt: null
-        },
-        include: includeObj
-      });
+      logger.info(`getParentById: Executing database query...`);
+      const startTime = Date.now();
+      
+      // Add timeout protection to the database query
+      const parent = await Promise.race([
+        this.prisma.parent.findFirst({
+          where: {
+            id: parentId,
+            schoolId: BigInt(schoolId),
+            deletedAt: null
+          },
+          include: includeObj
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Database query timeout after 10 seconds')), 10000)
+        )
+      ]);
+
+      const queryTime = Date.now() - startTime;
+      logger.info(`getParentById: Database query completed in ${queryTime}ms`);
 
       if (!parent) {
+        logger.warn(`getParentById: Parent not found for id=${parentId}, schoolId=${schoolId}`);
         throw new Error('Parent not found');
       }
 
+      logger.debug(`getParentById: Formatting response`);
       const result = formatParentResponse(parent, { includeStats: true });
+      
+      logger.debug(`getParentById: Setting cache for key: ${cacheKey}`);
       await this.setCache(cacheKey, result);
+      
+      logger.info(`getParentById END: Successfully retrieved parent ${parentId}`);
       return result;
 
     } catch (error) {
-      logger.error('Get parent by ID error:', error);
+      logger.error(`getParentById ERROR: parentId=${parentId}, schoolId=${schoolId}:`, error);
       throw error;
     }
   }
