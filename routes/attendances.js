@@ -20,7 +20,7 @@ import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Apply authentication to all routes
+// Apply authentication to all routes EXCEPT mark-in and mark-out
 router.use(authenticateToken);
 
 // Get all attendances with filtering and pagination
@@ -45,11 +45,11 @@ router.get('/monthly-matrix', authenticateToken, authorizePermissions(['attendan
 // Export attendance data
 router.get('/export', authenticateToken, authorizePermissions(['attendance:read']), exportAttendanceData);
 
-// Mark student in-time (arrival) - MUST come before /:id routes
-router.post('/mark-in-time', authenticateToken, authorizePermissions(['attendance:create']), markInTime);
+// Mark student in-time (arrival) - NO AUTHENTICATION REQUIRED
+router.post('/mark-in-time', markInTime);
 
-// Mark student out-time (departure) - MUST come before /:id routes
-router.post('/mark-out-time', authenticateToken, authorizePermissions(['attendance:update']), markOutTime);
+// Mark student out-time (departure) - NO AUTHENTICATION REQUIRED
+router.post('/mark-out-time', markOutTime);
 
 // Bulk create attendance records - MUST come before /:id routes
 router.post('/bulk', authenticateToken, authorizePermissions(['attendance:create']), bulkCreateAttendance);
