@@ -592,12 +592,12 @@ class UserService {
       
       let isOwner = false;
       
-      // If no user found, check if it's an owner
+      // If no user found, check if it's an owner (owners use email, not username)
       if (!user) {
-        console.log('🔍 Checking owner table for username:', validatedData.username);
+        console.log('🔍 Checking owner table for email:', validatedData.username);
         
         const owner = await this.prisma.owner.findUnique({
-          where: { username: validatedData.username }
+          where: { email: validatedData.username }
         });
         
         console.log('👑 Owner found:', owner ? 'YES' : 'NO');
@@ -624,7 +624,7 @@ class UserService {
           }
           
           if (!isPasswordValid) {
-            throw new Error('Invalid username or password');
+            throw new Error('Invalid username/email or password');
           }
           
           // Create a user-like object for owner
@@ -647,36 +647,38 @@ class UserService {
           isOwner = true;
           console.log('✅ Owner login successful');
         } else {
-          console.log('❌ No user or owner found with username:', validatedData.username);
-          throw new Error('Invalid username or password');
+          console.log('❌ No user or owner found with username/email:', validatedData.username);
+          throw new Error('Invalid username/email or password');
         }
-      } else {
-        console.log('👤 User status:', user.status);
-        
-        // Check if user is active
-        if (user.status !== 'ACTIVE') {
-          throw new Error('Account is not active. Please contact administrator.');
-        }
-        
-        // Verify user password using stored salt
-        let isPasswordValid = false;
-        if (user.salt) {
-          // Use the stored salt to hash the provided password and compare
-          const hashedPassword = await bcrypt.hash(validatedData.password, user.salt);
-          isPasswordValid = hashedPassword === user.password;
-          console.log('🔐 User password validation (with salt):', isPasswordValid);
-        } else {
-          // Fallback to bcrypt.compare for backward compatibility
-          isPasswordValid = await bcrypt.compare(validatedData.password, user.password);
-          console.log('🔐 User password validation (bcrypt.compare):', isPasswordValid);
-        }
-        
-        if (!isPasswordValid) {
-          throw new Error('Invalid username or password');
-        }
-        
-        console.log('✅ User login successful');
       }
+      
+      if (user) {
+          console.log('👤 User status:', user.status);
+          
+          // Check if user is active
+          if (user.status !== 'ACTIVE') {
+            throw new Error('Account is not active. Please contact administrator.');
+          }
+          
+          // Verify user password using stored salt
+          let isPasswordValid = false;
+          if (user.salt) {
+            // Use the stored salt to hash the provided password and compare
+            const hashedPassword = await bcrypt.hash(validatedData.password, user.salt);
+            isPasswordValid = hashedPassword === user.password;
+            console.log('🔐 User password validation (with salt):', isPasswordValid);
+          } else {
+            // Fallback to bcrypt.compare for backward compatibility
+            isPasswordValid = await bcrypt.compare(validatedData.password, user.password);
+            console.log('🔐 User password validation (bcrypt.compare):', isPasswordValid);
+          }
+          
+          if (!isPasswordValid) {
+            throw new Error('Invalid username/email or password');
+          }
+          
+          console.log('✅ User login successful');
+        }
       
       // Generate JWT token
       const tokenPayload = {
@@ -1481,6 +1483,729 @@ class UserService {
       return {
         success: true,
         data: users
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ======================
+  // VERIFICATION & VALIDATION
+  // ======================
+
+  /**
+   * Verify user email
+   */
+  async verifyEmail(userId, verificationToken) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: BigInt(userId) }
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (user.emailVerified) {
+        throw new Error('Email already verified');
+      }
+
+      // In a real implementation, you'd validate the verification token
+      // For now, we'll just mark the email as verified
+      const updatedUser = await this.prisma.user.update({
+        where: { id: BigInt(userId) },
+        data: {
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
+          updatedAt: new Date(),
+        }
+      });
+
+      // Invalidate cache
+      invalidateUserCacheOnUpdate(userId, user.createdByOwnerId.toString());
+
+      return {
+        success: true,
+        data: updatedUser,
+        message: 'Email verified successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Resend verification email
+   */
+  async resendVerificationEmail(userId) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: BigInt(userId) }
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (user.emailVerified) {
+        throw new Error('Email already verified');
+      }
+
+      // In a real implementation, you'd send the verification email
+      // For now, we'll just return success
+      return {
+        success: true,
+        message: 'Verification email sent successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Request password reset
+   */
+  async requestPasswordReset(email) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { email }
+      });
+
+      if (!user) {
+        // Don't reveal if user exists or not for security
+        return {
+          success: true,
+          message: 'If an account with that email exists, a password reset link has been sent'
+        };
+      }
+
+      // Generate reset token (in real implementation, store this securely)
+      const resetToken = jwt.sign(
+        { userId: user.id.toString(), type: 'password_reset' },
+        JWT_SECRET,
+        { expiresIn: '1h' }
+      );
+
+      // In a real implementation, you'd send the reset email
+      // For now, we'll just return success
+      return {
+        success: true,
+        message: 'Password reset link sent successfully',
+        resetToken // In production, don't return this
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Reset password with token
+   */
+  async resetPasswordWithToken(resetToken, newPassword) {
+    try {
+      // Verify reset token
+      const decoded = jwt.verify(resetToken, JWT_SECRET);
+      
+      if (decoded.type !== 'password_reset') {
+        throw new Error('Invalid reset token');
+      }
+
+      const userId = decoded.userId;
+
+      // Validate new password strength
+      const passwordStrength = validatePasswordStrength(newPassword);
+      if (!passwordStrength.isValid) {
+        throw new Error('Password does not meet strength requirements');
+      }
+
+      // Hash new password with separate salt
+      const saltRounds = 12;
+      const salt = await bcrypt.genSalt(saltRounds);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+      // Update password
+      const user = await this.prisma.user.update({
+        where: { id: BigInt(userId) },
+        data: {
+          password: hashedPassword,
+          salt,
+          updatedAt: new Date(),
+        }
+      });
+
+      // Invalidate all user sessions
+      await this.prisma.session.updateMany({
+        where: { userId: BigInt(userId), status: 'ACTIVE' },
+        data: {
+          status: 'INACTIVE',
+          updatedAt: new Date(),
+        }
+      });
+
+      // Invalidate cache
+      invalidateUserCacheOnUpdate(userId, user.createdByOwnerId.toString());
+
+      return {
+        success: true,
+        message: 'Password reset successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ======================
+  // SESSION MANAGEMENT
+  // ======================
+
+  /**
+   * Get user sessions
+   */
+  async getUserSessions(userId, includeInactive = false) {
+    try {
+      const where = { userId: BigInt(userId) };
+      
+      if (!includeInactive) {
+        where.status = 'ACTIVE';
+      }
+
+      const sessions = await this.prisma.session.findMany({
+        where,
+        orderBy: { createdAt: 'desc' }
+      });
+
+      return {
+        success: true,
+        data: sessions
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Invalidate all user sessions except current
+   */
+  async invalidateOtherSessions(userId, currentSessionId) {
+    try {
+      await this.prisma.session.updateMany({
+        where: {
+          userId: BigInt(userId),
+          id: { not: BigInt(currentSessionId) },
+          status: 'ACTIVE'
+        },
+        data: {
+          status: 'INACTIVE',
+          updatedAt: new Date(),
+        }
+      });
+
+      return {
+        success: true,
+        message: 'Other sessions invalidated successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Extend session
+   */
+  async extendSession(sessionId, extensionHours = 24) {
+    try {
+      const session = await this.prisma.session.findUnique({
+        where: { id: BigInt(sessionId) }
+      });
+
+      if (!session) {
+        throw new Error('Session not found');
+      }
+
+      if (session.status !== 'ACTIVE') {
+        throw new Error('Session is not active');
+      }
+
+      const newExpiry = new Date(Date.now() + extensionHours * 60 * 60 * 1000);
+      
+      const updatedSession = await this.prisma.session.update({
+        where: { id: BigInt(sessionId) },
+        data: {
+          expiresAt: newExpiry,
+          updatedAt: new Date(),
+        }
+      });
+
+      return {
+        success: true,
+        data: updatedSession,
+        message: 'Session extended successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ======================
+  // ADVANCED ANALYTICS
+  // ======================
+
+  /**
+   * Get user activity timeline
+   */
+  async getUserActivityTimeline(userId, days = 30) {
+    try {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+
+      const activities = await this.prisma.session.findMany({
+        where: {
+          userId: BigInt(userId),
+          createdAt: { gte: startDate }
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          createdAt: true,
+          ipAddress: true,
+          userAgent: true,
+          deviceType: true,
+          status: true,
+        }
+      });
+
+      // Group activities by date
+      const timeline = activities.reduce((acc, activity) => {
+        const date = activity.createdAt.toISOString().split('T')[0];
+        if (!acc[date]) {
+          acc[date] = [];
+        }
+        acc[date].push(activity);
+        return acc;
+      }, {});
+
+      return {
+        success: true,
+        data: {
+          timeline,
+          totalActivities: activities.length,
+          period: `${days} days`
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Get user device statistics
+   */
+  async getUserDeviceStats(userId) {
+    try {
+      const sessions = await this.prisma.session.findMany({
+        where: { userId: BigInt(userId) },
+        select: {
+          deviceType: true,
+          userAgent: true,
+          ipAddress: true,
+          createdAt: true,
+        }
+      });
+
+      // Count by device type
+      const deviceCounts = sessions.reduce((acc, session) => {
+        const deviceType = session.deviceType || 'unknown';
+        acc[deviceType] = (acc[deviceType] || 0) + 1;
+        return acc;
+      }, {});
+
+      // Count by IP address (unique locations)
+      const uniqueIPs = new Set(sessions.map(s => s.ipAddress)).size;
+
+      // Most recent device
+      const mostRecentSession = sessions.sort((a, b) => 
+        new Date(b.createdAt) - new Date(a.createdAt)
+      )[0];
+
+      return {
+        success: true,
+        data: {
+          deviceCounts,
+          uniqueLocations: uniqueIPs,
+          totalSessions: sessions.length,
+          mostRecentDevice: mostRecentSession?.deviceType || 'unknown',
+          mostRecentIP: mostRecentSession?.ipAddress || 'unknown'
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Get user login patterns
+   */
+  async getUserLoginPatterns(userId, days = 30) {
+    try {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+
+      const sessions = await this.prisma.session.findMany({
+        where: {
+          userId: BigInt(userId),
+          createdAt: { gte: startDate }
+        },
+        select: {
+          createdAt: true,
+          ipAddress: true,
+        }
+      });
+
+      // Group by hour of day
+      const hourlyPatterns = new Array(24).fill(0);
+      sessions.forEach(session => {
+        const hour = session.createdAt.getHours();
+        hourlyPatterns[hour]++;
+      });
+
+      // Group by day of week
+      const dailyPatterns = new Array(7).fill(0);
+      sessions.forEach(session => {
+        const day = session.createdAt.getDay();
+        dailyPatterns[day]++;
+      });
+
+      // Most common login times
+      const peakHour = hourlyPatterns.indexOf(Math.max(...hourlyPatterns));
+      const peakDay = dailyPatterns.indexOf(Math.max(...dailyPatterns));
+
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+      return {
+        success: true,
+        data: {
+          hourlyPatterns,
+          dailyPatterns,
+          peakHour,
+          peakDay: dayNames[peakDay],
+          totalLogins: sessions.length,
+          averageLoginsPerDay: (sessions.length / days).toFixed(2)
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ======================
+  // SECURITY & COMPLIANCE
+  // ======================
+
+  /**
+   * Get user security audit log
+   */
+  async getUserSecurityAudit(userId, days = 30) {
+    try {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+
+      const sessions = await this.prisma.session.findMany({
+        where: {
+          userId: BigInt(userId),
+          createdAt: { gte: startDate }
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          createdAt: true,
+          ipAddress: true,
+          userAgent: true,
+          deviceType: true,
+          status: true,
+        }
+      });
+
+      // Detect suspicious activities
+      const suspiciousActivities = [];
+      const ipAddresses = new Set();
+      const devices = new Set();
+
+      sessions.forEach(session => {
+        ipAddresses.add(session.ipAddress);
+        devices.add(session.deviceType);
+
+        // Flag multiple logins from different IPs in short time
+        if (ipAddresses.size > 3) {
+          suspiciousActivities.push({
+            type: 'multiple_locations',
+            description: 'Multiple login locations detected',
+            timestamp: session.createdAt,
+            ipAddress: session.ipAddress
+          });
+        }
+      });
+
+      return {
+        success: true,
+        data: {
+          totalSessions: sessions.length,
+          uniqueIPs: ipAddresses.size,
+          uniqueDevices: devices.size,
+          suspiciousActivities,
+          riskLevel: suspiciousActivities.length > 0 ? 'medium' : 'low',
+          recommendations: suspiciousActivities.length > 0 ? [
+            'Consider enabling two-factor authentication',
+            'Review recent login locations',
+            'Change password if suspicious activity detected'
+          ] : [
+            'Security profile looks normal',
+            'Continue monitoring for unusual activity'
+          ]
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Lock user account
+   */
+  async lockUserAccount(userId, reason = 'Security concern', lockedBy) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: BigInt(userId) }
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (user.status === 'LOCKED') {
+        throw new Error('User account is already locked');
+      }
+
+      // Lock account
+      const updatedUser = await this.prisma.user.update({
+        where: { id: BigInt(userId) },
+        data: {
+          status: 'LOCKED',
+          lockedAt: new Date(),
+          lockedBy: lockedBy ? BigInt(lockedBy) : null,
+          lockReason: reason,
+          updatedAt: new Date(),
+        }
+      });
+
+      // Invalidate all active sessions
+      await this.prisma.session.updateMany({
+        where: { userId: BigInt(userId), status: 'ACTIVE' },
+        data: {
+          status: 'INACTIVE',
+          updatedAt: new Date(),
+        }
+      });
+
+      // Invalidate cache
+      invalidateUserCacheOnUpdate(userId, user.createdByOwnerId.toString());
+
+      return {
+        success: true,
+        data: updatedUser,
+        message: 'User account locked successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Unlock user account
+   */
+  async unlockUserAccount(userId, unlockedBy) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: BigInt(userId) }
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (user.status !== 'LOCKED') {
+        throw new Error('User account is not locked');
+      }
+
+      // Unlock account
+      const updatedUser = await this.prisma.user.update({
+        where: { id: BigInt(userId) },
+        data: {
+          status: 'ACTIVE',
+          lockedAt: null,
+          lockedBy: null,
+          lockReason: null,
+          unlockedAt: new Date(),
+          unlockedBy: unlockedBy ? BigInt(unlockedBy) : null,
+          updatedAt: new Date(),
+        }
+      });
+
+      // Invalidate cache
+      invalidateUserCacheOnUpdate(userId, user.createdByOwnerId.toString());
+
+      return {
+        success: true,
+        data: updatedUser,
+        message: 'User account unlocked successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // ======================
+  // NOTIFICATION & COMMUNICATION
+  // ======================
+
+  /**
+   * Get user notification preferences
+   */
+  async getUserNotificationPreferences(userId) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: BigInt(userId) },
+        select: {
+          id: true,
+          email: true,
+          phone: true,
+          notificationPreferences: true,
+          emailNotifications: true,
+          smsNotifications: true,
+          pushNotifications: true,
+        }
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Default preferences if none set
+      const defaultPreferences = {
+        email: {
+          loginAlerts: true,
+          securityUpdates: true,
+          accountUpdates: true,
+          marketing: false
+        },
+        sms: {
+          loginAlerts: true,
+          securityUpdates: true,
+          accountUpdates: false,
+          marketing: false
+        },
+        push: {
+          loginAlerts: true,
+          securityUpdates: true,
+          accountUpdates: true,
+          marketing: false
+        }
+      };
+
+      const preferences = user.notificationPreferences || defaultPreferences;
+
+      return {
+        success: true,
+        data: {
+          userId: user.id,
+          email: user.email,
+          phone: user.phone,
+          preferences,
+          globalSettings: {
+            emailNotifications: user.emailNotifications ?? true,
+            smsNotifications: user.smsNotifications ?? false,
+            pushNotifications: user.pushNotifications ?? true,
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Update user notification preferences
+   */
+  async updateUserNotificationPreferences(userId, preferences) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: BigInt(userId) }
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Update preferences
+      const updatedUser = await this.prisma.user.update({
+        where: { id: BigInt(userId) },
+        data: {
+          notificationPreferences: preferences,
+          updatedAt: new Date(),
+        }
+      });
+
+      // Invalidate cache
+      invalidateUserCacheOnUpdate(userId, user.createdByOwnerId.toString());
+
+      return {
+        success: true,
+        data: updatedUser,
+        message: 'Notification preferences updated successfully'
       };
     } catch (error) {
       return {
