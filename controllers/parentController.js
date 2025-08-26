@@ -808,11 +808,19 @@ class ParentController {
   async getParentStudents(req, res) {
     try {
       const { id } = req.params;
+      const { schoolId } = req.user;
 
-      console.log('🔍 getParentStudents called with parentId:', id);
+      console.log('🔍 getParentStudents called with parentId:', id, 'schoolId:', schoolId);
+      console.log('🔍 req.user:', JSON.stringify(req.user, null, 2));
 
-      // Call the service without schoolId requirement
-      const students = await parentService.getParentStudents(parseInt(id));
+      // Ensure schoolId is properly converted
+      const parsedSchoolId = parseInt(schoolId);
+      if (isNaN(parsedSchoolId)) {
+        throw new Error(`Invalid schoolId: ${schoolId}`);
+      }
+
+      // Call the service with both parentId and schoolId
+      const students = await parentService.getParentStudents(parseInt(id), parsedSchoolId);
 
       console.log('✅ Found students:', students.length);
 
