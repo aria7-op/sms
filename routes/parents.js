@@ -227,6 +227,18 @@ router.get('/:id/dashboard',
   parentController.getParentDashboard.bind(parentController)
 );
 
+/**
+ * @route   GET /api/parents/test
+ * @desc    Test endpoint to isolate database issues
+ * @access  Private (All authenticated users)
+ * @permissions parent:read
+ */
+router.get('/test',
+  authenticateToken,
+  authorizePermissions(['parent:read']),
+  parentController.getParentTest.bind(parentController)
+);
+
 // ======================
 // BULK OPERATIONS
 // ======================
