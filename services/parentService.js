@@ -48,18 +48,27 @@ class ParentService {
   // Helper method to convert user ID to parent record ID
   async getParentRecordIdByUserId(userId, schoolId) {
     try {
-      const parent = await this.prisma.parent.findFirst({
-        where: { 
-          userId: BigInt(userId), 
-          schoolId: BigInt(schoolId), 
-          deletedAt: null 
-        }
-      });
+      logger.info(`getParentRecordIdByUserId: Looking up parent record for user ${userId} in school ${schoolId}`);
+      
+      const parent = await Promise.race([
+        this.prisma.parent.findFirst({
+          where: { 
+            userId: BigInt(userId), 
+            schoolId: BigInt(schoolId), 
+            deletedAt: null 
+          }
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Parent lookup timeout after 5 seconds')), 5000)
+        )
+      ]);
       
       if (!parent) {
+        logger.warn(`getParentRecordIdByUserId: Parent not found for user ${userId} in school ${schoolId}`);
         throw new Error('Parent not found');
       }
       
+      logger.info(`getParentRecordIdByUserId: Found parent record ${parent.id} for user ${userId}`);
       return parent.id;
     } catch (error) {
       logger.error('Error getting parent record ID:', error);
@@ -726,41 +735,63 @@ class ParentService {
 
   async getParentStats(parentId, schoolId) {
     try {
-      const cacheKey = `stats:${parentId}`;
+      logger.info(`getParentStats: Starting stats retrieval for parent ${parentId}`);
+      
+      // Use the same cache key format as the middleware
+      const cacheKey = `parent:stats:${parentId}:schoolId:${schoolId}`;
       const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
+      if (cached) {
+        logger.info(`getParentStats: Cache hit for parent ${parentId}`);
+        return cached;
+      }
+      
+      logger.info(`getParentStats: Cache miss, fetching from database for parent ${parentId}`);
 
       // Convert user ID to parent record ID
+      logger.info(`getParentStats: Converting user ID ${parentId} to parent record ID`);
       const actualParentId = await this.getParentRecordIdByUserId(parentId, schoolId);
+      logger.info(`getParentStats: Parent record ID: ${actualParentId}`);
 
-      const [parent, students, payments] = await Promise.all([
-        this.prisma.parent.findFirst({
-          where: { id: actualParentId, schoolId: BigInt(schoolId), deletedAt: null },
-          include: {
-            user: true,
-            students: {
-              include: {
-                user: true,
-                class: true,
-                section: true
-              }
-            },
-            payments: true
-          }
-        }),
-        this.prisma.student.count({
-          where: { parentId: actualParentId, schoolId: BigInt(schoolId), deletedAt: null }
-        }),
-        this.prisma.payment.findMany({
-          where: { parentId: actualParentId, schoolId: BigInt(schoolId) },
-          select: {
-            amount: true,
-            status: true,
-            paymentDate: true,
-            dueDate: true
-          }
-        })
+      // Add timeout protection to database queries
+      const queryTimeout = 10000; // 10 seconds
+      
+      logger.info(`getParentStats: Executing database queries with ${queryTimeout}ms timeout`);
+      
+      const [parent, students, payments] = await Promise.race([
+        Promise.all([
+          this.prisma.parent.findFirst({
+            where: { id: actualParentId, schoolId: BigInt(schoolId), deletedAt: null },
+            include: {
+              user: true,
+              students: {
+                include: {
+                  user: true,
+                  class: true,
+                  section: true
+                }
+              },
+              payments: true
+            }
+          }),
+          this.prisma.student.count({
+            where: { parentId: actualParentId, schoolId: BigInt(schoolId), deletedAt: null }
+          }),
+          this.prisma.payment.findMany({
+            where: { parentId: actualParentId, schoolId: BigInt(schoolId) },
+            select: {
+              amount: true,
+              status: true,
+              paymentDate: true,
+              dueDate: true
+            }
+          })
+        ]),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`Database query timeout after ${queryTimeout}ms`)), queryTimeout)
+        )
       ]);
+      
+      logger.info(`getParentStats: Database queries completed successfully`);
 
       if (!parent) {
         throw new Error('Parent not found');
@@ -786,7 +817,9 @@ class ParentService {
         nextDuePayment: payments.filter(p => p.status === 'UNPAID' || p.status === 'PARTIALLY_PAID' || p.status === 'OVERDUE').sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0] || null
       };
 
-      await this.setCache(cacheKey, stats, 900); // 15 minutes
+      logger.info(`getParentStats: Storing stats in cache for parent ${parentId}`);
+      await this.setCache(cacheKey, stats, 900); // 15 minutes - using middleware-compatible key format
+      logger.info(`getParentStats: Stats retrieval completed successfully for parent ${parentId}`);
       return stats;
 
     } catch (error) {
@@ -797,9 +830,17 @@ class ParentService {
 
   async getParentAnalytics(parentId, schoolId, period = '30d') {
     try {
-      const cacheKey = `analytics:${parentId}:${period}`;
+      logger.info(`getParentAnalytics: Starting analytics retrieval for parent ${parentId}, period ${period}`);
+      
+      // Use the same cache key format as the middleware
+      const cacheKey = `parent:analytics:${parentId}:schoolId:${schoolId}:period:${period}`;
       const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
+      if (cached) {
+        logger.info(`getParentAnalytics: Cache hit for parent ${parentId}, period ${period}`);
+        return cached;
+      }
+      
+      logger.info(`getParentAnalytics: Cache miss, fetching from database for parent ${parentId}, period ${period}`);
 
       // Convert user ID to parent record ID
       const actualParentId = await this.getParentRecordIdByUserId(parentId, schoolId);
@@ -824,23 +865,32 @@ class ParentService {
           startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       }
 
-      const payments = await this.prisma.payment.findMany({
-        where: {
-          parentId: actualParentId,
-          schoolId: BigInt(schoolId),
-          paymentDate: {
-            gte: startDate,
-            lte: now
-          }
-        },
-        select: {
-          amount: true,
-          status: true,
-          paymentDate: true,
-          method: true
-        },
-        orderBy: { paymentDate: 'asc' }
-      });
+      logger.info(`getParentAnalytics: Executing payment query with timeout protection`);
+      
+      const payments = await Promise.race([
+        this.prisma.payment.findMany({
+          where: {
+            parentId: actualParentId,
+            schoolId: BigInt(schoolId),
+            paymentDate: {
+              gte: startDate,
+              lte: now
+            }
+          },
+          select: {
+            amount: true,
+            status: true,
+            paymentDate: true,
+            method: true
+          },
+          orderBy: { paymentDate: 'asc' }
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Payment query timeout after 10 seconds')), 10000)
+        )
+      ]);
+      
+      logger.info(`getParentAnalytics: Payment query completed successfully, found ${payments.length} payments`);
 
       // Group payments by date
       const dailyPayments = {};
@@ -876,7 +926,9 @@ class ParentService {
         }, {})
       };
 
+      logger.info(`getParentAnalytics: Storing analytics in cache for parent ${parentId}, period ${period}`);
       await this.setCache(cacheKey, analytics, 1800); // 30 minutes
+      logger.info(`getParentAnalytics: Analytics retrieval completed successfully for parent ${parentId}, period ${period}`);
       return analytics;
 
     } catch (error) {
@@ -887,57 +939,74 @@ class ParentService {
 
   async getParentPerformance(parentId, schoolId) {
     try {
-      const cacheKey = `performance:${parentId}`;
+      logger.info(`getParentPerformance: Starting performance retrieval for parent ${parentId}`);
+      
+      // Use the same cache key format as the middleware
+      const cacheKey = `parent:performance:${parentId}:schoolId:${schoolId}`;
       const cached = await this.getFromCache(cacheKey);
-      if (cached) return cached;
+      if (cached) {
+        logger.info(`getParentPerformance: Cache hit for parent ${parentId}`);
+        return cached;
+      }
+      
+      logger.info(`getParentPerformance: Cache miss, fetching from database for parent ${parentId}`);
 
       // Convert user ID to parent record ID
       const actualParentId = await this.getParentRecordIdByUserId(parentId, schoolId);
 
-      const [parent, students, payments] = await Promise.all([
-        this.prisma.parent.findFirst({
-          where: { id: actualParentId, schoolId: BigInt(schoolId), deletedAt: null },
-          include: {
-            user: true,
-            students: {
-              include: {
-                grades: {
-                  include: {
-                    exam: true,
-                    subject: true
+      logger.info(`getParentPerformance: Executing database queries with timeout protection`);
+      
+      const [parent, students, payments] = await Promise.race([
+        Promise.all([
+          this.prisma.parent.findFirst({
+            where: { id: actualParentId, schoolId: BigInt(schoolId), deletedAt: null },
+            include: {
+              user: true,
+              students: {
+                include: {
+                  grades: {
+                    include: {
+                      exam: true,
+                      subject: true
+                    }
                   }
                 }
               }
             }
-          }
-        }),
-        this.prisma.student.findMany({
-          where: { parentId: actualParentId, schoolId: BigInt(schoolId), deletedAt: null },
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true
-              }
-            },
-            grades: {
-              include: {
-                exam: true,
-                subject: true
+          }),
+          this.prisma.student.findMany({
+            where: { parentId: actualParentId, schoolId: BigInt(schoolId), deletedAt: null },
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true
+                }
+              },
+              grades: {
+                include: {
+                  exam: true,
+                  subject: true
+                }
               }
             }
-          }
-        }),
-        this.prisma.payment.findMany({
-          where: { parentId: actualParentId, schoolId: BigInt(schoolId) },
-          select: {
-            amount: true,
-            status: true,
-            paymentDate: true,
-            dueDate: true
-          }
-        })
+          }),
+          this.prisma.payment.findMany({
+            where: { parentId: actualParentId, schoolId: BigInt(schoolId) },
+            select: {
+              amount: true,
+              status: true,
+              paymentDate: true,
+              dueDate: true
+            }
+          })
+        ]),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Performance database query timeout after 10 seconds')), 10000)
+        )
       ]);
+      
+      logger.info(`getParentPerformance: Database queries completed successfully`);
 
       if (!parent) {
         throw new Error('Parent not found');
@@ -989,7 +1058,9 @@ class ParentService {
         }
       };
 
+      logger.info(`getParentPerformance: Storing performance in cache for parent ${parentId}`);
       await this.setCache(cacheKey, performance, 3600); // 1 hour
+      logger.info(`getParentPerformance: Performance retrieval completed successfully for parent ${parentId}`);
       return performance;
 
     } catch (error) {
