@@ -20,13 +20,16 @@ import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Apply authentication to all routes EXCEPT mark-in and mark-out
-router.use(authenticateToken);
+// PUBLIC ENDPOINTS - NO AUTHENTICATION REQUIRED
+// These must come BEFORE the global authentication middleware
 
-// Get all attendances with filtering and pagination
-router.get('/', authenticateToken, authorizePermissions(['attendance:read']), getAllAttendances);
+// Mark student in-time (arrival) - NO AUTHENTICATION REQUIRED
+router.post('/mark-in-time', markInTime);
 
-// Test endpoint to verify basic functionality
+// Mark student out-time (departure) - NO AUTHENTICATION REQUIRED
+router.post('/mark-out-time', markOutTime);
+
+// Test endpoint to verify basic functionality - NO AUTHENTICATION REQUIRED
 router.get('/test', (req, res) => {
   res.json({ 
     success: true, 
@@ -35,35 +38,35 @@ router.get('/test', (req, res) => {
   });
 });
 
+// Apply authentication to all OTHER routes
+router.use(authenticateToken);
+
+// Get all attendances with filtering and pagination
+router.get('/', authorizePermissions(['attendance:read']), getAllAttendances);
+
 // Get attendance summary and analytics
-router.get('/summary', authenticateToken, authorizePermissions(['attendance:read']), getAttendanceSummary);
-router.get('/class-summary', authenticateToken, authorizePermissions(['attendance:read']), getClassAttendanceSummary);
-router.get('/stats', authenticateToken, authorizePermissions(['attendance:read']), getAttendanceStats);
-router.get('/analytics', authenticateToken, authorizePermissions(['attendance:read']), getAttendanceAnalytics);
-router.get('/monthly-matrix', authenticateToken, authorizePermissions(['attendance:read']), getMonthlyAttendanceMatrix);
+router.get('/summary', authorizePermissions(['attendance:read']), getAttendanceSummary);
+router.get('/class-summary', authorizePermissions(['attendance:read']), getClassAttendanceSummary);
+router.get('/stats', authorizePermissions(['attendance:read']), getAttendanceStats);
+router.get('/analytics', authorizePermissions(['attendance:read']), getAttendanceAnalytics);
+router.get('/monthly-matrix', authorizePermissions(['attendance:read']), getMonthlyAttendanceMatrix);
 
 // Export attendance data
-router.get('/export', authenticateToken, authorizePermissions(['attendance:read']), exportAttendanceData);
-
-// Mark student in-time (arrival) - NO AUTHENTICATION REQUIRED
-router.post('/mark-in-time', markInTime);
-
-// Mark student out-time (departure) - NO AUTHENTICATION REQUIRED
-router.post('/mark-out-time', markOutTime);
+router.get('/export', authorizePermissions(['attendance:read']), exportAttendanceData);
 
 // Bulk create attendance records - MUST come before /:id routes
-router.post('/bulk', authenticateToken, authorizePermissions(['attendance:create']), bulkCreateAttendance);
+router.post('/bulk', authorizePermissions(['attendance:create']), bulkCreateAttendance);
 
 // Create new attendance record
-router.post('/', authenticateToken, authorizePermissions(['attendance:create']), createAttendance);
+router.post('/', authorizePermissions(['attendance:create']), createAttendance);
 
 // Get attendance by ID
-router.get('/:id', authenticateToken, authorizePermissions(['attendance:read']), getAttendanceById);
+router.get('/:id', authorizePermissions(['attendance:read']), getAttendanceById);
 
 // Update attendance record
-router.put('/:id', authenticateToken, authorizePermissions(['attendance:update']), updateAttendance);
+router.put('/:id', authorizePermissions(['attendance:update']), updateAttendance);
 
 // Delete attendance record (soft delete)
-router.delete('/:id', authenticateToken, authorizePermissions(['attendance:delete']), deleteAttendance);
+router.delete('/:id', authorizePermissions(['attendance:delete']), deleteAttendance);
 
 export default router; 
