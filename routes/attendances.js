@@ -13,7 +13,9 @@ import {
   getAttendanceStats,
   getAttendanceAnalytics,
   getMonthlyAttendanceMatrix,
-  exportAttendanceData
+  exportAttendanceData,
+  autoMarkAbsentStudents,
+  getAttendanceTimeStatus
 } from '../controllers/attendanceController.js';
 import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 // import { validateClassAccess } from '../middleware/validation.js';
@@ -28,6 +30,9 @@ router.post('/mark-in-time', markInTime);
 
 // Mark student out-time (departure) - NO AUTHENTICATION REQUIRED
 router.post('/mark-out-time', markOutTime);
+
+// Get attendance time status - NO AUTHENTICATION REQUIRED
+router.get('/time-status', getAttendanceTimeStatus);
 
 // Test endpoint to verify basic functionality - NO AUTHENTICATION REQUIRED
 router.get('/test', (req, res) => {
@@ -53,6 +58,9 @@ router.get('/monthly-matrix', authorizePermissions(['attendance:read']), getMont
 
 // Export attendance data
 router.get('/export', authorizePermissions(['attendance:read']), exportAttendanceData);
+
+// Automated attendance management
+router.post('/auto-mark-absent', authorizePermissions(['attendance:create', 'attendance:update']), autoMarkAbsentStudents);
 
 // Bulk create attendance records - MUST come before /:id routes
 router.post('/bulk', authorizePermissions(['attendance:create']), bulkCreateAttendance);
