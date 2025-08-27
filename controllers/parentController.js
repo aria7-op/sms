@@ -1060,6 +1060,13 @@
                     id: true,
                     name: true
                   }
+                },
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true
+                  }
                 }
               }
             }
@@ -1075,10 +1082,33 @@
         }
 
         const student = parent.students[0];
+        
+        // Validate student data
+        if (!student) {
+          console.log('❌ ParentController: No student data found');
+          return res.status(404).json({
+            success: false,
+            message: 'Student not found'
+          });
+        }
+
+        if (!student.user) {
+          console.log('❌ ParentController: Student user data missing');
+          return res.status(500).json({
+            success: false,
+            message: 'Student user data is incomplete'
+          });
+        }
+
         console.log('✅ ParentController: Student found:', {
           studentId: student.id,
-          className: student.class?.name
+          className: student.class?.name,
+          hasUser: !!student.user,
+          userData: student.user
         });
+
+        // Debug: Log the full student object structure
+        console.log('🔍 ParentController: Full student object:', JSON.stringify(student, null, 2));
 
         // Get student's fee structure based on their class
         let feeStructure = null;
@@ -1171,7 +1201,7 @@
         const feeData = {
           student: {
             id: student.id,
-            name: `${student.user.firstName} ${student.user.lastName}`,
+            name: student.user ? `${student.user.firstName} ${student.user.lastName}` : 'Unknown Student',
             class: student.class?.name || 'N/A'
           },
           summary: {
