@@ -3854,4 +3854,145 @@ export const batchTransferStudents = async (req, res) => {
   } catch (error) {
     return handleError(error, res, 'batch transfer students');
   }
+};
+
+export const getUnassignedStudents = async (req, res) => {
+  try {
+    const { schoolId } = req.query;
+    
+    if (!schoolId || isNaN(schoolId)) {
+      return res.status(400).json(formatResponse(false, null, 'Valid school ID is required'));
+    }
+    
+    const students = await prisma.student.findMany({
+      where: { 
+        schoolId: Number(schoolId),
+        classId: null,
+        deletedAt: null
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+          }
+        },
+        parent: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phone: true,
+              }
+            }
+          }
+        }
+      },
+      orderBy: [
+        { user: { firstName: 'asc' } },
+        { user: { lastName: 'asc' } }
+      ]
+    });
+    
+    return res.json(formatResponse(true, convertBigInts(students), 'Unassigned students fetched successfully'));
+    
+  } catch (error) {
+    return handleError(error, res, 'fetch unassigned students');
+  }
+};
+
+export const addStudentsToClass = async (req, res) => {
+  try {
+    const { classId, studentIds } = req.body;
+    
+    if (!classId || isNaN(classId)) {
+      return res.status(400).json(formatResponse(false, null, 'Valid class ID is required'));
+    }
+    
+    if (!Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json(formatResponse(false, null, 'Valid student IDs array is required'));
+    }
+    
+    // Check if class exists and has capacity
+    const classData = await prisma.class.findUnique({
+      where: { id: Number(classId) },
+      include: {
+        _count: {
+          select: { students: true }
+        }
+      }
+    });
+    
+    if (!classData) {
+      return res.status(404).json(formatResponse(false, null, 'Class not found'));
+    }
+    
+    if (classData._count.students + studentIds.length > classData.capacity) {
+      return res.status(400).json(formatResponse(false, null, 
+        `Cannot add ${studentIds.length} students. Class capacity would exceed ${classData.capacity}`));
+    }
+    
+    // Update students to assign them to the class
+    const results = {
+      added: [],
+      failed: [],
+      summary: {
+        total: studentIds.length,
+        added: 0,
+        failed: 0,
+      }
+    };
+    
+    for (const studentId of studentIds) {
+      try {
+        const updatedStudent = await prisma.student.update({
+          where: { id: Number(studentId) },
+          data: { classId: Number(classId) },
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              }
+            },
+            class: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              }
+            }
+          }
+        });
+        
+        results.added.push({
+          id: studentId,
+          data: updatedStudent,
+        });
+        results.summary.added++;
+        
+      } catch (error) {
+        results.failed.push({
+          id: studentId,
+          error: error.message,
+        });
+        results.summary.failed++;
+      }
+    }
+    
+    // Invalidate cache for the class
+    await classCache.invalidateClassCacheOnUpdate({ id: Number(classId) });
+    
+    return res.json(formatResponse(true, results, 'Students added to class successfully'));
+    
+  } catch (error) {
+    return handleError(error, res, 'add students to class');
+  }
 }; 
