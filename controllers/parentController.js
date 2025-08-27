@@ -1035,6 +1035,15 @@
         const { parentId, studentId } = req.params;
         const { status, academicYear, feeType } = req.query;
 
+        console.log('🔍 ParentController: getStudentFees called with:', {
+          schoolId,
+          parentId,
+          studentId,
+          status,
+          academicYear,
+          feeType
+        });
+
         // Verify parent has access to this student
         const parent = await prisma.parent.findFirst({
           where: {
@@ -1044,41 +1053,161 @@
           },
           include: {
             students: {
-              where: { id: BigInt(studentId) }
+              where: { id: BigInt(studentId) },
+              include: {
+                class: {
+                  select: {
+                    id: true,
+                    name: true
+                  }
+                }
+              }
             }
           }
         });
 
         if (!parent || parent.students.length === 0) {
+          console.log('❌ ParentController: Access denied to student data');
           return res.status(403).json({
             success: false,
             message: 'Access denied to student data'
           });
         }
 
-        // Build filter
-        const filter = { studentId: BigInt(studentId) };
-        if (status) filter.status = status.toUpperCase();
-        if (academicYear) filter.academicYear = { name: { contains: academicYear, mode: 'insensitive' } };
-        if (feeType) filter.feeType = { name: { contains: feeType, mode: 'insensitive' } };
-
-        // Get fees
-        const fees = await prisma.fee.findMany({
-          where: filter,
-          include: {
-            feeType: { select: { name: true } },
-            academicYear: { select: { name: true } }
-          },
-          orderBy: { dueDate: 'asc' },
-          take: 100
+        const student = parent.students[0];
+        console.log('✅ ParentController: Student found:', {
+          studentId: student.id,
+          className: student.class?.name
         });
 
-        const convertedFees = convertBigInts(fees);
+        // Get student's fee structure based on their class
+        let feeStructure = null;
+        if (student.classId) {
+          feeStructure = await prisma.feeStructure.findFirst({
+            where: {
+              classId: student.classId,
+              schoolId: BigInt(schoolId),
+              deletedAt: null
+            },
+            include: {
+              items: {
+                where: { deletedAt: null },
+                orderBy: { dueDate: 'asc' }
+              }
+            }
+          });
+        }
+
+        // Get payments made by this student
+        const payments = await prisma.payment.findMany({
+          where: {
+            studentId: BigInt(studentId),
+            schoolId: BigInt(schoolId),
+            deletedAt: null
+          },
+          include: {
+            items: {
+              include: {
+                feeItem: {
+                  select: {
+                    name: true,
+                    amount: true
+                  }
+                }
+              }
+            }
+          },
+          orderBy: { paymentDate: 'desc' }
+        });
+
+        // Calculate fee summary
+        let totalFees = 0;
+        let totalPaid = 0;
+        let totalRemaining = 0;
+        let upcomingPayments = [];
+        let paymentHistory = [];
+
+        if (feeStructure) {
+          // Calculate total fees from fee structure
+          feeStructure.items.forEach(item => {
+            totalFees += parseFloat(item.amount);
+          });
+
+          // Calculate paid amounts from payments
+          payments.forEach(payment => {
+            if (payment.status === 'COMPLETED') {
+              totalPaid += parseFloat(payment.total);
+            }
+          });
+
+          totalRemaining = totalFees - totalPaid;
+
+          // Create upcoming payments list
+          upcomingPayments = feeStructure.items.map(item => ({
+            id: item.id,
+            name: item.name,
+            amount: parseFloat(item.amount),
+            dueDate: item.dueDate,
+            isOptional: item.isOptional,
+            status: 'PENDING'
+          }));
+
+          // Create payment history
+          paymentHistory = payments.map(payment => ({
+            id: payment.id,
+            date: payment.paymentDate,
+            amount: parseFloat(payment.total),
+            method: payment.method,
+            status: payment.status,
+            transactionId: payment.transactionId,
+            remarks: payment.remarks,
+            items: payment.items.map(item => ({
+              name: item.feeItem.name,
+              amount: parseFloat(item.amount)
+            }))
+          }));
+        }
+
+        const feeData = {
+          student: {
+            id: student.id,
+            name: `${student.user.firstName} ${student.user.lastName}`,
+            class: student.class?.name || 'N/A'
+          },
+          summary: {
+            totalFees,
+            totalPaid,
+            totalRemaining,
+            paymentProgress: totalFees > 0 ? Math.round((totalPaid / totalFees) * 100) : 0
+          },
+          feeStructure: feeStructure ? {
+            id: feeStructure.id,
+            name: feeStructure.name,
+            description: feeStructure.description,
+            items: feeStructure.items.map(item => ({
+              id: item.id,
+              name: item.name,
+              amount: parseFloat(item.amount),
+              dueDate: item.dueDate,
+              isOptional: item.isOptional
+            }))
+          } : null,
+          upcomingPayments,
+          paymentHistory
+        };
+
+        console.log('✅ ParentController: Fee data calculated:', {
+          totalFees,
+          totalPaid,
+          totalRemaining,
+          upcomingPaymentsCount: upcomingPayments.length,
+          paymentHistoryCount: paymentHistory.length
+        });
 
         return res.json({
           success: true,
           message: 'Student fees retrieved successfully',
-          data: convertedFees
+          data: feeData
         });
 
       } catch (error) {
