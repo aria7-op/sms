@@ -2491,7 +2491,7 @@ export const getClassesBySchool = async (req, res) => {
     
     // Get classes with pagination
     const page = Number(params.page) || 1;
-    const limit = Number(params.limit) || 10;
+    const limit = Number(params.limit) || 100; // Changed from 10 to 100
     const sortBy = params.sortBy || 'createdAt';
     const sortOrder = params.sortOrder || 'desc';
     
@@ -2592,7 +2592,7 @@ export const getClassesByLevel = async (req, res) => {
     
     // Get classes with pagination
     const page = Number(params.page) || 1;
-    const limit = Number(params.limit) || 10;
+    const limit = Number(params.limit) || 100; // Changed from 10 to 100
     const sortBy = params.sortBy || 'createdAt';
     const sortOrder = params.sortOrder || 'desc';
     
@@ -3032,7 +3032,7 @@ export const getClassesByTeacher = async (req, res) => {
     
     // Get classes with pagination
     const page = Number(params.page) || 1;
-    const limit = Number(params.limit) || 10;
+    const limit = Number(params.limit) || 100; // Changed from 10 to 100
     const sortBy = params.sortBy || 'createdAt';
     const sortOrder = params.sortOrder || 'desc';
     
