@@ -1,7 +1,6 @@
 import express from 'express';
 import parentController from '../controllers/parentController.js';
 import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
-import { validateParams, idSchema } from '../middleware/validation.js';
 
 const router = express.Router();
 
@@ -30,7 +29,6 @@ router.get('/',
 router.get('/:id',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  validateParams(idSchema),
   parentController.getParentById.bind(parentController)
 );
 
@@ -55,7 +53,6 @@ router.post('/',
 router.put('/:id',
   authenticateToken,
   authorizePermissions(['parent:update']),
-  validateParams(idSchema),
   parentController.updateParent.bind(parentController)
 );
 
@@ -68,7 +65,6 @@ router.put('/:id',
 router.delete('/:id',
   authenticateToken,
   authorizePermissions(['parent:delete']),
-  validateParams(idSchema),
   parentController.deleteParent.bind(parentController)
 );
 
@@ -85,83 +81,23 @@ router.delete('/:id',
 router.get('/:id/students',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  validateParams(idSchema),
   parentController.getParentStudents.bind(parentController)
 );
 
 // ============================================================================
-// Analytics & Statistics
+// Basic Statistics
 // ============================================================================
 
 /**
- * @route   GET /api/parents/:id/stats
+ * @route   GET /api/parents/stats
  * @desc    Get parent statistics
- * @access  Private (Admin, Staff, Parent)
+ * @access  Private (Admin, Staff)
  * @permissions parent:read
  */
-router.get('/:id/stats',
+router.get('/stats',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  validateParams(idSchema),
   parentController.getParentStats.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/analytics
- * @desc    Get parent analytics
- * @access  Private (Admin, Staff, Parent)
- * @permissions parent:read
- */
-router.get('/:id/analytics',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  validateParams(idSchema),
-  parentController.getParentAnalytics.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/performance
- * @desc    Get parent performance metrics
- * @access  Private (Admin, Staff, Parent)
- * @permissions parent:read
- */
-router.get('/:id/performance',
-  authenticateToken,
-  authorizePermissions(['parent:read']),
-  validateParams(idSchema),
-  parentController.getParentPerformance.bind(parentController)
-);
-
-/**
- * @route   GET /api/parents/:id/dashboard
- * @desc    Get parent dashboard data
- * @access  Private (Admin, Staff, Parent)
- * @permissions parent:read
- */
-if (typeof parentController.getParentDashboard === 'function') {
-  router.get('/:id/dashboard',
-    authenticateToken,
-    authorizePermissions(['parent:read']),
-    validateParams(idSchema),
-    parentController.getParentDashboard.bind(parentController)
-  );
-}
-
-// ============================================================================
-// Notifications
-// ============================================================================
-
-/**
- * @route   GET /api/parents/:id/notifications
- * @desc    Get parent notifications
- * @access  Private (Admin, Staff, Parent)
- * @permissions parent:read, notification:read
- */
-router.get('/:id/notifications',
-  authenticateToken,
-  authorizePermissions(['parent:read', 'notification:read']),
-  validateParams(idSchema),
-  parentController.getParentNotifications.bind(parentController)
 );
 
 export default router; 
