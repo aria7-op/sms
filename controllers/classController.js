@@ -3974,7 +3974,7 @@ export const addStudentsToClass = async (req, res) => {
         
         results.added.push({
           id: studentId,
-          data: updatedStudent,
+          data: convertBigInts(updatedStudent),
         });
         results.summary.added++;
         
@@ -3990,7 +3990,7 @@ export const addStudentsToClass = async (req, res) => {
     // Invalidate cache for the class
     await classCache.invalidateClassCacheOnUpdate({ id: Number(classId) });
     
-    return res.json(formatResponse(true, results, 'Students added to class successfully'));
+    return res.json(formatResponse(true, convertBigInts(results), 'Students added to class successfully'));
     
   } catch (error) {
     return handleError(error, res, 'add students to class');
