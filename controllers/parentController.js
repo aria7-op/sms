@@ -1107,22 +1107,14 @@
           userData: student.user
         });
 
-        // Debug: Log the full student object structure (convert BigInts for logging)
-        const studentForLogging = {
-          ...student,
+        // Debug: Log the student object structure safely
+        console.log('🔍 ParentController: Student details:', {
           id: student.id.toString(),
           classId: student.classId?.toString(),
           userId: student.userId?.toString(),
-          user: student.user ? {
-            ...student.user,
-            id: student.user.id.toString()
-          } : null,
-          class: student.class ? {
-            ...student.class,
-            id: student.class.id.toString()
-          } : null
-        };
-        console.log('🔍 ParentController: Full student object:', JSON.stringify(studentForLogging, null, 2));
+          className: student.class?.name,
+          userName: student.user ? `${student.user.firstName} ${student.user.lastName}` : 'Unknown'
+        });
 
         // Get student's fee structure based on their class
         let feeStructure = null;
@@ -1187,16 +1179,25 @@
         let upcomingPayments = [];
         let paymentHistory = [];
 
+        console.log('🔍 ParentController: Processing fee structure and payments...');
+
         if (feeStructure) {
+          console.log('🔍 ParentController: Processing fee structure with', feeStructure.items.length, 'items');
+          
           // Calculate total fees from fee structure
-          feeStructure.items.forEach(item => {
-            totalFees += parseFloat(item.amount);
+          feeStructure.items.forEach((item, index) => {
+            const amount = parseFloat(item.amount);
+            totalFees += amount;
+            console.log(`  Item ${index + 1}: ${item.name} - $${amount} (ID: ${item.id})`);
           });
 
           // Calculate paid amounts from payments
-          payments.forEach(payment => {
+          console.log('🔍 ParentController: Processing', payments.length, 'payments');
+          payments.forEach((payment, index) => {
             if (payment.status === 'COMPLETED') {
-              totalPaid += parseFloat(payment.total);
+              const amount = parseFloat(payment.total);
+              totalPaid += amount;
+              console.log(`  Payment ${index + 1}: $${amount} - ${payment.status} (ID: ${payment.id})`);
             }
           });
 
@@ -1204,7 +1205,7 @@
 
           // Create upcoming payments list
           upcomingPayments = feeStructure.items.map(item => ({
-            id: item.id,
+            id: item.id.toString(),
             name: item.name,
             amount: parseFloat(item.amount),
             dueDate: item.dueDate,
@@ -1214,7 +1215,7 @@
 
           // Create payment history
           paymentHistory = payments.map(payment => ({
-            id: payment.id,
+            id: payment.id.toString(),
             date: payment.paymentDate,
             amount: parseFloat(payment.total),
             method: payment.method,
@@ -1252,14 +1253,8 @@
               isOptional: item.isOptional
             }))
           } : null,
-          upcomingPayments: upcomingPayments.map(payment => ({
-            ...payment,
-            id: payment.id.toString()
-          })),
-          paymentHistory: paymentHistory.map(payment => ({
-            ...payment,
-            id: payment.id.toString()
-          }))
+          upcomingPayments,
+          paymentHistory
         };
 
         console.log('✅ ParentController: Fee data calculated:', {
