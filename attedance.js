@@ -1,55 +1,72 @@
-#!/usr/bin/env node
-
-/**
- * Automated Attendance Management Script
- * 
- * This script automatically marks absent students who haven't marked in by 9 AM Afghanistan time.
- * It should be run as a cron job every day at 9:15 AM Afghanistan time (4:45 AM UTC).
- * 
- * Usage:
- * 1. Set up cron job: 0 4 45 * * * /usr/bin/node /path/to/scripts/autoAttendance.js
- * 2. Or run manually: node scripts/autoAttendance.js
- * 
- * Environment Variables Required:
- * - DATABASE_URL: Prisma database connection string
- * - SCHOOL_ID: Default school ID (defaults to 1)
- */
-
-import { PrismaClient } from './generated/prisma/client.js';
+import { PrismaClient } from './generated/prisma/index.js';
+import { format, startOfDay, endOfDay } from 'date-fns';
+import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
-// Afghanistan timezone (UTC+4:30)
+// Timezone constants
 const AFGHANISTAN_TIMEZONE = 'Asia/Kabul';
-
-// Attendance time windows (in Afghanistan time)
 const ATTENDANCE_TIMES = {
-  AUTO_ABSENT_TIME: 9  // 9:00 AM - after this time, mark absent if no mark-in
+  MARK_IN_START: '07:00',
+  MARK_IN_END: '08:00',
+  MARK_OUT_START: '12:00',
+  MARK_OUT_END: '13:00',
+  AUTO_ABSENT_TIME: '09:00'
 };
 
-/**
- * Get current time in Afghanistan timezone
- */
-const getAfghanistanTime = () => {
+// Helper functions
+function getAfghanistanTime() {
+  return new Date().toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE });
+}
+
+function isMarkInTimeWindow() {
   const now = new Date();
-  return new Date(now.toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE }));
-};
+  const afghanTime = now.toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE });
+  const currentTime = afghanTime.split(', ')[1];
+  const [hours, minutes] = currentTime.split(':');
+  const currentMinutes = parseInt(hours) * 60 + parseInt(minutes);
+  
+  const [startHours, startMinutes] = ATTENDANCE_TIMES.MARK_IN_START.split(':');
+  const startTimeMinutes = parseInt(startHours) * 60 + parseInt(startMinutes);
+  
+  const [endHours, endMinutes] = ATTENDANCE_TIMES.MARK_IN_END.split(':');
+  const endTimeMinutes = parseInt(endHours) * 60 + parseInt(endMinutes);
+  
+  return currentMinutes >= startTimeMinutes && currentMinutes <= endTimeMinutes;
+}
 
-/**
- * Check if it's time to automatically mark absent students (after 9 AM)
- */
-const isAutoAbsentTime = () => {
-  const afghanTime = getAfghanistanTime();
-  const hour = afghanTime.getHours();
-  return hour >= ATTENDANCE_TIMES.AUTO_ABSENT_TIME;
-};
+function isMarkOutTimeWindow() {
+  const now = new Date();
+  const afghanTime = now.toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE });
+  const currentTime = afghanTime.split(', ')[1];
+  const [hours, minutes] = currentTime.split(':');
+  const currentMinutes = parseInt(hours) * 60 + parseInt(minutes);
+  
+  const [startHours, startMinutes] = ATTENDANCE_TIMES.MARK_OUT_START.split(':');
+  const startTimeMinutes = parseInt(startHours) * 60 + parseInt(startMinutes);
+  
+  const [endHours, endMinutes] = ATTENDANCE_TIMES.MARK_OUT_END.split(':');
+  const endTimeMinutes = parseInt(endHours) * 60 + parseInt(endMinutes);
+  
+  return currentMinutes >= startTimeMinutes && currentMinutes <= endTimeMinutes;
+}
 
-/**
- * Get formatted Afghanistan time string
- */
-const getFormattedAfghanTime = () => {
-  const afghanTime = getAfghanistanTime();
-  return afghanTime.toLocaleString('en-US', { 
+function isAutoAbsentTime() {
+  const now = new Date();
+  const afghanTime = now.toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE });
+  const currentTime = afghanTime.split(', ')[1];
+  const [hours, minutes] = currentTime.split(':');
+  const currentMinutes = parseInt(hours) * 60 + parseInt(minutes);
+  
+  const [autoAbsentHours, autoAbsentMinutes] = ATTENDANCE_TIMES.AUTO_ABSENT_TIME.split(':');
+  const autoAbsentTimeMinutes = parseInt(autoAbsentHours) * 60 + parseInt(autoAbsentMinutes);
+  
+  return currentMinutes >= autoAbsentTimeMinutes;
+}
+
+function getFormattedAfghanTime() {
+  const now = new Date();
+  return now.toLocaleString('en-US', { 
     timeZone: AFGHANISTAN_TIMEZONE,
     year: 'numeric',
     month: '2-digit',
@@ -59,39 +76,32 @@ const getFormattedAfghanTime = () => {
     second: '2-digit',
     hour12: false
   });
-};
+}
 
-/**
- * Automatically mark absent students who haven't marked in by 9 AM
- */
-const autoMarkAbsentStudents = async () => {
+// Main function to automatically mark absent students
+async function autoMarkAbsentStudents() {
   try {
-    console.log('🤖 Auto-marking absent students...');
-    console.log('🌍 Current Afghanistan time:', getFormattedAfghanTime());
+    console.log('🚀 Starting automated absent marking process...');
+    const afghanTime = getFormattedAfghanTime();
+    console.log('⏰ Current Afghanistan time:', afghanTime);
     
-    // Check if it's time to auto-mark absent (after 9 AM Afghanistan time)
+    // Check if it's time to auto-mark absent
     if (!isAutoAbsentTime()) {
-      const afghanTime = getFormattedAfghanTime();
-      console.log('⏰ Not yet time to auto-mark absent. Current Afghanistan time:', afghanTime);
-      console.log('⏰ Auto-mark absent runs after 9:00 AM Afghanistan time');
+      console.log('⏰ Not yet time to auto-mark absent students');
+      console.log(`⏰ Auto-absent marking is scheduled for ${ATTENDANCE_TIMES.AUTO_ABSENT_TIME} Afghanistan time`);
       return;
     }
-
-    const afghanTime = getFormattedAfghanTime();
-    const today = new Date();
-    const schoolId = process.env.SCHOOL_ID || 1;
-
-    console.log('📅 Processing date:', today.toISOString());
-    console.log('🏫 School ID:', schoolId);
-
-    // Get all active students for the school
+    
+    const today = startOfDay(new Date());
+    const todayEnd = endOfDay(new Date());
+    
+    console.log('📅 Processing date:', format(today, 'yyyy-MM-dd'));
+    
+    // Get all active students
     const students = await prisma.student.findMany({
       where: {
-        schoolId: BigInt(schoolId),
-        deletedAt: null,
-        user: {
-          status: 'ACTIVE'
-        }
+        isActive: true,
+        deletedAt: null
       },
       include: {
         class: {
@@ -108,105 +118,92 @@ const autoMarkAbsentStudents = async () => {
         }
       }
     });
-
-    console.log(`📚 Found ${students.length} active students`);
-
-    let absentCount = 0;
-    let presentCount = 0;
-    let errorCount = 0;
-
-    // Process each student
+    
+    console.log(`👥 Found ${students.length} active students`);
+    
+    let markedAbsent = 0;
+    let alreadyMarked = 0;
+    let errors = 0;
+    
     for (const student of students) {
       try {
-        // Check if attendance record already exists for today
+        // Check if student already has attendance for today
         const existingAttendance = await prisma.attendance.findFirst({
           where: {
             studentId: student.id,
-            classId: student.classId,
-            date: today,
-            schoolId: BigInt(schoolId),
+            date: {
+              gte: today,
+              lte: todayEnd
+            },
             deletedAt: null
           }
         });
-
+        
         if (existingAttendance) {
-          // Student already has attendance record for today
-          if (existingAttendance.status === 'PRESENT' || existingAttendance.inTime) {
-            presentCount++;
-            console.log(`✅ Student ${student.user.firstName} ${student.user.lastName} already marked present`);
-          } else {
-            // Update existing record to mark as absent
-            await prisma.attendance.update({
-              where: { id: existingAttendance.id },
-              data: {
-                status: 'ABSENT',
-                updatedAt: new Date()
-              }
-            });
-            absentCount++;
-            console.log(`❌ Updated student ${student.user.firstName} ${student.user.lastName} as absent`);
-          }
-        } else {
-          // Create new absent record
-          await prisma.attendance.create({
-            data: {
-              date: today,
-              status: 'ABSENT',
-              studentId: student.id,
-              classId: student.classId,
-              schoolId: BigInt(schoolId),
-              createdBy: BigInt(1), // System user
-              createdAt: new Date()
-            }
-          });
-          absentCount++;
-          console.log(`❌ Created absent record for student ${student.user.firstName} ${student.user.lastName}`);
+          console.log(`✅ Student ${student.user?.firstName || 'Unknown'} already has attendance for today`);
+          alreadyMarked++;
+          continue;
         }
-      } catch (studentError) {
-        errorCount++;
-        console.error(`❌ Error processing student ${student.user?.firstName || 'Unknown'}:`, studentError.message);
+        
+        // Mark student as absent
+        const absentAttendance = await prisma.attendance.create({
+          data: {
+            studentId: student.id,
+            classId: student.class?.id || null,
+            date: today,
+            status: 'ABSENT',
+            markInTime: null,
+            markOutTime: null,
+            reason: 'No mark-in recorded by 9:00 AM',
+            isAutoMarked: true,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }
+        });
+        
+        console.log(`❌ Marked ${student.user?.firstName || 'Unknown'} ${student.user?.lastName || 'Student'} as ABSENT`);
+        markedAbsent++;
+        
+      } catch (error) {
+        console.error(`❌ Error processing student ${student.id}:`, error.message);
+        errors++;
       }
     }
-
-    const summary = {
-      totalStudents: students.length,
-      presentCount,
-      absentCount,
-      errorCount,
-      processedAt: afghanTime,
-      date: today.toISOString()
-    };
-
-    console.log('📊 Auto-mark absent summary:', summary);
-    console.log('✅ Auto-mark absent completed successfully');
-
-  } catch (error) {
-    console.error('❌ Error in autoMarkAbsentStudents:', error);
-    throw error;
-  }
-};
-
-/**
- * Main execution function
- */
-const main = async () => {
-  try {
-    console.log('🚀 Starting automated attendance management...');
-    console.log('🌍 Current Afghanistan time:', getFormattedAfghanTime());
     
+    console.log('\n📊 Automated absent marking completed:');
+    console.log(`✅ Already marked: ${alreadyMarked}`);
+    console.log(`❌ Newly marked absent: ${markedAbsent}`);
+    console.log(`❌ Errors: ${errors}`);
+    console.log(`📅 Date: ${format(today, 'yyyy-MM-dd')}`);
+    console.log(`⏰ Time: ${afghanTime}`);
+    
+  } catch (error) {
+    console.error('❌ Fatal error in autoMarkAbsentStudents:', error);
+  }
+}
+
+// Main execution function
+async function main() {
+  try {
+    console.log('🚀 Starting automated attendance system...');
+    console.log('⏰ Current Afghanistan time:', getFormattedAfghanTime());
+    
+    // Run the auto-mark absent function
     await autoMarkAbsentStudents();
     
-    console.log('✅ Automated attendance management completed successfully');
-    process.exit(0);
+    console.log('✅ Automated attendance process completed successfully');
+    
   } catch (error) {
-    console.error('❌ Automated attendance management failed:', error);
-    process.exit(1);
+    console.error('❌ Error in main function:', error);
   } finally {
     await prisma.$disconnect();
   }
-};
+}
 
-// Run the script if called directly
+// Export the main function for PM2
+export { autoMarkAbsentStudents };
+
+// Run if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  main().catch(console.error);
 } 
