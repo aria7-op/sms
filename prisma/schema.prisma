@@ -100,6 +100,7 @@ model School {
   feeStructures             FeeStructure[]
   payments                  Payment[]
   payrolls                  Payroll[]
+  expenses                  Expense[]
   auditLogs                 AuditLog[]
   students                  Student[]
   teachers                  Teacher[]
@@ -272,6 +273,8 @@ model User {
   paymentsUpdated                 Payment[]                  @relation("PaymentUpdatedBy")
   payrollsCreated                 Payroll[]                  @relation("Payroll_createdByUser")
   payrollsUpdated                 Payroll[]                  @relation("Payroll_updatedByUser")
+  expensesCreated                 Expense[]                  @relation("Expense_createdByUser")
+  expensesUpdated                 Expense[]                  @relation("Expense_updatedByUser")
   gradesCreated                   Grade[]                    @relation("Grade_createdByUser")
   gradesUpdated                   Grade[]                    @relation("Grade_updatedByUser")
   examTimetablesCreated           ExamTimetable[]            @relation("ExamTimetable_createdByUser")
@@ -947,6 +950,33 @@ model Payroll {
   @@index([salaryMonth])
   @@index([status])
   @@map("payrolls")
+}
+
+model Expense {
+  id            BigInt      @id @default(autoincrement())
+  uuid          String      @unique @default(uuid()) @db.VarChar(36)
+  title         String      @db.VarChar(255)
+  description   String?     @db.VarChar(500)
+  amount        Decimal     @db.Decimal(10, 2)
+  category      String      @db.VarChar(100)
+  date          DateTime
+  status        String      @db.VarChar(20) @default("PENDING")
+  schoolId      BigInt
+  createdBy     BigInt
+  updatedBy     BigInt?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+  school        School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdByUser User        @relation("Expense_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
+  updatedByUser User?       @relation("Expense_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([title])
+  @@index([category])
+  @@index([date])
+  @@index([status])
+  @@index([schoolId])
+  @@map("expenses")
 }
 
 model Book {
@@ -3083,5 +3113,6 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
+
 
 
