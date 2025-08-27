@@ -444,13 +444,41 @@ router.delete('/cache/clear',
  * @access  Private (All authenticated users)
  * @params  {id} - Class ID
  * @query   {include} - Comma-separated list of relations to include
- * @permissions class:read, student:read
+ * @permissions class:read
  */
 router.get('/:id/students',
   authenticateToken,
-  authorizePermissions(['class:read', 'student:read']),
+  authorizePermissions(['class:read']),
   validateRequest(z.object({ id: idSchema.shape.id }), 'params'),
   classController.getClassStudents
+);
+
+/**
+ * @route   GET /api/classes/unassigned-students
+ * @desc    Get unassigned students (students without a class)
+ * @access  Private (All authenticated users)
+ * @query   {schoolId} - School ID
+ * @permissions class:read, student:read
+ */
+router.get('/unassigned-students',
+  authenticateToken,
+  authorizePermissions(['class:read', 'student:read']),
+  classController.getUnassignedStudents
+);
+
+/**
+ * @route   POST /api/classes/:id/add-students
+ * @desc    Add students to a class
+ * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
+ * @params  {id} - Class ID
+ * @body    {studentIds: number[]} - Array of student IDs to add
+ * @permissions class:update, student:update
+ */
+router.post('/:id/add-students',
+  authenticateToken,
+  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
+  authorizePermissions(['class:update', 'student:update']),
+  classController.addStudentsToClass
 );
 
 /**
