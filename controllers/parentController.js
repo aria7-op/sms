@@ -605,12 +605,11 @@ class ParentController {
     }
   }
 
-  // Get student grades data
+  // Get student grades
   async getStudentGrades(req, res) {
     try {
       const { schoolId } = req.user;
       const { parentId, studentId } = req.params;
-      const { subject, term, academicYear } = req.query;
 
       // Verify parent has access to this student
       const parent = await prisma.parent.findFirst({
@@ -621,37 +620,64 @@ class ParentController {
         },
         include: {
           students: {
-            where: { id: BigInt(studentId) }
+            where: { id: BigInt(studentId), deletedAt: null }
           }
         }
       });
 
       if (!parent || parent.students.length === 0) {
-        return res.status(403).json({
+        return res.status(404).json({
           success: false,
-          message: 'Access denied to student data'
+          message: 'Student not found or access denied'
         });
       }
 
-      // Build filter
-      const filter = { studentId: BigInt(studentId) };
-      if (subject) filter.subject = { name: { contains: subject, mode: 'insensitive' } };
-      if (term) filter.term = { name: { contains: term, mode: 'insensitive' } };
-      if (academicYear) filter.academicYear = { name: { contains: academicYear, mode: 'insensitive' } };
-
-      // Get grades
+      // Get grades for the student
       const grades = await prisma.grade.findMany({
-        where: filter,
-        include: {
-          subject: { select: { name: true } },
-          term: { select: { name: true } },
-          academicYear: { select: { name: true } }
+        where: {
+          studentId: BigInt(studentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
         },
-        orderBy: { createdAt: 'desc' },
+        include: {
+          subject: {
+            select: {
+              name: true
+            }
+          },
+          exam: {
+            select: {
+              name: true,
+              code: true,
+              type: true,
+              startDate: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: "desc"
+        },
         take: 100
       });
 
-      const convertedGrades = convertBigInts(grades);
+      // Transform grades to include calculated fields
+      const transformedGrades = grades.map(grade => ({
+        id: grade.id,
+        subject: grade.subject?.name || 'N/A',
+        exam: grade.exam?.name || 'N/A',
+        examCode: grade.exam?.code || 'N/A',
+        examType: grade.exam?.type || 'N/A',
+        examDate: grade.exam?.startDate || null,
+        marks: grade.marks,
+        maxMarks: grade.maxMarks || 100,
+        percentage: grade.maxMarks ? (Number(grade.marks) / Number(grade.maxMarks)) * 100 : 0,
+        grade: grade.grade || 'N/A',
+        remarks: grade.remarks || null,
+        isAbsent: grade.isAbsent,
+        createdAt: grade.createdAt
+      }));
+
+      const convertedGrades = convertBigInts(transformedGrades);
 
       return res.json({
         success: true,
@@ -663,18 +689,17 @@ class ParentController {
       console.error('Get student grades error:', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to retrieve grades data',
+        message: 'Failed to retrieve student grades',
         error: error.message
       });
     }
   }
 
-  // Get student assignments data
+  // Get student assignments
   async getStudentAssignments(req, res) {
     try {
       const { schoolId } = req.user;
       const { parentId, studentId } = req.params;
-      const { status, subject, dueDate } = req.query;
 
       // Verify parent has access to this student
       const parent = await prisma.parent.findFirst({
@@ -685,36 +710,82 @@ class ParentController {
         },
         include: {
           students: {
-            where: { id: BigInt(studentId) }
+            where: { id: BigInt(studentId), deletedAt: null }
           }
         }
       });
 
       if (!parent || parent.students.length === 0) {
-        return res.status(403).json({
+        return res.status(404).json({
           success: false,
-          message: 'Access denied to student data'
+          message: 'Student not found or access denied'
         });
       }
 
-      // Build filter
-      const filter = { studentId: BigInt(studentId) };
-      if (status) filter.status = status.toUpperCase();
-      if (subject) filter.subject = { name: { contains: subject, mode: 'insensitive' } };
-      if (dueDate) filter.dueDate = { gte: new Date(dueDate) };
+      const student = parent.students[0];
 
-      // Get assignments
+      // Get assignments for the student's class and subjects
       const assignments = await prisma.assignment.findMany({
-        where: filter,
-        include: {
-          subject: { select: { name: true } },
-          class: { select: { name: true } }
+        where: {
+          schoolId: BigInt(schoolId),
+          deletedAt: null,
+          OR: [
+            { classId: student.classId },
+            { subjectId: { in: student.subjects?.map(s => BigInt(s.id)) || [] } }
+          ]
         },
-        orderBy: { dueDate: 'asc' },
+        include: {
+          subject: {
+            select: {
+              name: true
+            }
+          },
+          class: {
+            select: {
+              name: true
+            }
+          }
+        },
+        orderBy: {
+          dueDate: "asc"
+        },
         take: 100
       });
 
-      const convertedAssignments = convertBigInts(assignments);
+      // Get student's submissions for these assignments
+      const submissions = await prisma.assignmentSubmission.findMany({
+        where: {
+          studentId: BigInt(studentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        select: {
+          assignmentId: true,
+          submittedAt: true,
+          score: true,
+          feedback: true
+        }
+      });
+
+      // Combine assignments with submission status
+      const assignmentsWithStatus = assignments.map(assignment => {
+        const submission = submissions.find(s => s.assignmentId === assignment.id);
+        return {
+          id: assignment.id,
+          title: assignment.title,
+          description: assignment.description,
+          dueDate: assignment.dueDate,
+          maxScore: assignment.maxScore,
+          subject: assignment.subject?.name || 'N/A',
+          class: assignment.class?.name || 'N/A',
+          status: submission ? 'SUBMITTED' : new Date(assignment.dueDate) < new Date() ? 'OVERDUE' : 'PENDING',
+          submittedAt: submission?.submittedAt || null,
+          score: submission?.score || null,
+          feedback: submission?.feedback || null
+        };
+      });
+
+      const convertedAssignments = convertBigInts(assignmentsWithStatus);
 
       return res.json({
         success: true,
@@ -726,7 +797,7 @@ class ParentController {
       console.error('Get student assignments error:', error);
       return res.status(500).json({
         success: false,
-        message: 'Failed to retrieve assignments data',
+        message: 'Failed to retrieve student assignments',
         error: error.message
       });
     }
@@ -1091,6 +1162,97 @@ class ParentController {
       return res.status(500).json({
         success: false,
         message: 'Failed to retrieve academic summary',
+        error: error.message
+      });
+    }
+  }
+
+  // Debug endpoint to check parent and students
+  async debugParent(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { id } = req.params; // This is the user ID
+
+      console.log('🔍 Debug: Checking parent with user ID:', id, 'school ID:', schoolId);
+
+      // Find parent by userId
+      const parent = await prisma.parent.findFirst({
+        where: {
+          userId: BigInt(id),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              role: true
+            }
+          },
+          students: {
+            where: { deletedAt: null },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!parent) {
+        console.log('❌ Debug: Parent not found');
+        return res.json({
+          success: false,
+          message: 'Parent not found',
+          debug: {
+            searchedUserId: id,
+            searchedSchoolId: schoolId,
+            parentExists: false
+          }
+        });
+      }
+
+      console.log('✅ Debug: Parent found:', {
+        parentId: parent.id,
+        userId: parent.userId,
+        studentsCount: parent.students.length
+      });
+
+      const convertedParent = convertBigInts(parent);
+
+      return res.json({
+        success: true,
+        message: 'Debug info retrieved',
+        data: {
+          parent: {
+            id: convertedParent.id,
+            userId: convertedParent.userId,
+            user: convertedParent.user
+          },
+          students: convertedParent.students,
+          studentsCount: convertedParent.students.length,
+          debug: {
+            searchedUserId: id,
+            searchedSchoolId: schoolId,
+            parentExists: true,
+            parentId: convertedParent.id
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Debug parent error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Debug failed',
         error: error.message
       });
     }
