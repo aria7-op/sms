@@ -1107,12 +1107,27 @@
           userData: student.user
         });
 
-        // Debug: Log the full student object structure
-        console.log('🔍 ParentController: Full student object:', JSON.stringify(student, null, 2));
+        // Debug: Log the full student object structure (convert BigInts for logging)
+        const studentForLogging = {
+          ...student,
+          id: student.id.toString(),
+          classId: student.classId?.toString(),
+          userId: student.userId?.toString(),
+          user: student.user ? {
+            ...student.user,
+            id: student.user.id.toString()
+          } : null,
+          class: student.class ? {
+            ...student.class,
+            id: student.class.id.toString()
+          } : null
+        };
+        console.log('🔍 ParentController: Full student object:', JSON.stringify(studentForLogging, null, 2));
 
         // Get student's fee structure based on their class
         let feeStructure = null;
         if (student.classId) {
+          console.log('🔍 ParentController: Fetching fee structure for classId:', student.classId.toString());
           feeStructure = await prisma.feeStructure.findFirst({
             where: {
               classId: student.classId,
@@ -1126,9 +1141,22 @@
               }
             }
           });
+          
+          if (feeStructure) {
+            console.log('✅ ParentController: Fee structure found:', {
+              id: feeStructure.id.toString(),
+              name: feeStructure.name,
+              itemsCount: feeStructure.items.length
+            });
+          } else {
+            console.log('⚠️ ParentController: No fee structure found for class');
+          }
+        } else {
+          console.log('⚠️ ParentController: Student has no classId');
         }
 
         // Get payments made by this student
+        console.log('🔍 ParentController: Fetching payments for studentId:', studentId);
         const payments = await prisma.payment.findMany({
           where: {
             studentId: BigInt(studentId),
@@ -1149,6 +1177,8 @@
           },
           orderBy: { paymentDate: 'desc' }
         });
+        
+        console.log('✅ ParentController: Payments found:', payments.length);
 
         // Calculate fee summary
         let totalFees = 0;
@@ -1200,7 +1230,7 @@
 
         const feeData = {
           student: {
-            id: student.id,
+            id: student.id.toString(),
             name: student.user ? `${student.user.firstName} ${student.user.lastName}` : 'Unknown Student',
             class: student.class?.name || 'N/A'
           },
@@ -1211,19 +1241,25 @@
             paymentProgress: totalFees > 0 ? Math.round((totalPaid / totalFees) * 100) : 0
           },
           feeStructure: feeStructure ? {
-            id: feeStructure.id,
+            id: feeStructure.id.toString(),
             name: feeStructure.name,
             description: feeStructure.description,
             items: feeStructure.items.map(item => ({
-              id: item.id,
+              id: item.id.toString(),
               name: item.name,
               amount: parseFloat(item.amount),
               dueDate: item.dueDate,
               isOptional: item.isOptional
             }))
           } : null,
-          upcomingPayments,
-          paymentHistory
+          upcomingPayments: upcomingPayments.map(payment => ({
+            ...payment,
+            id: payment.id.toString()
+          })),
+          paymentHistory: paymentHistory.map(payment => ({
+            ...payment,
+            id: payment.id.toString()
+          }))
         };
 
         console.log('✅ ParentController: Fee data calculated:', {
@@ -1232,6 +1268,14 @@
           totalRemaining,
           upcomingPaymentsCount: upcomingPayments.length,
           paymentHistoryCount: paymentHistory.length
+        });
+
+        // Debug: Log a sample of the fee data structure (without BigInts)
+        console.log('🔍 ParentController: Sample fee data structure:', {
+          student: feeData.student,
+          summary: feeData.summary,
+          hasFeeStructure: !!feeData.feeStructure,
+          feeStructureItemsCount: feeData.feeStructure?.items?.length || 0
         });
 
         return res.json({
