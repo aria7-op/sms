@@ -1100,9 +1100,11 @@
       attendances.forEach(record => {
         const studentId = record.studentId.toString();
         if (!studentStats[studentId]) {
+          const studentUser = record.student && record.student.user ? record.student.user : null;
+          const studentName = studentUser ? `${studentUser.firstName} ${studentUser.lastName}` : 'Unknown Student';
           studentStats[studentId] = {
             studentId,
-            studentName: `${record.student.user.firstName} ${record.student.user.lastName}`,
+            studentName: studentName,
             present: 0,
             absent: 0,
             late: 0,
@@ -1243,7 +1245,7 @@
       return createSuccessResponse(res, 'Comprehensive attendance statistics retrieved successfully', comprehensiveStats);
     } catch (error) {
       console.error('Error in getAttendanceStats:', error);
-      return createErrorResponse(res, 'Failed to retrieve attendance statistics', 500);
+      return createErrorResponse(res, 500, 'Failed to retrieve attendance statistics', error?.message || 'ATTENDANCE_STATS_ERROR');
     }
   };
 
@@ -1298,22 +1300,22 @@
 
       if (chartType === 'all' || chartType === 'daily') {
         // Daily attendance trends
-        const dailyTrends = {};
-        attendances.forEach(record => {
-          const date = record.date.toISOString().split('T')[0];
-          if (!dailyTrends[date]) {
+      const dailyTrends = {};
+      attendances.forEach(record => {
+        const date = record.date.toISOString().split('T')[0];
+        if (!dailyTrends[date]) {
             dailyTrends[date] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
-          }
-          
+        }
+        
           dailyTrends[date].total++;
-          if (record.status === 'PRESENT') dailyTrends[date].present++;
-          else if (record.status === 'ABSENT') dailyTrends[date].absent++;
-          else if (record.status === 'LATE') dailyTrends[date].late++;
-          else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
-        });
+        if (record.status === 'PRESENT') dailyTrends[date].present++;
+        else if (record.status === 'ABSENT') dailyTrends[date].absent++;
+        else if (record.status === 'LATE') dailyTrends[date].late++;
+        else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
+      });
 
         chartData.daily = Object.entries(dailyTrends).map(([date, data]) => ({
-          date,
+        date,
           ...data,
           rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
         }));
@@ -1981,9 +1983,9 @@
 
       // Set response headers for file download (only for non-PDF formats)
       if (format !== 'pdf') {
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Content-Length', Buffer.byteLength(exportContent, 'utf8'));
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', Buffer.byteLength(exportContent, 'utf8'));
       }
 
       console.log('✅ Export completed successfully:', { format, filename, records: exportData.length });
@@ -2056,7 +2058,7 @@
           // Fallback to CSV if Excel fails
           res.setHeader('Content-Type', 'text/csv');
           res.setHeader('Content-Disposition', `attachment; filename="attendance_${startDate || 'all'}_${endDate || 'data'}.csv"`);
-          res.send(exportContent);
+      res.send(exportContent);
           console.log('✅ Fallback CSV sent');
         }
       } else if (format === 'csv') {
