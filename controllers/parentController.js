@@ -1366,6 +1366,374 @@
       }
     }
 
+    // Get parent notifications (for parent and their children)
+    async getParentNotifications(req, res) {
+      try {
+        const { schoolId } = req.user;
+        const { parentId } = req.params;
+        const { type, read, limit = 50, category } = req.query;
+
+        console.log('🔍 ParentController: getParentNotifications called with:', {
+          schoolId,
+          parentId,
+          type,
+          read,
+          limit,
+          category
+        });
+
+        // Verify parent exists and has access
+        const parent = await prisma.parent.findFirst({
+          where: {
+            userId: BigInt(parentId),
+            schoolId: BigInt(schoolId),
+            deletedAt: null
+          },
+          include: {
+            students: {
+              select: {
+                id: true,
+                user: {
+                  select: {
+                    firstName: true,
+                    lastName: true
+                  }
+                }
+              }
+            }
+          }
+        });
+
+        if (!parent) {
+          console.log('❌ ParentController: Parent not found');
+          return res.status(404).json({
+            success: false,
+            message: 'Parent not found'
+          });
+        }
+
+        console.log('✅ ParentController: Parent found with', parent.students.length, 'students');
+
+        // Get all student IDs for this parent
+        const studentIds = parent.students.map(student => student.id);
+
+        // Build filter for notifications
+        const filter = {
+          schoolId: BigInt(schoolId),
+          deletedAt: null,
+          OR: [
+            // Notifications sent directly to parent
+            {
+              recipients: {
+                some: {
+                  userId: BigInt(parentId),
+                  deletedAt: null
+                }
+              }
+            },
+            // Notifications related to parent's children
+            {
+              entityType: 'STUDENT',
+              entityId: {
+                in: studentIds
+              }
+            },
+            // General school notifications
+            {
+              entityType: 'SCHOOL',
+              entityId: BigInt(schoolId)
+            },
+            // Class notifications for parent's children's classes
+            {
+              entityType: 'CLASS',
+              entityId: {
+                in: parent.students.map(s => s.classId).filter(Boolean)
+              }
+            }
+          ]
+        };
+
+        if (type) filter.type = type.toUpperCase();
+        if (category) filter.entityType = category.toUpperCase();
+
+        console.log('🔍 ParentController: Fetching notifications with filter:', {
+          schoolId: schoolId.toString(),
+          studentIds: studentIds.map(id => id.toString()),
+          type: filter.type,
+          category: filter.category
+        });
+
+        // Get notifications with recipients and sender info
+        const notifications = await prisma.notification.findMany({
+          where: filter,
+          include: {
+            recipients: {
+              where: {
+                userId: BigInt(parentId),
+                deletedAt: null
+              }
+            },
+            sender: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true
+              }
+            },
+            attachments: {
+              where: { deletedAt: null }
+            }
+          },
+          orderBy: { createdAt: 'desc' },
+          take: parseInt(limit)
+        });
+
+        console.log('✅ ParentController: Found', notifications.length, 'notifications');
+
+        // Transform notifications to include read status and additional info
+        const transformedNotifications = notifications.map(notification => {
+          const recipient = notification.recipients[0];
+          const isRead = recipient ? !!recipient.readAt : false;
+          
+          return {
+            id: notification.id.toString(),
+            uuid: notification.uuid,
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            summary: notification.summary,
+            priority: notification.priority,
+            status: notification.status,
+            category: notification.entityType || 'GENERAL',
+            isRead,
+            readAt: recipient?.readAt,
+            createdAt: notification.createdAt,
+            updatedAt: notification.updatedAt,
+            expiresAt: notification.expiresAt,
+            scheduledAt: notification.scheduledAt,
+            sender: notification.sender ? {
+              id: notification.sender.id.toString(),
+              name: `${notification.sender.firstName} ${notification.sender.lastName}`,
+              email: notification.sender.email
+            } : null,
+            attachments: notification.attachments.map(attachment => ({
+              id: attachment.id.toString(),
+              name: attachment.name,
+              url: attachment.url,
+              type: attachment.type,
+              size: attachment.size,
+              mimeType: attachment.mimeType
+            })),
+            metadata: notification.metadata ? JSON.parse(notification.metadata) : null,
+            actions: notification.actions ? JSON.parse(notification.actions) : null
+          };
+        });
+
+        // Filter by read status if specified
+        let filteredNotifications = transformedNotifications;
+        if (read !== undefined) {
+          const readBoolean = read === 'true';
+          filteredNotifications = transformedNotifications.filter(n => n.isRead === readBoolean);
+        }
+
+        console.log('✅ ParentController: Returning', filteredNotifications.length, 'filtered notifications');
+
+        return res.json({
+          success: true,
+          message: 'Parent notifications retrieved successfully',
+          data: filteredNotifications
+        });
+
+      } catch (error) {
+        console.error('Get parent notifications error:', error);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to retrieve notifications data',
+          error: error.message
+        });
+      }
+    }
+
+    // Mark parent notification as read
+    async markParentNotificationAsRead(req, res) {
+      try {
+        const { schoolId } = req.user;
+        const { parentId, notificationId } = req.params;
+
+        console.log('🔍 ParentController: markParentNotificationAsRead called with:', {
+          schoolId,
+          parentId,
+          notificationId
+        });
+
+        // Verify parent exists
+        const parent = await prisma.parent.findFirst({
+          where: {
+            userId: BigInt(parentId),
+            schoolId: BigInt(schoolId),
+            deletedAt: null
+          }
+        });
+
+        if (!parent) {
+          console.log('❌ ParentController: Parent not found');
+          return res.status(404).json({
+            success: false,
+            message: 'Parent not found'
+          });
+        }
+
+        // Find or create notification recipient record
+        let recipient = await prisma.notificationRecipient.findFirst({
+          where: {
+            notificationId: BigInt(notificationId),
+            userId: BigInt(parentId),
+            deletedAt: null
+          }
+        });
+
+        if (!recipient) {
+          // Create a recipient record if it doesn't exist
+          recipient = await prisma.notificationRecipient.create({
+            data: {
+              notificationId: BigInt(notificationId),
+              userId: BigInt(parentId),
+              channel: 'WEB',
+              status: 'DELIVERED',
+              readAt: new Date()
+            }
+          });
+        } else {
+          // Update existing recipient record
+          recipient = await prisma.notificationRecipient.update({
+            where: { id: recipient.id },
+            data: {
+              readAt: new Date(),
+              status: 'READ'
+            }
+          });
+        }
+
+        console.log('✅ ParentController: Notification marked as read');
+
+        return res.json({
+          success: true,
+          message: 'Notification marked as read successfully'
+        });
+
+      } catch (error) {
+        console.error('Mark parent notification as read error:', error);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to mark notification as read',
+          error: error.message
+        });
+      }
+    }
+
+    // Mark all parent notifications as read
+    async markAllParentNotificationsAsRead(req, res) {
+      try {
+        const { schoolId } = req.user;
+        const { parentId } = req.params;
+
+        console.log('🔍 ParentController: markAllParentNotificationsAsRead called with:', {
+          schoolId,
+          parentId
+        });
+
+        // Verify parent exists
+        const parent = await prisma.parent.findFirst({
+          where: {
+            userId: BigInt(parentId),
+            schoolId: BigInt(schoolId),
+            deletedAt: null
+          }
+        });
+
+        if (!parent) {
+          console.log('❌ ParentController: Parent not found');
+          return res.status(404).json({
+            success: false,
+            message: 'Parent not found'
+          });
+        }
+
+        // Get all unread notifications for this parent
+        const unreadNotifications = await prisma.notification.findMany({
+          where: {
+            schoolId: BigInt(schoolId),
+            deletedAt: null,
+            OR: [
+              {
+                recipients: {
+                  some: {
+                    userId: BigInt(parentId),
+                    deletedAt: null
+                  }
+                }
+              },
+              {
+                entityType: 'SCHOOL',
+                entityId: BigInt(schoolId)
+              }
+            ]
+          },
+          include: {
+            recipients: {
+              where: {
+                userId: BigInt(parentId),
+                deletedAt: null
+              }
+            }
+          }
+        });
+
+        // Mark all as read
+        for (const notification of unreadNotifications) {
+          let recipient = notification.recipients[0];
+          
+          if (!recipient) {
+            // Create recipient record
+            await prisma.notificationRecipient.create({
+              data: {
+                notificationId: notification.id,
+                userId: BigInt(parentId),
+                channel: 'WEB',
+                status: 'READ',
+                readAt: new Date()
+              }
+            });
+          } else {
+            // Update existing recipient
+            await prisma.notificationRecipient.update({
+              where: { id: recipient.id },
+              data: {
+                readAt: new Date(),
+                status: 'READ'
+              }
+            });
+          }
+        }
+
+        console.log('✅ ParentController: All notifications marked as read');
+
+        return res.json({
+          success: true,
+          message: 'All notifications marked as read successfully'
+        });
+
+      } catch (error) {
+        console.error('Mark all parent notifications as read error:', error);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to mark all notifications as read',
+          error: error.message
+        });
+      }
+    }
+
     // Get student notifications
     async getStudentNotifications(req, res) {
       try {
