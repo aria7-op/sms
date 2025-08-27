@@ -595,6 +595,16 @@
           });
         }
 
+        console.log('🔍 ParentController: Parent found with students:', {
+          parentId: parent.id,
+          studentsCount: parent.students.length,
+          firstStudent: parent.students[0] ? {
+            id: parent.students[0].id,
+            hasUser: !!parent.students[0].user,
+            userData: parent.students[0].user
+          } : 'No students'
+        });
+
         // Build date filter based on period
         const dateFilter = {};
         const now = new Date();
@@ -713,10 +723,15 @@
           remarks: record.remarks
         }));
 
-        // Create summary object
+        // Create summary object with safety checks
+        const firstStudent = parent.students[0];
+        const studentName = firstStudent?.user?.firstName && firstStudent?.user?.lastName 
+          ? `${firstStudent.user.firstName} ${firstStudent.user.lastName}`
+          : 'Unknown Student';
+
         const summary = {
           studentId,
-          studentName: `${parent.students[0].user.firstName} ${parent.students[0].user.lastName}`,
+          studentName,
           totalDays,
           presentDays,
           absentDays,
