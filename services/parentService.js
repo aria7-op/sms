@@ -207,7 +207,7 @@ class ParentService {
     }
   }
 
-  async getParentById(parentId, schoolId, include = []) {
+  async getParentById(userId, schoolId, include = []) {
     try {
       // Build include object
       const includeObj = {
@@ -248,9 +248,10 @@ class ParentService {
         };
       }
 
+      // Find parent by userId (which is the user ID)
       const parent = await prisma.parent.findFirst({
         where: {
-          id: BigInt(parentId),
+          userId: BigInt(userId),
           schoolId: BigInt(schoolId),
           deletedAt: null
         },
@@ -268,12 +269,12 @@ class ParentService {
     }
   }
 
-  async updateParent(parentId, updateData, userId, schoolId) {
+  async updateParent(userId, updateData, currentUserId, schoolId) {
     try {
-      // Check if parent exists
+      // Check if parent exists by userId
       const existingParent = await prisma.parent.findFirst({
         where: {
-          id: BigInt(parentId),
+          userId: BigInt(userId),
           schoolId: BigInt(schoolId),
           deletedAt: null
         }
@@ -288,11 +289,11 @@ class ParentService {
       if (updateData.occupation !== undefined) dataToUpdate.occupation = updateData.occupation;
       if (updateData.annualIncome !== undefined) dataToUpdate.annualIncome = parseFloat(updateData.annualIncome);
       if (updateData.education !== undefined) dataToUpdate.education = updateData.education;
-      dataToUpdate.updatedBy = BigInt(userId);
+      dataToUpdate.updatedBy = BigInt(currentUserId);
 
-      // Update parent
+      // Update parent by userId
       const parent = await prisma.parent.update({
-        where: { id: BigInt(parentId) },
+        where: { userId: BigInt(userId) },
         data: dataToUpdate,
         include: {
           user: {
@@ -322,12 +323,12 @@ class ParentService {
     }
   }
 
-  async deleteParent(parentId, userId, schoolId) {
+  async deleteParent(userId, currentUserId, schoolId) {
     try {
-      // Check if parent exists
+      // Check if parent exists by userId
       const existingParent = await prisma.parent.findFirst({
         where: {
-          id: BigInt(parentId),
+          userId: BigInt(userId),
           schoolId: BigInt(schoolId),
           deletedAt: null
         }
@@ -337,12 +338,12 @@ class ParentService {
         throw new Error('Parent not found');
       }
 
-      // Soft delete parent
+      // Soft delete parent by userId
       await prisma.parent.update({
-        where: { id: BigInt(parentId) },
+        where: { userId: BigInt(userId) },
         data: {
           deletedAt: new Date(),
-          updatedBy: BigInt(userId)
+          updatedBy: BigInt(currentUserId)
         }
       });
 
@@ -357,11 +358,12 @@ class ParentService {
   // PARENT STUDENTS
   // ======================
 
-  async getParentStudents(parentId, schoolId) {
+  async getParentStudents(userId, schoolId) {
     try {
+      // Find parent by userId (which is the user ID)
       const parent = await prisma.parent.findFirst({
         where: {
-          id: BigInt(parentId),
+          userId: BigInt(userId),
           schoolId: BigInt(schoolId),
           deletedAt: null
         },
