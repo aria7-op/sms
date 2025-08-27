@@ -432,6 +432,12 @@ class ParentController {
       const { schoolId } = req.user;
       const { id } = req.params; // This is actually the user ID
 
+      console.log('🔍 ParentController: getParentStudents called with:', {
+        schoolId,
+        parentUserId: id,
+        user: req.user
+      });
+
       // Find parent by userId (which is the user ID)
       const parent = await prisma.parent.findFirst({
         where: {
@@ -547,6 +553,16 @@ class ParentController {
       const { parentId, studentId } = req.params;
       const { startDate, endDate, period } = req.query;
 
+      console.log('🔍 ParentController: getStudentAttendance called with:', {
+        schoolId,
+        parentId,
+        studentId,
+        startDate,
+        endDate,
+        period,
+        user: req.user
+      });
+
       // Verify parent has access to this student
       const parent = await prisma.parent.findFirst({
         where: {
@@ -614,6 +630,9 @@ class ParentController {
 
       const convertedAttendance = convertBigInts(attendance);
 
+      console.log('📊 ParentController: Raw attendance data:', convertedAttendance);
+      console.log('📊 ParentController: Attendance count:', convertedAttendance.length);
+
       // Calculate attendance summary
       const totalDays = convertedAttendance.length;
       const presentDays = convertedAttendance.filter(a => a.status === 'PRESENT').length;
@@ -621,6 +640,15 @@ class ParentController {
       const lateDays = convertedAttendance.filter(a => a.status === 'LATE').length;
       const excusedDays = convertedAttendance.filter(a => a.status === 'EXCUSED').length;
       const attendancePercentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
+
+      console.log('📊 ParentController: Calculated summary:', {
+        totalDays,
+        presentDays,
+        absentDays,
+        lateDays,
+        excusedDays,
+        attendancePercentage
+      });
 
       // Calculate current streak
       let currentStreak = 0;
@@ -671,7 +699,6 @@ class ParentController {
         date: record.date,
         status: record.status.toLowerCase(),
         subject: record.subject?.name,
-        period: record.period,
         remarks: record.remarks
       }));
 
@@ -689,7 +716,7 @@ class ParentController {
         longestStreak
       };
 
-      return res.json({
+      const responseData = {
         success: true,
         message: 'Student attendance retrieved successfully',
         data: {
@@ -697,7 +724,11 @@ class ParentController {
           summary,
           monthlyData
         }
-      });
+      };
+
+      console.log('✅ ParentController: Sending response:', JSON.stringify(responseData, null, 2));
+
+      return res.json(responseData);
 
     } catch (error) {
       console.error('Get student attendance error:', error);
