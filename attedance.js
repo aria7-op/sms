@@ -203,7 +203,16 @@ async function main() {
 // Export the main function for PM2
 export { autoMarkAbsentStudents };
 
-// Run if this file is executed directly
+// For PM2, we want the process to exit after completion
+// This prevents constant restarting
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch(console.error);
+  main()
+    .then(() => {
+      console.log('✅ Process completed, exiting...');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('❌ Process failed:', error);
+      process.exit(1);
+    });
 } 
