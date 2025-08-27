@@ -110,7 +110,7 @@ export const ClassSearchSchema = z.object({
     .int('Limit must be an integer')
     .min(1, 'Limit must be at least 1')
     .max(100, 'Limit must be at most 100')
-    .default(10),
+    .default(100), // Changed from 10 to 100 to show all classes by default
   
   // Sorting
   sortBy: z.enum(['name', 'code', 'level', 'section', 'capacity', 'createdAt', 'updatedAt'])
