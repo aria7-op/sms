@@ -12,12 +12,10 @@
  * 
  * Environment Variables Required:
  * - DATABASE_URL: Prisma database connection string
- * - JWT_SECRET: For authentication
  * - SCHOOL_ID: Default school ID (defaults to 1)
  */
 
 import { PrismaClient } from './generated/prisma/client.js';
-import smsService from './services/smsService.js';
 
 const prisma = new PrismaClient();
 
@@ -105,8 +103,7 @@ const autoMarkAbsentStudents = async () => {
         user: {
           select: {
             firstName: true,
-            lastName: true,
-            phone: true
+            lastName: true
           }
         }
       }
@@ -164,33 +161,6 @@ const autoMarkAbsentStudents = async () => {
           });
           absentCount++;
           console.log(`❌ Created absent record for student ${student.user.firstName} ${student.user.lastName}`);
-
-          // Send SMS notification for absent student (non-blocking)
-          try {
-            if (student.user && student.user.phone) {
-              smsService.sendAttendanceSMS(
-                {
-                  name: `${student.user.firstName} ${student.user.lastName}`,
-                  phone: student.user.phone
-                },
-                {
-                  date: today,
-                  className: student.class?.name || 'Unknown Class',
-                  status: 'ABSENT',
-                  reason: 'No mark-in recorded by 9:00 AM'
-                },
-                'absent' // Use appropriate campaign ID for absent notifications
-              ).then(smsResult => {
-                if (smsResult && smsResult.success) {
-                  console.log(`📱 Absent SMS sent to ${student.user.firstName} ${student.user.lastName}`);
-                }
-              }).catch(smsError => {
-                console.error(`❌ Failed to send absent SMS to ${student.user.firstName}:`, smsError.message);
-              });
-            }
-          } catch (smsError) {
-            console.error(`❌ SMS preparation failed for ${student.user.firstName}:`, smsError.message);
-          }
         }
       } catch (studentError) {
         errorCount++;
