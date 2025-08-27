@@ -1,5 +1,5 @@
 import { PrismaClient } from './generated/prisma/index.js';
-import { format, startOfDay, endOfDay } from 'date-fns';
+import moment from 'moment';
 import { z } from 'zod';
 
 const prisma = new PrismaClient();
@@ -92,10 +92,10 @@ async function autoMarkAbsentStudents() {
       return;
     }
     
-    const today = startOfDay(new Date());
-    const todayEnd = endOfDay(new Date());
+    const today = moment().startOf('day').toDate();
+    const todayEnd = moment().endOf('day').toDate();
     
-    console.log('📅 Processing date:', format(today, 'yyyy-MM-dd'));
+    console.log('📅 Processing date:', moment(today).format('YYYY-MM-DD'));
     
     // Get all active students
     const students = await prisma.student.findMany({
@@ -174,7 +174,7 @@ async function autoMarkAbsentStudents() {
     console.log(`✅ Already marked: ${alreadyMarked}`);
     console.log(`❌ Newly marked absent: ${markedAbsent}`);
     console.log(`❌ Errors: ${errors}`);
-    console.log(`📅 Date: ${format(today, 'yyyy-MM-dd')}`);
+    console.log(`📅 Date: ${moment(today).format('YYYY-MM-DD')}`);
     console.log(`⏰ Time: ${afghanTime}`);
     
   } catch (error) {
