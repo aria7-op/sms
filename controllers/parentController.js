@@ -1417,6 +1417,20 @@
         // Get all student IDs for this parent
         const studentIds = parent.students.map(student => student.id);
 
+        // Get class IDs for parent's children (if they exist)
+        const classIds = parent.students
+          .map(s => s.classId)
+          .filter(Boolean)
+          .map(id => BigInt(id));
+
+        console.log('🔍 ParentController: Student IDs:', studentIds.map(id => id.toString()));
+        console.log('🔍 ParentController: Class IDs:', classIds.map(id => id.toString()));
+
+        // If no students, only show school-wide notifications
+        if (studentIds.length === 0) {
+          console.log('ℹ️ ParentController: Parent has no students, showing only school notifications');
+        }
+
         // Build filter for notifications
         const filter = {
           schoolId: BigInt(schoolId),
@@ -1426,32 +1440,37 @@
             {
               recipients: {
                 some: {
-                  userId: BigInt(parentId),
-                  deletedAt: null
+                  userId: BigInt(parentId)
                 }
-              }
-            },
-            // Notifications related to parent's children
-            {
-              entityType: 'STUDENT',
-              entityId: {
-                in: studentIds
               }
             },
             // General school notifications
             {
               entityType: 'SCHOOL',
               entityId: BigInt(schoolId)
-            },
-            // Class notifications for parent's children's classes
-            {
-              entityType: 'CLASS',
-              entityId: {
-                in: parent.students.map(s => s.classId).filter(Boolean)
-              }
             }
           ]
         };
+
+        // Add student-related filters only if parent has students
+        if (studentIds.length > 0) {
+          filter.OR.push({
+            entityType: 'STUDENT',
+            entityId: {
+              in: studentIds
+            }
+          });
+
+          // Add class filter only if there are class IDs
+          if (classIds.length > 0) {
+            filter.OR.push({
+              entityType: 'CLASS',
+              entityId: {
+                in: classIds
+              }
+            });
+          }
+        }
 
         if (type) filter.type = type.toUpperCase();
         if (category) filter.entityType = category.toUpperCase();
@@ -1469,8 +1488,7 @@
           include: {
             recipients: {
               where: {
-                userId: BigInt(parentId),
-                deletedAt: null
+                userId: BigInt(parentId)
               }
             },
             sender: {
@@ -1481,9 +1499,7 @@
                 email: true
               }
             },
-            attachments: {
-              where: { deletedAt: null }
-            }
+            attachments: true
           },
           orderBy: { createdAt: 'desc' },
           take: parseInt(limit)
@@ -1517,7 +1533,7 @@
               name: `${notification.sender.firstName} ${notification.sender.lastName}`,
               email: notification.sender.email
             } : null,
-            attachments: notification.attachments.map(attachment => ({
+            attachments: (notification.attachments || []).map(attachment => ({
               id: attachment.id.toString(),
               name: attachment.name,
               url: attachment.url,
@@ -1525,8 +1541,22 @@
               size: attachment.size,
               mimeType: attachment.mimeType
             })),
-            metadata: notification.metadata ? JSON.parse(notification.metadata) : null,
-            actions: notification.actions ? JSON.parse(notification.actions) : null
+            metadata: notification.metadata ? (() => {
+              try {
+                return JSON.parse(notification.metadata);
+              } catch (e) {
+                console.warn('Failed to parse notification metadata:', e);
+                return null;
+              }
+            })() : null,
+            actions: notification.actions ? (() => {
+              try {
+                return JSON.parse(notification.actions);
+              } catch (e) {
+                console.warn('Failed to parse notification actions:', e);
+                return null;
+              }
+            })() : null
           };
         });
 
@@ -1538,6 +1568,11 @@
         }
 
         console.log('✅ ParentController: Returning', filteredNotifications.length, 'filtered notifications');
+
+        // If no notifications found, return empty array instead of error
+        if (filteredNotifications.length === 0) {
+          console.log('ℹ️ ParentController: No notifications found for parent');
+        }
 
         return res.json({
           success: true,
@@ -1669,8 +1704,7 @@
               {
                 recipients: {
                   some: {
-                    userId: BigInt(parentId),
-                    deletedAt: null
+                    userId: BigInt(parentId)
                   }
                 }
               },
@@ -1683,8 +1717,7 @@
           include: {
             recipients: {
               where: {
-                userId: BigInt(parentId),
-                deletedAt: null
+                userId: BigInt(parentId)
               }
             }
           }
