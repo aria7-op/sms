@@ -545,7 +545,7 @@ class ParentController {
     try {
       const { schoolId } = req.user;
       const { parentId, studentId } = req.params;
-      const { startDate, endDate } = req.query;
+      const { startDate, endDate, period } = req.query;
 
       // Verify parent has access to this student
       const parent = await prisma.parent.findFirst({
@@ -556,21 +556,32 @@ class ParentController {
         },
         include: {
           students: {
-            where: { id: BigInt(studentId) }
+            where: { id: BigInt(studentId), deletedAt: null }
           }
         }
       });
 
       if (!parent || parent.students.length === 0) {
-        return res.status(403).json({
+        return res.status(404).json({
           success: false,
-          message: 'Access denied to student data'
+          message: 'Student not found or access denied'
         });
       }
 
-      // Build date filter
+      // Build date filter based on period
       const dateFilter = {};
-      if (startDate && endDate) {
+      const now = new Date();
+      
+      if (period === 'week') {
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        dateFilter.date = { gte: weekAgo, lte: now };
+      } else if (period === 'month') {
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        dateFilter.date = { gte: monthAgo, lte: now };
+      } else if (period === 'semester') {
+        const semesterAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+        dateFilter.date = { gte: semesterAgo, lte: now };
+      } else if (startDate && endDate) {
         dateFilter.date = {
           gte: new Date(startDate),
           lte: new Date(endDate)
@@ -581,7 +592,21 @@ class ParentController {
       const attendance = await prisma.attendance.findMany({
         where: {
           studentId: BigInt(studentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null,
           ...dateFilter
+        },
+        include: {
+          subject: {
+            select: {
+              name: true
+            }
+          },
+          class: {
+            select: {
+              name: true
+            }
+          }
         },
         orderBy: { date: 'desc' },
         take: 100 // Limit to last 100 records
@@ -589,10 +614,89 @@ class ParentController {
 
       const convertedAttendance = convertBigInts(attendance);
 
+      // Calculate attendance summary
+      const totalDays = convertedAttendance.length;
+      const presentDays = convertedAttendance.filter(a => a.status === 'PRESENT').length;
+      const absentDays = convertedAttendance.filter(a => a.status === 'ABSENT').length;
+      const lateDays = convertedAttendance.filter(a => a.status === 'LATE').length;
+      const excusedDays = convertedAttendance.filter(a => a.status === 'EXCUSED').length;
+      const attendancePercentage = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
+
+      // Calculate current streak
+      let currentStreak = 0;
+      let longestStreak = 0;
+      let tempStreak = 0;
+      
+      for (let i = 0; i < convertedAttendance.length; i++) {
+        if (convertedAttendance[i].status === 'PRESENT') {
+          tempStreak++;
+          if (i === 0) currentStreak = tempStreak;
+        } else {
+          longestStreak = Math.max(longestStreak, tempStreak);
+          tempStreak = 0;
+        }
+      }
+      longestStreak = Math.max(longestStreak, tempStreak);
+
+      // Generate monthly data for charts
+      const monthlyData = [];
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      
+      for (let i = 11; i >= 0; i--) {
+        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+        
+        const monthAttendance = convertedAttendance.filter(a => {
+          const recordDate = new Date(a.date);
+          return recordDate >= monthDate && recordDate <= monthEnd;
+        });
+        
+        const monthPresent = monthAttendance.filter(a => a.status === 'PRESENT').length;
+        const monthAbsent = monthAttendance.filter(a => a.status === 'ABSENT').length;
+        const monthLate = monthAttendance.filter(a => a.status === 'LATE').length;
+        const monthExcused = monthAttendance.filter(a => a.status === 'EXCUSED').length;
+        
+        monthlyData.push({
+          month: monthNames[monthDate.getMonth()],
+          present: monthPresent,
+          absent: monthAbsent,
+          late: monthLate,
+          excused: monthExcused
+        });
+      }
+
+      // Transform attendance records to match frontend interface
+      const records = convertedAttendance.map(record => ({
+        id: record.id,
+        date: record.date,
+        status: record.status.toLowerCase(),
+        subject: record.subject?.name,
+        period: record.period,
+        remarks: record.remarks
+      }));
+
+      // Create summary object
+      const summary = {
+        studentId,
+        studentName: `${parent.students[0].user.firstName} ${parent.students[0].user.lastName}`,
+        totalDays,
+        presentDays,
+        absentDays,
+        lateDays,
+        excusedDays,
+        attendancePercentage,
+        currentStreak,
+        longestStreak
+      };
+
       return res.json({
         success: true,
         message: 'Student attendance retrieved successfully',
-        data: convertedAttendance
+        data: {
+          records,
+          summary,
+          monthlyData
+        }
       });
 
     } catch (error) {
