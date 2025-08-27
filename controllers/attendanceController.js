@@ -1,136 +1,109 @@
-  import { PrismaClient } from '../generated/prisma/client.js';
-  import { createSuccessResponse, createErrorResponse } from '../utils/responseUtils.js';
-  import smsService from '../services/smsService.js';
+import { PrismaClient } from '../generated/prisma/client.js';
+import { createSuccessResponse, createErrorResponse } from '../utils/responseUtils.js';
+import { smsService } from '../services/smsService.js';
+import { convertBigInts } from '../utils/prismaUtils.js';
 
-  const prisma = new PrismaClient();
+// ======================
+// TIME-BASED ATTENDANCE CONSTRAINTS
+// ======================
 
-  /**
-   * Get all attendances with optional filtering
-   */
-  export const getAllAttendances = async (req, res) => {
-    try {
-      const { 
-        studentId, 
-        classId, 
-        date, 
-        status, 
-        schoolId = 1, // Default school ID for testing
-        page = 1, 
-        limit = 50 
-      } = req.query;
+// Afghanistan timezone (UTC+4:30)
+const AFGHANISTAN_TIMEZONE = 'Asia/Kabul';
 
-      const where = {
-        schoolId: BigInt(schoolId),
-        deletedAt: null
-      };
+// Attendance time windows (in Afghanistan time)
+const ATTENDANCE_TIMES = {
+  MARK_IN_START: 7,    // 7:00 AM
+  MARK_IN_END: 8,      // 8:00 AM
+  MARK_OUT_START: 12,  // 12:00 PM (noon)
+  MARK_OUT_END: 13,    // 1:00 PM
+  AUTO_ABSENT_TIME: 9  // 9:00 AM - after this time, mark absent if no mark-in
+};
 
-      if (studentId) where.studentId = BigInt(studentId);
-      if (classId) where.classId = BigInt(classId);
-      if (date) where.date = new Date(date);
-      if (status) where.status = status;
+/**
+ * Get current time in Afghanistan timezone
+ */
+const getAfghanistanTime = () => {
+  const now = new Date();
+  return new Date(now.toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE }));
+};
 
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-      const take = parseInt(limit);
+/**
+ * Check if current time is within mark-in window (7-8 AM Afghanistan time)
+ */
+const isMarkInTimeWindow = () => {
+  const afghanTime = getAfghanistanTime();
+  const hour = afghanTime.getHours();
+  return hour >= ATTENDANCE_TIMES.MARK_IN_START && hour < ATTENDANCE_TIMES.MARK_IN_END;
+};
 
-      const [attendances, total] = await Promise.all([
-        prisma.attendance.findMany({
-          where,
-          include: {
-            student: {
-              select: {
-                id: true,
-                uuid: true,
-                rollNo: true,
-                user: {
-                  select: {
-                    firstName: true,
-                    lastName: true,
-                    email: true
-                  }
-                }
-              }
-            },
-            class: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            },
-            subject: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            }
-          },
-          orderBy: { date: 'desc' },
-          skip,
-          take
-        }),
-        prisma.attendance.count({ where })
-      ]);
+/**
+ * Check if current time is within mark-out window (12-1 PM Afghanistan time)
+ */
+const isMarkOutTimeWindow = () => {
+  const afghanTime = getAfghanistanTime();
+  const hour = afghanTime.getHours();
+  return hour >= ATTENDANCE_TIMES.MARK_OUT_START && hour < ATTENDANCE_TIMES.MARK_OUT_END;
+};
 
-      // Convert BigInt values to regular numbers for JSON serialization
-      const serializedAttendances = attendances.map(attendance => ({
-        ...attendance,
-        id: Number(attendance.id),
-        studentId: attendance.studentId ? Number(attendance.studentId) : null,
-        classId: attendance.classId ? Number(attendance.classId) : null,
-        subjectId: attendance.subjectId ? Number(attendance.subjectId) : null,
-        schoolId: attendance.schoolId ? Number(attendance.schoolId) : null,
-        createdBy: attendance.createdBy ? Number(attendance.createdBy) : null,
-        updatedBy: attendance.updatedBy ? Number(attendance.updatedBy) : null,
-        student: attendance.student ? {
-          ...attendance.student,
-          id: Number(attendance.student.id),
-          user: attendance.student.user ? {
-            ...attendance.student.user
-          } : null
-        } : null,
-        class: attendance.class ? {
-          ...attendance.class,
-          id: Number(attendance.class.id)
-        } : null,
-        subject: attendance.subject ? {
-          ...attendance.subject,
-          id: Number(attendance.subject.id)
-        } : null
-      }));
+/**
+ * Check if it's time to automatically mark absent students (after 9 AM)
+ */
+const isAutoAbsentTime = () => {
+  const afghanTime = getAfghanistanTime();
+  const hour = afghanTime.getHours();
+  return hour >= ATTENDANCE_TIMES.AUTO_ABSENT_TIME;
+};
 
-      res.json({
-        success: true,
-        message: 'Attendances retrieved successfully',
-        data: {
-          attendances: serializedAttendances,
-          pagination: {
-            page: parseInt(page),
-            limit: parseInt(limit),
-            total,
-            pages: Math.ceil(total / parseInt(limit))
-          }
-        }
-      });
-    } catch (error) {
-      console.error('Error in getAllAttendances:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to retrieve attendances',
-        message: error.message
-      });
-    }
-  };
+/**
+ * Get formatted Afghanistan time string
+ */
+const getFormattedAfghanTime = () => {
+  const afghanTime = getAfghanistanTime();
+  return afghanTime.toLocaleString('en-US', { 
+    timeZone: AFGHANISTAN_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+};
 
-  /**
-   * Get attendance by ID
-   */
-  export const getAttendanceById = async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-    const attendance = await prisma.attendance.findUnique({
-        where: { id: BigInt(id) },
+const prisma = new PrismaClient();
+
+/**
+ * Get all attendances with optional filtering
+ */
+export const getAllAttendances = async (req, res) => {
+  try {
+    const { 
+      studentId, 
+      classId, 
+      date, 
+      status, 
+      schoolId = 1, // Default school ID for testing
+      page = 1, 
+      limit = 50 
+    } = req.query;
+
+    const where = {
+      schoolId: BigInt(schoolId),
+      deletedAt: null
+    };
+
+    if (studentId) where.studentId = BigInt(studentId);
+    if (classId) where.classId = BigInt(classId);
+    if (date) where.date = new Date(date);
+    if (status) where.status = status;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    const [attendances, total] = await Promise.all([
+      prisma.attendance.findMany({
+        where,
         include: {
           student: {
             select: {
@@ -160,905 +133,1294 @@
               code: true
             }
           }
+        },
+        orderBy: { date: 'desc' },
+        skip,
+        take
+      }),
+      prisma.attendance.count({ where })
+    ]);
+
+    // Convert BigInt values to regular numbers for JSON serialization
+    const serializedAttendances = attendances.map(attendance => ({
+      ...attendance,
+      id: Number(attendance.id),
+      studentId: attendance.studentId ? Number(attendance.studentId) : null,
+      classId: attendance.classId ? Number(attendance.classId) : null,
+      subjectId: attendance.subjectId ? Number(attendance.subjectId) : null,
+      schoolId: attendance.schoolId ? Number(attendance.schoolId) : null,
+      createdBy: attendance.createdBy ? Number(attendance.createdBy) : null,
+      updatedBy: attendance.updatedBy ? Number(attendance.updatedBy) : null,
+      student: attendance.student ? {
+        ...attendance.student,
+        id: Number(attendance.student.id),
+        user: attendance.student.user ? {
+          ...attendance.student.user
+        } : null
+      } : null,
+      class: attendance.class ? {
+        ...attendance.class,
+        id: Number(attendance.class.id)
+      } : null,
+      subject: attendance.subject ? {
+        ...attendance.subject,
+        id: Number(attendance.subject.id)
+      } : null
+    }));
+
+    res.json({
+      success: true,
+      message: 'Attendances retrieved successfully',
+      data: {
+        attendances: serializedAttendances,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / parseInt(limit))
         }
-      });
-
-      if (!attendance) {
-        return createErrorResponse(res, 'Attendance not found', 404);
       }
+    });
+  } catch (error) {
+    console.error('Error in getAllAttendances:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve attendances',
+      message: error.message
+    });
+  }
+};
 
-      return createSuccessResponse(res, 'Attendance retrieved successfully', attendance);
-    } catch (error) {
-      console.error('Error in getAttendanceById:', error);
-      return createErrorResponse(res, 'Failed to retrieve attendance', 500);
+/**
+ * Get attendance by ID
+ */
+export const getAttendanceById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+  const attendance = await prisma.attendance.findUnique({
+      where: { id: BigInt(id) },
+      include: {
+        student: {
+          select: {
+            id: true,
+            uuid: true,
+            rollNo: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                email: true
+              }
+            }
+          }
+        },
+        class: {
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
+        },
+        subject: {
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
+        }
+      }
+    });
+
+    if (!attendance) {
+      return createErrorResponse(res, 'Attendance not found', 404);
     }
-  };
 
-  /**
-   * Create new attendance record
-   */
-  export const createAttendance = async (req, res) => {
-    try {
-      const {
-        studentId,
-        classId,
-        subjectId,
-        date,
-        status,
-        inTime,
-        outTime,
-        remarks
-      } = req.body;
+    return createSuccessResponse(res, 'Attendance retrieved successfully', attendance);
+  } catch (error) {
+    console.error('Error in getAttendanceById:', error);
+    return createErrorResponse(res, 'Failed to retrieve attendance', 500);
+  }
+};
 
-      const schoolId = req.user.schoolId;
-      const createdBy = req.user.id;
+/**
+ * Create new attendance record
+ */
+export const createAttendance = async (req, res) => {
+  try {
+    const {
+      studentId,
+      classId,
+      subjectId,
+      date,
+      status,
+      inTime,
+      outTime,
+      remarks
+    } = req.body;
 
-      // Validate required fields
-      if (!studentId || !classId || !date || !status) {
-        return createErrorResponse(res, 'Missing required fields: studentId, classId, date, status', 400);
+    const schoolId = req.user.schoolId;
+    const createdBy = req.user.id;
+
+    // Validate required fields
+    if (!studentId || !classId || !date || !status) {
+      return createErrorResponse(res, 'Missing required fields: studentId, classId, date, status', 400);
+    }
+
+    // Check if attendance already exists for this student, class, subject, and date
+    const existingAttendance = await prisma.attendance.findFirst({
+      where: {
+        studentId: BigInt(studentId),
+        classId: BigInt(classId),
+        subjectId: subjectId ? BigInt(subjectId) : null,
+        date: new Date(date),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
       }
+    });
 
-      // Check if attendance already exists for this student, class, subject, and date
-      const existingAttendance = await prisma.attendance.findFirst({
-        where: {
-          studentId: BigInt(studentId),
-          classId: BigInt(classId),
-          subjectId: subjectId ? BigInt(subjectId) : null,
-          date: new Date(date),
-          schoolId: BigInt(schoolId),
-          deletedAt: null
+    if (existingAttendance) {
+      return createErrorResponse(res, 'Attendance record already exists for this student, class, and date', 409);
+    }
+
+    // Create attendance record
+  const attendance = await prisma.attendance.create({
+      data: {
+        date: new Date(date),
+        status,
+        inTime: inTime ? new Date(inTime) : null,
+        outTime: outTime ? new Date(outTime) : null,
+        remarks,
+        studentId: BigInt(studentId),
+        classId: BigInt(classId),
+        subjectId: subjectId ? BigInt(subjectId) : null,
+        schoolId: BigInt(schoolId),
+        createdBy: BigInt(createdBy)
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            rollNo: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        class: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    });
+
+    return createSuccessResponse(res, 'Attendance created successfully', attendance, 201);
+  } catch (error) {
+    console.error('Error in createAttendance:', error);
+    return createErrorResponse(res, 'Failed to create attendance', 500);
+  }
+};
+
+/**
+ * Update attendance record
+ */
+export const updateAttendance = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      status,
+      inTime,
+      outTime,
+      remarks
+    } = req.body;
+
+    const updatedBy = req.user.id;
+
+    // Check if attendance exists
+    const existingAttendance = await prisma.attendance.findUnique({
+      where: { id: BigInt(id) }
+    });
+
+    if (!existingAttendance) {
+      return createErrorResponse(res, 'Attendance not found', 404);
+    }
+
+    // Update attendance
+  const attendance = await prisma.attendance.update({
+      where: { id: BigInt(id) },
+      data: {
+        status,
+        inTime: inTime ? new Date(inTime) : null,
+        outTime: outTime ? new Date(outTime) : null,
+        remarks,
+        updatedBy: BigInt(updatedBy)
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            rollNo: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        class: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    });
+
+    return createSuccessResponse(res, 'Attendance updated successfully', attendance);
+  } catch (error) {
+    console.error('Error in updateAttendance:', error);
+    return createErrorResponse(res, 'Failed to update attendance', 500);
+  }
+};
+
+/**
+ * Mark student in-time (arrival)
+ */
+export const markInTime = async (req, res) => {
+  try {
+    console.log('🚀 markInTime endpoint called');
+    console.log('📝 Request body:', req.body);
+    
+    const { studentId, subjectId, date } = req.body;
+    
+    console.log('🔍 Extracted values:', { studentId, subjectId, date });
+    
+    // Validate required fields
+    if (!studentId || !date) {
+      console.log('❌ Missing required fields');
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: studentId, date'
+      });
+    }
+
+    const currentTime = new Date();
+    const attendanceDate = new Date(date);
+    const schoolId = 1; // Default school ID for testing
+    const createdBy = 1; // Default user ID for testing
+
+    // Check if current time is within mark-in window (7-8 AM Afghanistan time)
+    if (!isMarkInTimeWindow()) {
+      const afghanTime = getFormattedAfghanTime();
+      console.log('❌ Mark-in time window closed. Current Afghanistan time:', afghanTime);
+      console.log('⏰ Mark-in allowed only from 7:00 AM to 8:00 AM Afghanistan time');
+      return res.status(400).json({
+        success: false,
+        error: 'Mark-in time window closed',
+        message: `Mark-in is only allowed from 7:00 AM to 8:00 AM Afghanistan time. Current time: ${afghanTime}`,
+        currentAfghanTime: afghanTime,
+        allowedWindow: '7:00 AM - 8:00 AM (Afghanistan time)'
+      });
+    }
+
+    console.log('⏰ Current time:', currentTime);
+    console.log('📅 Attendance date:', attendanceDate);
+    console.log('🏫 School ID:', schoolId);
+    console.log('👤 Created by:', createdBy);
+    console.log('🌍 Current Afghanistan time:', getFormattedAfghanTime());
+    console.log('✅ Mark-in time window is open');
+
+    // First, find the student by ID
+    console.log('🔍 Finding student by ID:', studentId);
+    const student = await prisma.student.findUnique({
+      where: {
+        id: BigInt(studentId),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            phone: true
+          }
+        },
+        class: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    });
+
+    if (!student) {
+      console.log('❌ Student not found with ID:', studentId);
+      return res.status(404).json({
+        success: false,
+        error: `Student with ID ${studentId} not found`
+      });
+    }
+
+    console.log('✅ Student found:', {
+      id: student.id,
+      rollNo: student.rollNo,
+      name: `${student.user.firstName} ${student.user.lastName}`
+    });
+
+    // Check if attendance record exists
+    console.log('🔍 Checking if attendance record exists...');
+    let attendance = await prisma.attendance.findFirst({
+      where: {
+        studentId: student.id,
+        classId: student.class.id,
+        subjectId: subjectId ? BigInt(subjectId) : null,
+        date: attendanceDate,
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      }
+    });
+
+    if (attendance) {
+      console.log('📝 Updating existing attendance record:', attendance.id);
+      // Update existing record with in-time
+      attendance = await prisma.attendance.update({
+        where: { id: attendance.id },
+        data: {
+          inTime: currentTime,
+          status: 'PRESENT'
         }
       });
-
-      if (existingAttendance) {
-        return createErrorResponse(res, 'Attendance record already exists for this student, class, and date', 409);
-      }
-
-      // Create attendance record
-    const attendance = await prisma.attendance.create({
+      console.log('✅ Attendance record updated successfully');
+    } else {
+      console.log('🆕 Creating new attendance record...');
+      // Create new record
+      attendance = await prisma.attendance.create({
         data: {
-          date: new Date(date),
-          status,
-          inTime: inTime ? new Date(inTime) : null,
-          outTime: outTime ? new Date(outTime) : null,
-          remarks,
-          studentId: BigInt(studentId),
-          classId: BigInt(classId),
+          date: attendanceDate,
+          status: 'PRESENT',
+          inTime: currentTime,
+          studentId: student.id,
+          classId: student.class.id,
           subjectId: subjectId ? BigInt(subjectId) : null,
           schoolId: BigInt(schoolId),
           createdBy: BigInt(createdBy)
-        },
-        include: {
-          student: {
-            select: {
-              id: true,
-              rollNo: true,
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true
-                }
-              }
-            }
-          },
-          class: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
         }
       });
-
-      return createSuccessResponse(res, 'Attendance created successfully', attendance, 201);
-    } catch (error) {
-      console.error('Error in createAttendance:', error);
-      return createErrorResponse(res, 'Failed to create attendance', 500);
+      console.log('✅ New attendance record created with ID:', attendance.id);
     }
-  };
 
-  /**
-   * Update attendance record
-   */
-  export const updateAttendance = async (req, res) => {
+    // Convert BigInt values to regular numbers and dates to ISO strings for JSON serialization
+    console.log('🔄 Serializing attendance data...');
+    const serializedAttendance = {
+      ...attendance,
+      id: Number(attendance.id),
+      studentId: attendance.studentId ? Number(attendance.studentId) : null,
+      classId: attendance.classId ? Number(attendance.classId) : null,
+      subjectId: attendance.subjectId ? Number(attendance.subjectId) : null,
+      schoolId: attendance.schoolId ? Number(attendance.schoolId) : null,
+      createdBy: attendance.createdBy ? Number(attendance.createdBy) : null,
+      updatedBy: attendance.updatedBy ? Number(attendance.updatedBy) : null,
+      date: attendance.date ? attendance.date.toISOString() : null,
+      inTime: attendance.inTime ? attendance.inTime.toISOString() : null,
+      outTime: attendance.outTime ? attendance.outTime.toISOString() : null,
+      createdAt: attendance.createdAt ? attendance.createdAt.toISOString() : null,
+      updatedAt: attendance.updatedAt ? attendance.updatedAt.toISOString() : null
+    };
+    console.log('✅ Data serialized successfully');
+
+    // Send SMS notification (non-blocking)
     try {
-      const { id } = req.params;
-      const {
-        status,
-        inTime,
-        outTime,
-        remarks
-      } = req.body;
-
-      const updatedBy = req.user.id;
-
-      // Check if attendance exists
-      const existingAttendance = await prisma.attendance.findUnique({
-        where: { id: BigInt(id) }
-      });
-
-      if (!existingAttendance) {
-        return createErrorResponse(res, 'Attendance not found', 404);
-      }
-
-      // Update attendance
-    const attendance = await prisma.attendance.update({
-        where: { id: BigInt(id) },
-        data: {
-          status,
-          inTime: inTime ? new Date(inTime) : null,
-          outTime: outTime ? new Date(outTime) : null,
-          remarks,
-          updatedBy: BigInt(updatedBy)
-        },
-        include: {
-          student: {
-            select: {
-              id: true,
-              rollNo: true,
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true
-                }
-              }
-            }
-          },
-          class: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
-        }
-      });
-
-      return createSuccessResponse(res, 'Attendance updated successfully', attendance);
-    } catch (error) {
-      console.error('Error in updateAttendance:', error);
-      return createErrorResponse(res, 'Failed to update attendance', 500);
-    }
-  };
-
-  /**
-   * Mark student in-time (arrival)
-   */
-  export const markInTime = async (req, res) => {
-    try {
-      console.log('🚀 markInTime endpoint called');
-      console.log('📝 Request body:', req.body);
+      console.log('🔍 Starting SMS process for student ID:', studentId);
+      console.log('📱 About to call SMS service...');
       
-      const { studentId, subjectId, date } = req.body;
-      
-      console.log('🔍 Extracted values:', { studentId, subjectId, date });
-      
-      // Validate required fields
-      if (!studentId || !date) {
-        console.log('❌ Missing required fields');
-        return res.status(400).json({
-          success: false,
-          error: 'Missing required fields: studentId, date'
+      // Class information already available from student lookup
+      const classInfo = student.class;
+
+      if (student && student.user && student.user.phone) {
+        console.log('👤 Student found:', {
+          name: `${student.user.firstName} ${student.user.lastName}`,
+          phone: student.user.phone
         });
-      }
-
-      const currentTime = new Date();
-      const attendanceDate = new Date(date);
-      const schoolId = 1; // Default school ID for testing
-      const createdBy = 1; // Default user ID for testing
-
-      console.log('⏰ Current time:', currentTime);
-      console.log('📅 Attendance date:', attendanceDate);
-      console.log('🏫 School ID:', schoolId);
-      console.log('👤 Created by:', createdBy);
-
-      // First, find the student by ID
-      console.log('🔍 Finding student by ID:', studentId);
-      const student = await prisma.student.findUnique({
-        where: {
-          id: BigInt(studentId),
-          schoolId: BigInt(schoolId),
-          deletedAt: null
-        },
-        include: {
-          user: {
-            select: {
-              firstName: true,
-              lastName: true,
-              phone: true
-            }
-          },
-          class: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
-        }
-      });
-
-      if (!student) {
-        console.log('❌ Student not found with ID:', studentId);
-        return res.status(404).json({
-          success: false,
-          error: `Student with ID ${studentId} not found`
-        });
-      }
-
-      console.log('✅ Student found:', {
-        id: student.id,
-        rollNo: student.rollNo,
-        name: `${student.user.firstName} ${student.user.lastName}`
-      });
-
-      // Check if attendance record exists
-      console.log('🔍 Checking if attendance record exists...');
-      let attendance = await prisma.attendance.findFirst({
-        where: {
-          studentId: student.id,
-          classId: student.class.id,
-          subjectId: subjectId ? BigInt(subjectId) : null,
-          date: attendanceDate,
-          schoolId: BigInt(schoolId),
-          deletedAt: null
-        }
-      });
-
-      if (attendance) {
-        console.log('📝 Updating existing attendance record:', attendance.id);
-        // Update existing record with in-time
-        attendance = await prisma.attendance.update({
-          where: { id: attendance.id },
-          data: {
-            inTime: currentTime,
-            status: 'PRESENT'
-          }
-        });
-        console.log('✅ Attendance record updated successfully');
-      } else {
-        console.log('🆕 Creating new attendance record...');
-        // Create new record
-        attendance = await prisma.attendance.create({
-          data: {
-            date: attendanceDate,
-            status: 'PRESENT',
-            inTime: currentTime,
-            studentId: student.id,
-            classId: student.class.id,
-            subjectId: subjectId ? BigInt(subjectId) : null,
-            schoolId: BigInt(schoolId),
-            createdBy: BigInt(createdBy)
-          }
-        });
-        console.log('✅ New attendance record created with ID:', attendance.id);
-      }
-
-      // Convert BigInt values to regular numbers and dates to ISO strings for JSON serialization
-      console.log('🔄 Serializing attendance data...');
-      const serializedAttendance = {
-        ...attendance,
-        id: Number(attendance.id),
-        studentId: attendance.studentId ? Number(attendance.studentId) : null,
-        classId: attendance.classId ? Number(attendance.classId) : null,
-        subjectId: attendance.subjectId ? Number(attendance.subjectId) : null,
-        schoolId: attendance.schoolId ? Number(attendance.schoolId) : null,
-        createdBy: attendance.createdBy ? Number(attendance.createdBy) : null,
-        updatedBy: attendance.updatedBy ? Number(attendance.updatedBy) : null,
-        date: attendance.date ? attendance.date.toISOString() : null,
-        inTime: attendance.inTime ? attendance.inTime.toISOString() : null,
-        outTime: attendance.outTime ? attendance.outTime.toISOString() : null,
-        createdAt: attendance.createdAt ? attendance.createdAt.toISOString() : null,
-        updatedAt: attendance.updatedAt ? attendance.updatedAt.toISOString() : null
-      };
-      console.log('✅ Data serialized successfully');
-
-      // Send SMS notification (non-blocking)
-      try {
-        console.log('🔍 Starting SMS process for student ID:', studentId);
-        console.log('📱 About to call SMS service...');
+        console.log('📚 Class info:', classInfo);
         
-        // Class information already available from student lookup
-        const classInfo = student.class;
-
-        if (student && student.user && student.user.phone) {
-          console.log('👤 Student found:', {
-            name: `${student.user.firstName} ${student.user.lastName}`,
-            phone: student.user.phone
-          });
-          console.log('📚 Class info:', classInfo);
-          
-          // Send SMS notification asynchronously (don't wait for it)
-          console.log('📱 Calling SMS service with data:', {
-            studentName: `${student.user.firstName} ${student.user.lastName}`,
-            phone: student.user.phone,
-            inTime: currentTime,
-            date: attendanceDate,
-            className: classInfo?.name || 'Unknown Class',
-            status: 'PRESENT',
-            campaignId: 'inTime'
-          });
-          
-          console.log('📱 Calling SMS service...');
-          
-          // Make SMS service call synchronous to see the response
-          try {
-            const smsResult = await smsService.sendAttendanceSMS(
-              {
-                name: `${student.user.firstName} ${student.user.lastName}`,
-                phone: student.user.phone
-              },
-              {
-                inTime: currentTime,
-                date: attendanceDate,
-                className: classInfo?.name || 'Unknown Class',
-                status: 'PRESENT'
-              },
-              'inTime' // Use campaign ID 403 for in-time
-            );
-            
-            console.log('📱 SMS service completed!');
-            console.log('📱 SMS API Response Data:', smsResult);
-            
-            if (smsResult && smsResult.success) {
-              console.log('✅ SMS sent successfully for student:', student.user.firstName, {
-                campaignId: smsResult.campaignId,
-                phone: student.user.phone,
-                time: currentTime,
-                fullResponse: smsResult
-              });
-            } else if (smsResult === null) {
-              console.log('❌ SMS service returned null - check SMS service logs above');
-            } else {
-              console.log('⚠️ SMS service returned unsuccessful result:', smsResult);
-            }
-          } catch (smsError) {
-            console.error('❌ SMS sending failed:', {
-              error: smsError.message,
-              stack: smsError.stack,
-              fullError: smsError
-            });
-          }
-        } else {
-          console.log('⚠️ Student or phone not found:', {
-            student: !!student,
-            user: !!student?.user,
-            phone: student?.user?.phone
-          });
-        }
-      } catch (smsError) {
-        console.error('Failed to prepare SMS data (non-critical):', smsError.message);
-      }
-
-      console.log('📤 Sending success response...');
-      res.json({
-        success: true,
-        message: 'In-time marked successfully',
-        data: serializedAttendance
-      });
-      console.log('✅ Response sent successfully');
-    } catch (error) {
-      console.error('Error in markInTime:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to mark in-time',
-        message: error.message
-      });
-    }
-  };
-
-  /**
-   * Mark student out-time (departure)
-   */
-  export const markOutTime = async (req, res) => {
-    try {
-      console.log('🚀 markOutTime endpoint called');
-      console.log('📝 Request body:', req.body);
-      
-      const { studentId, subjectId, date } = req.body;
-      const schoolId = req.user?.schoolId || 1; // Default school ID for testing
-      const updatedBy = req.user?.id || 1; // Default user ID for testing
-
-      console.log('🔍 Extracted values:', { studentId, subjectId, date });
-
-      // Validate required fields
-      if (!studentId || !date) {
-        console.log('❌ Missing required fields');
-        return createErrorResponse(res, 'Missing required fields: studentId, date', 400);
-      }
-
-      const currentTime = new Date();
-      const attendanceDate = new Date(date);
-
-      console.log('⏰ Current time:', currentTime);
-      console.log('📅 Attendance date:', attendanceDate);
-      console.log('🏫 School ID:', schoolId);
-      console.log('👤 Updated by:', updatedBy);
-
-      // First, find the student by ID
-      console.log('🔍 Finding student by ID:', studentId);
-      const student = await prisma.student.findUnique({
-        where: {
-          id: BigInt(studentId),
-          schoolId: BigInt(schoolId),
-          deletedAt: null
-        },
-        include: {
-          user: {
-            select: {
-              firstName: true,
-              lastName: true,
-              phone: true
-            }
-          },
-          class: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
-        }
-      });
-
-      if (!student) {
-        console.log('❌ Student not found with ID:', studentId);
-        return createErrorResponse(res, `Student with ID ${studentId} not found`, 404);
-      }
-
-      console.log('✅ Student found:', {
-        id: student.id,
-        rollNo: student.rollNo,
-        name: `${student.user.firstName} ${student.user.lastName}`
-      });
-
-      // Find existing attendance record
-      const attendance = await prisma.attendance.findFirst({
-        where: {
-          studentId: student.id,
-          classId: student.class.id,
-          subjectId: subjectId ? BigInt(subjectId) : null,
+        // Send SMS notification asynchronously (don't wait for it)
+        console.log('📱 Calling SMS service with data:', {
+          studentName: `${student.user.firstName} ${student.user.lastName}`,
+          phone: student.user.phone,
+          inTime: currentTime,
           date: attendanceDate,
-          schoolId: BigInt(schoolId),
-          deletedAt: null
-        }
-      });
-
-      if (!attendance) {
-        return createErrorResponse(res, 'No attendance record found for this student, class, and date', 404);
-      }
-
-      // Update with out-time
-      const updatedAttendance = await prisma.attendance.update({
-        where: { id: attendance.id },
-        data: {
-          outTime: currentTime,
-          updatedBy: BigInt(updatedBy)
-        }
-      });
-
-      // Send SMS notification for out-time (non-blocking)
-      try {
-        console.log('🔍 Starting SMS process for student ID:', studentId);
-        console.log('📱 About to call SMS service...');
+          className: classInfo?.name || 'Unknown Class',
+          status: 'PRESENT',
+          campaignId: 'inTime'
+        });
         
-        if (student && student.user && student.user.phone) {
-          // Send SMS notification asynchronously (don't wait for it)
-          smsService.sendAttendanceSMS(
+        console.log('📱 Calling SMS service...');
+        
+        // Make SMS service call synchronous to see the response
+        try {
+          const smsResult = await smsService.sendAttendanceSMS(
             {
               name: `${student.user.firstName} ${student.user.lastName}`,
               phone: student.user.phone
             },
             {
-              outTime: currentTime,
+              inTime: currentTime,
               date: attendanceDate,
-              className: student.class.name,
-              status: 'DEPARTED'
+              className: classInfo?.name || 'Unknown Class',
+              status: 'PRESENT'
             },
-            'outTime' // Use campaign ID 404 for out-time
-          ).then(smsResult => {
-            if (smsResult && smsResult.success) {
-              console.log('📱 SMS sent successfully for student:', student.user.firstName, {
-                campaignId: smsResult.campaignId,
-                phone: student.user.phone,
-                time: currentTime
-              });
-            }
-          }).catch(smsError => {
-            console.error('❌ SMS sending failed (non-critical):', smsError.message);
+            'inTime' // Use campaign ID 403 for in-time
+          );
+          
+          console.log('📱 SMS service completed!');
+          console.log('📱 SMS API Response Data:', smsResult);
+          
+          if (smsResult && smsResult.success) {
+            console.log('✅ SMS sent successfully for student:', student.user.firstName, {
+              campaignId: smsResult.campaignId,
+              phone: student.user.phone,
+              time: currentTime,
+              fullResponse: smsResult
+            });
+          } else if (smsResult === null) {
+            console.log('❌ SMS service returned null - check SMS service logs above');
+          } else {
+            console.log('⚠️ SMS service returned unsuccessful result:', smsResult);
+          }
+        } catch (smsError) {
+          console.error('❌ SMS sending failed:', {
+            error: smsError.message,
+            stack: smsError.stack,
+            fullError: smsError
           });
         }
-      } catch (smsError) {
-        console.error('Failed to prepare SMS data (non-critical):', smsError.message);
+      } else {
+        console.log('⚠️ Student or phone not found:', {
+          student: !!student,
+          user: !!student?.user,
+          phone: student?.user?.phone
+        });
       }
-
-      // Serialize the attendance data to handle BigInt values and dates
-      const serializedAttendance = {
-        ...updatedAttendance,
-        id: Number(updatedAttendance.id),
-        studentId: Number(updatedAttendance.studentId),
-        classId: Number(updatedAttendance.classId),
-        schoolId: Number(updatedAttendance.schoolId),
-        createdBy: Number(updatedAttendance.createdBy),
-        updatedBy: Number(updatedAttendance.updatedBy),
-        date: updatedAttendance.date ? updatedAttendance.date.toISOString() : null,
-        inTime: updatedAttendance.inTime ? updatedAttendance.inTime.toISOString() : null,
-        outTime: updatedAttendance.outTime ? updatedAttendance.outTime.toISOString() : null,
-        createdAt: updatedAttendance.createdAt ? updatedAttendance.createdAt.toISOString() : null,
-        updatedAt: updatedAttendance.updatedAt ? updatedAttendance.updatedAt.toISOString() : null
-      };
-
-      return createSuccessResponse(res, 'Out-time marked successfully', serializedAttendance);
-    } catch (error) {
-      console.error('Error in markOutTime:', error);
-      return createErrorResponse(res, 'Failed to mark out-time', 500);
+    } catch (smsError) {
+      console.error('Failed to prepare SMS data (non-critical):', smsError.message);
     }
-  };
 
-  /**
-   * Bulk create attendance records
-   */
-  export const bulkCreateAttendance = async (req, res) => {
-    try {
-      const { attendances } = req.body;
-      const schoolId = req.user.schoolId;
-      const createdBy = req.user.id;
+    console.log('📤 Sending success response...');
+    res.json({
+      success: true,
+      message: 'In-time marked successfully',
+      data: serializedAttendance
+    });
+    console.log('✅ Response sent successfully');
+  } catch (error) {
+    console.error('Error in markInTime:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to mark in-time',
+      message: error.message
+    });
+  }
+};
 
-      if (!Array.isArray(attendances) || attendances.length === 0) {
-        return createErrorResponse(res, 'Attendances array is required and must not be empty', 400);
-      }
+/**
+ * Mark student out-time (departure)
+ */
+export const markOutTime = async (req, res) => {
+  try {
+    console.log('🚀 markOutTime endpoint called');
+    console.log('📝 Request body:', req.body);
+    
+    const { studentId, subjectId, date } = req.body;
+    const schoolId = req.user?.schoolId || 1; // Default school ID for testing
+    const updatedBy = req.user?.id || 1; // Default user ID for testing
 
-      const attendanceData = attendances.map(att => ({
-        date: new Date(att.date),
-        status: att.status,
-        inTime: att.inTime ? new Date(att.inTime) : null,
-        outTime: att.outTime ? new Date(att.outTime) : null,
-        remarks: att.remarks,
-        studentId: BigInt(att.studentId),
-        classId: BigInt(att.classId),
-        subjectId: att.subjectId ? BigInt(att.subjectId) : null,
+    console.log('🔍 Extracted values:', { studentId, subjectId, date });
+
+    // Validate required fields
+    if (!studentId || !date) {
+      console.log('❌ Missing required fields');
+      return createErrorResponse(res, 'Missing required fields: studentId, date', 400);
+    }
+
+    const currentTime = new Date();
+    const attendanceDate = new Date(date);
+
+    // Check if current time is within mark-out window (12-1 PM Afghanistan time)
+    if (!isMarkOutTimeWindow()) {
+      const afghanTime = getFormattedAfghanTime();
+      console.log('❌ Mark-out time window closed. Current Afghanistan time:', afghanTime);
+      console.log('⏰ Mark-out allowed only from 12:00 PM to 1:00 PM Afghanistan time');
+      return createErrorResponse(res, 'Mark-out time window closed', 400, {
+        message: `Mark-out is only allowed from 12:00 PM to 1:00 PM Afghanistan time. Current time: ${afghanTime}`,
+        currentAfghanTime: afghanTime,
+        allowedWindow: '12:00 PM - 1:00 PM (Afghanistan time)'
+      });
+    }
+
+    console.log('⏰ Current time:', currentTime);
+    console.log('📅 Attendance date:', attendanceDate);
+    console.log('🏫 School ID:', schoolId);
+    console.log('👤 Updated by:', updatedBy);
+    console.log('🌍 Current Afghanistan time:', getFormattedAfghanTime());
+    console.log('✅ Mark-out time window is open');
+
+    // First, find the student by ID
+    console.log('🔍 Finding student by ID:', studentId);
+    const student = await prisma.student.findUnique({
+      where: {
+        id: BigInt(studentId),
         schoolId: BigInt(schoolId),
-        createdBy: BigInt(createdBy)
-      }));
-
-      const createdAttendances = await prisma.attendance.createMany({
-        data: attendanceData,
-        skipDuplicates: true
-      });
-
-      return createSuccessResponse(res, 'Bulk attendance created successfully', {
-        created: createdAttendances.count
-      }, 201);
-    } catch (error) {
-      console.error('Error in bulkCreateAttendance:', error);
-      return createErrorResponse(res, 'Failed to create bulk attendance', 500);
-    }
-  };
-
-  /**
-   * Delete attendance record (soft delete)
-   */
-  export const deleteAttendance = async (req, res) => {
-    try {
-      const { id } = req.params;
-      const updatedBy = req.user.id;
-
-      // Check if attendance exists
-      const existingAttendance = await prisma.attendance.findUnique({
-        where: { id: BigInt(id) }
-      });
-
-      if (!existingAttendance) {
-        return createErrorResponse(res, 'Attendance not found', 404);
-      }
-
-      // Soft delete
-      await prisma.attendance.update({
-        where: { id: BigInt(id) },
-        data: {
-          deletedAt: new Date(),
-          updatedBy: BigInt(updatedBy)
-        }
-      });
-
-      return createSuccessResponse(res, 'Attendance deleted successfully');
-    } catch (error) {
-      console.error('Error in deleteAttendance:', error);
-      return createErrorResponse(res, 'Failed to delete attendance', 500);
-    }
-  };
-
-  /**
-   * Get attendance summary for a specific class and date
-   */
-  export const getClassAttendanceSummary = async (req, res) => {
-    try {
-      console.log('🔍 getClassAttendanceSummary called with:', { query: req.query, user: req.user });
-      
-      const { classId, date, schoolId: querySchoolId } = req.query;
-      const schoolId = req.user?.schoolId || querySchoolId || 1;
-
-      if (!classId || !date) {
-        return createErrorResponse(res, 'Class ID and date are required', 400);
-      }
-
-      console.log('🔍 Fetching students for class:', classId, 'school:', schoolId);
-      
-      // Get all students in the class
-      const classStudents = await prisma.student.findMany({
-        where: {
-          classId: BigInt(classId),
-          schoolId: BigInt(schoolId),
-          deletedAt: null
+        deletedAt: null
+      },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            phone: true
+          }
         },
-        include: {
-          user: {
-            select: {
-              firstName: true,
-              lastName: true
-            }
-          },
-          class: {
-            select: {
-              id: true,
-              name: true,
-              code: true
-            }
+        class: {
+          select: {
+            id: true,
+            name: true
           }
         }
-      });
-      
-      console.log('🔍 Found students:', classStudents.length);
+      }
+    });
 
-      console.log('🔍 Fetching attendance records for class:', classId, 'date:', date, 'school:', schoolId);
+    if (!student) {
+      console.log('❌ Student not found with ID:', studentId);
+      return createErrorResponse(res, `Student with ID ${studentId} not found`, 404);
+    }
+
+    console.log('✅ Student found:', {
+      id: student.id,
+      rollNo: student.rollNo,
+      name: `${student.user.firstName} ${student.user.lastName}`
+    });
+
+    // Find existing attendance record
+    const attendance = await prisma.attendance.findFirst({
+      where: {
+        studentId: student.id,
+        classId: student.class.id,
+        subjectId: subjectId ? BigInt(subjectId) : null,
+        date: attendanceDate,
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      }
+    });
+
+    if (!attendance) {
+      return createErrorResponse(res, 'No attendance record found for this student, class, and date', 404);
+    }
+
+    // Update with out-time
+    const updatedAttendance = await prisma.attendance.update({
+      where: { id: attendance.id },
+      data: {
+        outTime: currentTime,
+        updatedBy: BigInt(updatedBy)
+      }
+    });
+
+    // Send SMS notification for out-time (non-blocking)
+    try {
+      console.log('🔍 Starting SMS process for student ID:', studentId);
+      console.log('📱 About to call SMS service...');
       
-      // Get attendance records for the class and date
-      const attendanceRecords = await prisma.attendance.findMany({
-        where: {
-          classId: BigInt(classId),
-          date: new Date(date),
-          schoolId: BigInt(schoolId),
-          deletedAt: null
+      if (student && student.user && student.user.phone) {
+        // Send SMS notification asynchronously (don't wait for it)
+        smsService.sendAttendanceSMS(
+          {
+            name: `${student.user.firstName} ${student.user.lastName}`,
+            phone: student.user.phone
+          },
+          {
+            outTime: currentTime,
+            date: attendanceDate,
+            className: student.class.name,
+            status: 'DEPARTED'
+          },
+          'outTime' // Use campaign ID 404 for out-time
+        ).then(smsResult => {
+          if (smsResult && smsResult.success) {
+            console.log('📱 SMS sent successfully for student:', student.user.firstName, {
+              campaignId: smsResult.campaignId,
+              phone: student.user.phone,
+              time: currentTime
+            });
+          }
+        }).catch(smsError => {
+          console.error('❌ SMS sending failed (non-critical):', smsError.message);
+        });
+      }
+    } catch (smsError) {
+      console.error('Failed to prepare SMS data (non-critical):', smsError.message);
+    }
+
+    // Serialize the attendance data to handle BigInt values and dates
+    const serializedAttendance = {
+      ...updatedAttendance,
+      id: Number(updatedAttendance.id),
+      studentId: Number(updatedAttendance.studentId),
+      classId: Number(updatedAttendance.classId),
+      schoolId: Number(updatedAttendance.schoolId),
+      createdBy: Number(updatedAttendance.createdBy),
+      updatedBy: Number(updatedAttendance.updatedBy),
+      date: updatedAttendance.date ? updatedAttendance.date.toISOString() : null,
+      inTime: updatedAttendance.inTime ? updatedAttendance.inTime.toISOString() : null,
+      outTime: updatedAttendance.outTime ? updatedAttendance.outTime.toISOString() : null,
+      createdAt: updatedAttendance.createdAt ? updatedAttendance.createdAt.toISOString() : null,
+      updatedAt: updatedAttendance.updatedAt ? updatedAttendance.updatedAt.toISOString() : null
+    };
+
+    return createSuccessResponse(res, 'Out-time marked successfully', serializedAttendance);
+  } catch (error) {
+    console.error('Error in markOutTime:', error);
+    return createErrorResponse(res, 'Failed to mark out-time', 500);
+  }
+};
+
+/**
+ * Bulk create attendance records
+ */
+export const bulkCreateAttendance = async (req, res) => {
+  try {
+    const { attendances } = req.body;
+    const schoolId = req.user.schoolId;
+    const createdBy = req.user.id;
+
+    if (!Array.isArray(attendances) || attendances.length === 0) {
+      return createErrorResponse(res, 'Attendances array is required and must not be empty', 400);
+    }
+
+    const attendanceData = attendances.map(att => ({
+      date: new Date(att.date),
+      status: att.status,
+      inTime: att.inTime ? new Date(att.inTime) : null,
+      outTime: att.outTime ? new Date(att.outTime) : null,
+      remarks: att.remarks,
+      studentId: BigInt(att.studentId),
+      classId: BigInt(att.classId),
+      subjectId: att.subjectId ? BigInt(att.subjectId) : null,
+      schoolId: BigInt(schoolId),
+      createdBy: BigInt(createdBy)
+    }));
+
+    const createdAttendances = await prisma.attendance.createMany({
+      data: attendanceData,
+      skipDuplicates: true
+    });
+
+    return createSuccessResponse(res, 'Bulk attendance created successfully', {
+      created: createdAttendances.count
+    }, 201);
+  } catch (error) {
+    console.error('Error in bulkCreateAttendance:', error);
+    return createErrorResponse(res, 'Failed to create bulk attendance', 500);
+  }
+};
+
+/**
+ * Delete attendance record (soft delete)
+ */
+export const deleteAttendance = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updatedBy = req.user.id;
+
+    // Check if attendance exists
+    const existingAttendance = await prisma.attendance.findUnique({
+      where: { id: BigInt(id) }
+    });
+
+    if (!existingAttendance) {
+      return createErrorResponse(res, 'Attendance not found', 404);
+    }
+
+    // Soft delete
+    await prisma.attendance.update({
+      where: { id: BigInt(id) },
+      data: {
+        deletedAt: new Date(),
+        updatedBy: BigInt(updatedBy)
+      }
+    });
+
+    return createSuccessResponse(res, 'Attendance deleted successfully');
+  } catch (error) {
+    console.error('Error in deleteAttendance:', error);
+    return createErrorResponse(res, 'Failed to delete attendance', 500);
+  }
+};
+
+/**
+ * Get attendance summary for a specific class and date
+ */
+export const getClassAttendanceSummary = async (req, res) => {
+  try {
+    console.log('🔍 getClassAttendanceSummary called with:', { query: req.query, user: req.user });
+    
+    const { classId, date, schoolId: querySchoolId } = req.query;
+    const schoolId = req.user?.schoolId || querySchoolId || 1;
+
+    if (!classId || !date) {
+      return createErrorResponse(res, 'Class ID and date are required', 400);
+    }
+
+    console.log('🔍 Fetching students for class:', classId, 'school:', schoolId);
+    
+    // Get all students in the class
+    const classStudents = await prisma.student.findMany({
+      where: {
+        classId: BigInt(classId),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true
+          }
         },
-        include: {
-          student: {
-            include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true
-                }
+        class: {
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
+        }
+      }
+    });
+    
+    console.log('🔍 Found students:', classStudents.length);
+
+    console.log('🔍 Fetching attendance records for class:', classId, 'date:', date, 'school:', schoolId);
+    
+    // Get attendance records for the class and date
+    const attendanceRecords = await prisma.attendance.findMany({
+      where: {
+        classId: BigInt(classId),
+        date: new Date(date),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      include: {
+        student: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
               }
             }
           }
         }
+      }
+    });
+    
+    console.log('🔍 Found attendance records:', attendanceRecords.length);
+
+    // Calculate summary statistics
+    const totalStudents = classStudents.length;
+    const present = attendanceRecords.filter(r => r.status === 'PRESENT').length;
+    const absent = totalStudents - present;
+    const late = attendanceRecords.filter(r => r.status === 'LATE').length;
+    const attendanceRate = totalStudents > 0 ? Math.round((present / totalStudents) * 100) : 0;
+    
+    console.log('🔍 Summary calculation:');
+    console.log('🔍 Total students:', totalStudents);
+    console.log('🔍 Present count:', present);
+    console.log('🔍 Absent count:', absent);
+    console.log('🔍 Late count:', late);
+    console.log('🔍 Attendance rate:', attendanceRate);
+
+    // Create student attendance details
+    const students = classStudents.map(student => {
+      console.log('🔍 Processing student:', { studentId: student.id, studentIdType: typeof student.id });
+      console.log('🔍 Available attendance records:', attendanceRecords.map(r => ({ 
+        attendanceStudentId: r.studentId, 
+        attendanceStudentIdType: typeof r.studentId,
+        status: r.status 
+      })));
+      
+      const attendance = attendanceRecords.find(r => {
+        const match = BigInt(r.studentId) === student.id;
+        console.log('🔍 Attendance matching:', { 
+          attendanceStudentId: r.studentId, 
+          studentId: student.id, 
+          match 
+        });
+        return match;
       });
       
-      console.log('🔍 Found attendance records:', attendanceRecords.length);
-
-      // Calculate summary statistics
-      const totalStudents = classStudents.length;
-      const present = attendanceRecords.filter(r => r.status === 'PRESENT').length;
-      const absent = totalStudents - present;
-      const late = attendanceRecords.filter(r => r.status === 'LATE').length;
-      const attendanceRate = totalStudents > 0 ? Math.round((present / totalStudents) * 100) : 0;
-      
-      console.log('🔍 Summary calculation:');
-      console.log('🔍 Total students:', totalStudents);
-      console.log('🔍 Present count:', present);
-      console.log('🔍 Absent count:', absent);
-      console.log('🔍 Late count:', late);
-      console.log('🔍 Attendance rate:', attendanceRate);
-
-      // Create student attendance details
-      const students = classStudents.map(student => {
-        console.log('🔍 Processing student:', { studentId: student.id, studentIdType: typeof student.id });
-        console.log('🔍 Available attendance records:', attendanceRecords.map(r => ({ 
-          attendanceStudentId: r.studentId, 
-          attendanceStudentIdType: typeof r.studentId,
-          status: r.status 
-        })));
-        
-        const attendance = attendanceRecords.find(r => {
-          const match = BigInt(r.studentId) === student.id;
-          console.log('🔍 Attendance matching:', { 
-            attendanceStudentId: r.studentId, 
-            studentId: student.id, 
-            match 
-          });
-          return match;
-        });
-        
-        // Check if user data exists
-        if (!student.user || !student.user.firstName || !student.user.lastName) {
-          console.warn('⚠️ Student missing user data:', student.id);
-          return {
-            studentId: Number(student.id).toString(),
-            studentName: 'Unknown Student',
-            rollNo: student.rollNo || '',
-            status: attendance?.status || 'ABSENT',
-            inTime: attendance?.inTime ? attendance.inTime.toISOString() : null,
-            outTime: attendance?.outTime ? attendance.outTime.toISOString() : null
-          };
-        }
-        
+      // Check if user data exists
+      if (!student.user || !student.user.firstName || !student.user.lastName) {
+        console.warn('⚠️ Student missing user data:', student.id);
         return {
           studentId: Number(student.id).toString(),
-          studentName: `${student.user.firstName} ${student.user.lastName}`,
+          studentName: 'Unknown Student',
           rollNo: student.rollNo || '',
           status: attendance?.status || 'ABSENT',
           inTime: attendance?.inTime ? attendance.inTime.toISOString() : null,
           outTime: attendance?.outTime ? attendance.outTime.toISOString() : null
         };
-      });
-
-      const summary = {
-        classId: Number(classId),
-        className: classStudents[0]?.class?.name || 'Unknown Class',
-        date,
-        totalStudents,
-        present,
-        absent,
-        late,
-        excused: 0,
-        halfDay: 0,
-        attendanceRate,
-        students
-      };
-
-      console.log('🔍 Returning summary:', summary);
-      console.log('🔍 Sample student data:', students[0]);
-      console.log('🔍 All students data:', students);
-      console.log('🔍 Attendance records:', attendanceRecords);
-      return createSuccessResponse(res, 'Class attendance summary retrieved successfully', summary);
-    } catch (error) {
-      console.error('❌ Error in getClassAttendanceSummary:', error);
-      console.error('❌ Error stack:', error.stack);
-      
-      // Check if it's a Prisma error
-      if (error.code) {
-        console.error('❌ Prisma error code:', error.code);
       }
       
-      return createErrorResponse(res, 'Failed to retrieve class attendance summary', 500);
-    }
-  };
-
-  /**
-   * Get overall attendance summary with filters
-   */
-  export const getAttendanceSummary = async (req, res) => {
-    try {
-      console.log('🔍 getAttendanceSummary called with:', { query: req.query, user: req.user });
-      
-      const { classId, date, schoolId: querySchoolId = 1 } = req.query;
-      const effectiveSchoolId = req.user?.schoolId || querySchoolId;
-
-      const where = {
-        schoolId: BigInt(effectiveSchoolId),
-        deletedAt: null
+      return {
+        studentId: Number(student.id).toString(),
+        studentName: `${student.user.firstName} ${student.user.lastName}`,
+        rollNo: student.rollNo || '',
+        status: attendance?.status || 'ABSENT',
+        inTime: attendance?.inTime ? attendance.inTime.toISOString() : null,
+        outTime: attendance?.outTime ? attendance.outTime.toISOString() : null
       };
+    });
 
-      if (classId) where.classId = BigInt(classId);
-      if (date) where.date = new Date(date);
+    const summary = {
+      classId: Number(classId),
+      className: classStudents[0]?.class?.name || 'Unknown Class',
+      date,
+      totalStudents,
+      present,
+      absent,
+      late,
+      excused: 0,
+      halfDay: 0,
+      attendanceRate,
+      students
+    };
 
-      const attendances = await prisma.attendance.findMany({
-        where,
-        include: {
-          class: {
-            select: { name: true }
-          }
+    console.log('🔍 Returning summary:', summary);
+    console.log('🔍 Sample student data:', students[0]);
+    console.log('🔍 All students data:', students);
+    console.log('🔍 Attendance records:', attendanceRecords);
+    return createSuccessResponse(res, 'Class attendance summary retrieved successfully', summary);
+  } catch (error) {
+    console.error('❌ Error in getClassAttendanceSummary:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // Check if it's a Prisma error
+    if (error.code) {
+      console.error('❌ Prisma error code:', error.code);
+    }
+    
+    return createErrorResponse(res, 'Failed to retrieve class attendance summary', 500);
+  }
+};
+
+/**
+ * Get overall attendance summary with filters
+ */
+export const getAttendanceSummary = async (req, res) => {
+  try {
+    console.log('🔍 getAttendanceSummary called with:', { query: req.query, user: req.user });
+    
+    const { classId, date, schoolId: querySchoolId = 1 } = req.query;
+    const effectiveSchoolId = req.user?.schoolId || querySchoolId;
+
+    const where = {
+      schoolId: BigInt(effectiveSchoolId),
+      deletedAt: null
+    };
+
+    if (classId) where.classId = BigInt(classId);
+    if (date) where.date = new Date(date);
+
+    const attendances = await prisma.attendance.findMany({
+      where,
+      include: {
+        class: {
+          select: { name: true }
         }
-      });
-
-      const totalStudents = attendances.length;
-      const present = attendances.filter(r => r.status === 'PRESENT').length;
-      const absent = attendances.filter(r => r.status === 'ABSENT').length;
-      const late = attendances.filter(r => r.status === 'LATE').length;
-      const excused = attendances.filter(r => r.status === 'EXCUSED').length;
-      const halfDay = attendances.filter(r => r.status === 'HALF_DAY').length;
-
-      const attendanceRate = totalStudents > 0 ? Math.round((present / totalStudents) * 100) : 0;
-      const onTimeRate = totalStudents > 0 ? Math.round(((present - late) / totalStudents) * 100) : 0;
-      const lateRate = totalStudents > 0 ? Math.round((late / totalStudents) * 100) : 0;
-
-      const summary = {
-        date: date || new Date().toISOString().split('T')[0],
-        classId: classId || '',
-        className: attendances[0]?.class?.name || 'All Classes',
-        totalStudents,
-        present,
-        absent,
-        late,
-        excused,
-        halfDay,
-        attendanceRate,
-        onTimeRate,
-        lateRate
-      };
-
-      return createSuccessResponse(res, 'Attendance summary retrieved successfully', summary);
-    } catch (error) {
-      console.error('Error in getAttendanceSummary:', error);
-      return createErrorResponse(res, 'Failed to retrieve attendance summary', 500);
-    }
-  };
-
-  /**
-   * Get comprehensive attendance statistics and analytics
-   */
-  export const getAttendanceStats = async (req, res) => {
-    try {
-      console.log('🔍 getAttendanceStats called with:', { query: req.query, user: req.user });
-      
-      const { classId, startDate, endDate, schoolId: querySchoolId = 1 } = req.query;
-      const effectiveSchoolId = req.user?.schoolId || querySchoolId;
-
-      const where = {
-        schoolId: BigInt(effectiveSchoolId),
-        deletedAt: null
-      };
-
-      if (classId) where.classId = BigInt(classId);
-      if (startDate && endDate) {
-        where.date = {
-          gte: new Date(startDate),
-          lte: new Date(endDate)
-        };
       }
+    });
 
-      const attendances = await prisma.attendance.findMany({
-        where,
-        include: {
-          student: {
-            include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true
-                }
+    const totalStudents = attendances.length;
+    const present = attendances.filter(r => r.status === 'PRESENT').length;
+    const absent = attendances.filter(r => r.status === 'ABSENT').length;
+    const late = attendances.filter(r => r.status === 'LATE').length;
+    const excused = attendances.filter(r => r.status === 'EXCUSED').length;
+    const halfDay = attendances.filter(r => r.status === 'HALF_DAY').length;
+
+    const attendanceRate = totalStudents > 0 ? Math.round((present / totalStudents) * 100) : 0;
+    const onTimeRate = totalStudents > 0 ? Math.round(((present - late) / totalStudents) * 100) : 0;
+    const lateRate = totalStudents > 0 ? Math.round((late / totalStudents) * 100) : 0;
+
+    const summary = {
+      date: date || new Date().toISOString().split('T')[0],
+      classId: classId || '',
+      className: attendances[0]?.class?.name || 'All Classes',
+      totalStudents,
+      present,
+      absent,
+      late,
+      excused,
+      halfDay,
+      attendanceRate,
+      onTimeRate,
+      lateRate
+    };
+
+    return createSuccessResponse(res, 'Attendance summary retrieved successfully', summary);
+  } catch (error) {
+    console.error('Error in getAttendanceSummary:', error);
+    return createErrorResponse(res, 'Failed to retrieve attendance summary', 500);
+  }
+};
+
+/**
+ * Get comprehensive attendance statistics and analytics
+ */
+export const getAttendanceStats = async (req, res) => {
+  try {
+    console.log('🔍 getAttendanceStats called with:', { query: req.query, user: req.user });
+    
+    const { classId, startDate, endDate, schoolId: querySchoolId = 1 } = req.query;
+    const effectiveSchoolId = req.user?.schoolId || querySchoolId;
+
+    const where = {
+      schoolId: BigInt(effectiveSchoolId),
+      deletedAt: null
+    };
+
+    if (classId) where.classId = BigInt(classId);
+    if (startDate && endDate) {
+      where.date = {
+        gte: new Date(startDate),
+        lte: new Date(endDate)
+      };
+    }
+
+    const attendances = await prisma.attendance.findMany({
+      where,
+      include: {
+        student: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
               }
-            }
-          },
-          class: {
-            select: {
-              name: true,
-              code: true
             }
           }
         },
-        orderBy: { date: 'asc' }
-      });
-
-      // Calculate basic statistics
-      const totalDays = new Set(attendances.map(r => r.date.toISOString().split('T')[0])).size;
-      const totalPresent = attendances.filter(r => r.status === 'PRESENT').length;
-      const totalAbsent = attendances.filter(r => r.status === 'ABSENT').length;
-      const totalLate = attendances.filter(r => r.status === 'LATE').length;
-      const totalExcused = attendances.filter(r => r.status === 'EXCUSED').length;
-      const averageAttendanceRate = totalDays > 0 ? Math.round((totalPresent / (totalPresent + totalAbsent)) * 100) : 0;
-
-      // Calculate total hours and average time
-      const totalHours = attendances.reduce((total, record) => {
-        if (record.inTime && record.outTime) {
-          const diffMs = new Date(record.outTime) - new Date(record.inTime);
-          return total + (diffMs / (1000 * 60 * 60));
+        class: {
+          select: {
+            name: true,
+            code: true
+          }
         }
-        return total;
-      }, 0);
+      },
+      orderBy: { date: 'asc' }
+    });
 
-      // Daily attendance trends
-      const dailyTrends = {};
-      attendances.forEach(record => {
-        const date = record.date.toISOString().split('T')[0];
-        if (!dailyTrends[date]) {
-          dailyTrends[date] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
-        }
+    // Calculate basic statistics
+    const totalDays = new Set(attendances.map(r => r.date.toISOString().split('T')[0])).size;
+    const totalPresent = attendances.filter(r => r.status === 'PRESENT').length;
+    const totalAbsent = attendances.filter(r => r.status === 'ABSENT').length;
+    const totalLate = attendances.filter(r => r.status === 'LATE').length;
+    const totalExcused = attendances.filter(r => r.status === 'EXCUSED').length;
+    const averageAttendanceRate = totalDays > 0 ? Math.round((totalPresent / (totalPresent + totalAbsent)) * 100) : 0;
+
+    // Calculate total hours and average time
+    const totalHours = attendances.reduce((total, record) => {
+      if (record.inTime && record.outTime) {
+        const diffMs = new Date(record.outTime) - new Date(record.inTime);
+        return total + (diffMs / (1000 * 60 * 60));
+      }
+      return total;
+    }, 0);
+
+    // Daily attendance trends
+    const dailyTrends = {};
+    attendances.forEach(record => {
+      const date = record.date.toISOString().split('T')[0];
+      if (!dailyTrends[date]) {
+        dailyTrends[date] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+      }
+      
+      dailyTrends[date].total++;
+      if (record.status === 'PRESENT') dailyTrends[date].present++;
+      else if (record.status === 'ABSENT') dailyTrends[date].absent++;
+      else if (record.status === 'LATE') dailyTrends[date].late++;
+      else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
+    });
+
+    // Weekly patterns
+    const weeklyPatterns = {};
+    attendances.forEach(record => {
+      const date = new Date(record.date);
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - date.getDay());
+      const weekKey = weekStart.toISOString().split('T')[0];
+      
+      if (!weeklyPatterns[weekKey]) {
+        weeklyPatterns[weekKey] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+      }
+      
+      weeklyPatterns[weekKey].total++;
+      if (record.status === 'PRESENT') weeklyPatterns[weekKey].present++;
+      else if (record.status === 'ABSENT') weeklyPatterns[weekKey].absent++;
+      else if (record.status === 'LATE') weeklyPatterns[weekKey].late++;
+      else if (record.status === 'EXCUSED') weeklyPatterns[weekKey].excused++;
+    });
+
+    // Monthly trends
+    const monthlyTrends = {};
+    attendances.forEach(record => {
+      const date = new Date(record.date);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!monthlyTrends[monthKey]) {
+        monthlyTrends[monthKey] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+      }
+      
+      monthlyTrends[monthKey].total++;
+      if (record.status === 'PRESENT') monthlyTrends[monthKey].present++;
+      else if (record.status === 'ABSENT') monthlyTrends[monthKey].absent++;
+      else if (record.status === 'LATE') monthlyTrends[monthKey].late++;
+      else if (record.status === 'EXCUSED') monthlyTrends[monthKey].excused++;
+    });
+
+    // Student performance ranking
+    const studentStats = {};
+    attendances.forEach(record => {
+      const studentId = record.studentId.toString();
+      if (!studentStats[studentId]) {
+        const studentUser = record.student && record.student.user ? record.student.user : null;
+        const studentName = studentUser ? `${studentUser.firstName} ${studentUser.lastName}` : 'Unknown Student';
+        studentStats[studentId] = {
+          studentId,
+          studentName: studentName,
+          present: 0,
+          absent: 0,
+          late: 0,
+          excused: 0,
+          total: 0,
+          averageTime: 0,
+          totalTime: 0
+        };
+      }
+      
+      studentStats[studentId].total++;
+      if (record.status === 'PRESENT') studentStats[studentId].present++;
+      else if (record.status === 'ABSENT') studentStats[studentId].absent++;
+      else if (record.status === 'LATE') studentStats[studentId].late++;
+      else if (record.status === 'EXCUSED') studentStats[studentId].excused++;
+      
+      if (record.inTime && record.outTime) {
+        const diffMs = new Date(record.outTime) - new Date(record.inTime);
+        const hours = diffMs / (1000 * 60 * 60);
+        studentStats[studentId].totalTime += hours;
+      }
+    });
+
+    // Calculate averages and rankings
+    Object.values(studentStats).forEach(student => {
+      if (student.total > 0) {
+        student.averageTime = Math.round((student.totalTime / student.total) * 100) / 100;
+        student.attendanceRate = Math.round((student.present / student.total) * 100);
+      }
+    });
+
+    // Sort students by attendance rate
+    const topStudents = Object.values(studentStats)
+      .sort((a, b) => b.attendanceRate - a.attendanceRate)
+      .slice(0, 10);
+
+    const bottomStudents = Object.values(studentStats)
+      .sort((a, b) => a.attendanceRate - b.attendanceRate)
+      .slice(0, 10);
+
+    // Time-based analysis
+    const timeAnalysis = {
+      earlyArrivals: 0, // Before 8 AM
+      onTime: 0, // 8 AM - 8:30 AM
+      lateArrivals: 0, // After 8:30 AM
+      earlyDepartures: 0, // Before 3 PM
+      onTimeDepartures: 0, // 3 PM - 3:30 PM
+      lateDepartures: 0 // After 3:30 PM
+    };
+
+    attendances.forEach(record => {
+      if (record.inTime) {
+        const hour = new Date(record.inTime).getHours();
+        const minutes = new Date(record.inTime).getMinutes();
+        const timeInMinutes = hour * 60 + minutes;
         
-        dailyTrends[date].total++;
-        if (record.status === 'PRESENT') dailyTrends[date].present++;
-        else if (record.status === 'ABSENT') dailyTrends[date].absent++;
-        else if (record.status === 'LATE') dailyTrends[date].late++;
-        else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
-      });
+        if (timeInMinutes < 480) timeAnalysis.earlyArrivals++; // Before 8 AM
+        else if (timeInMinutes <= 510) timeAnalysis.onTime++; // 8 AM - 8:30 AM
+        else timeAnalysis.lateArrivals++; // After 8:30 AM
+      }
+      
+      if (record.outTime) {
+        const hour = new Date(record.outTime).getHours();
+        const minutes = new Date(record.outTime).getMinutes();
+        const timeInMinutes = hour * 60 + minutes;
+        
+        if (timeInMinutes < 900) timeAnalysis.earlyDepartures++; // Before 3 PM
+        else if (timeInMinutes <= 930) timeAnalysis.onTimeDepartures++; // 3 PM - 3:30 PM
+        else timeAnalysis.lateDepartures++; // After 3:30 PM
+      }
+    });
 
+    // Predictive analytics
+    const recentTrend = Object.values(dailyTrends)
+      .slice(-7) // Last 7 days
+      .reduce((sum, day) => sum + (day.present / day.total), 0) / 7;
+
+    const trendDirection = recentTrend > (averageAttendanceRate / 100) ? 'improving' : 'declining';
+    const trendPercentage = Math.abs(recentTrend - (averageAttendanceRate / 100)) * 100;
+
+    const comprehensiveStats = {
+      // Basic stats
+      totalDays,
+      totalPresent,
+      totalAbsent,
+      totalLate,
+      totalExcused,
+      averageAttendanceRate,
+      totalHours: Math.round(totalHours * 100) / 100,
+      
+      // Trends
+      dailyTrends: Object.entries(dailyTrends).map(([date, data]) => ({
+        date,
+        ...data,
+        rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+      })),
+      weeklyPatterns: Object.entries(weeklyPatterns).map(([week, data]) => ({
+        week,
+        ...data,
+        rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+      })),
+      monthlyTrends: Object.entries(monthlyTrends).map(([month, data]) => ({
+        month,
+        ...data,
+        rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+      })),
+      
+      // Student performance
+      studentStats: Object.values(studentStats),
+      topStudents,
+      bottomStudents,
+      
+      // Time analysis
+      timeAnalysis,
+      
+      // Predictive analytics
+      recentTrend: Math.round(recentTrend * 100),
+      trendDirection,
+      trendPercentage: Math.round(trendPercentage * 100) / 100,
+      
+      // Insights
+      insights: {
+        bestDay: Object.entries(dailyTrends).reduce((best, [date, data]) => 
+          data.total > 0 && (data.present / data.total) > (best.rate || 0) 
+            ? { date, rate: data.present / data.total } 
+            : best, { date: '', rate: 0 }
+        ),
+        worstDay: Object.entries(dailyTrends).reduce((worst, [date, data]) => 
+          data.total > 0 && (data.present / data.total) < (worst.rate || 1) 
+            ? { date, rate: data.present / data.total } 
+            : worst, { date: '', rate: 1 }
+        ),
+        mostPunctualStudent: topStudents[0] || null,
+        needsAttention: bottomStudents.slice(0, 3) || []
+      }
+    };
+
+    return createSuccessResponse(res, 'Comprehensive attendance statistics retrieved successfully', comprehensiveStats);
+  } catch (error) {
+    console.error('Error in getAttendanceStats:', error);
+    return createErrorResponse(res, 500, 'Failed to retrieve attendance statistics', error?.message || 'ATTENDANCE_STATS_ERROR');
+  }
+};
+
+/**
+ * Get comprehensive attendance analytics with chart data
+ */
+export const getAttendanceAnalytics = async (req, res) => {
+  try {
+    console.log('🔍 getAttendanceAnalytics called with:', { query: req.query, user: req.user });
+    
+    const { classId, period = 'daily', startDate, endDate, schoolId: querySchoolId = 1, chartType = 'all' } = req.query;
+    const effectiveSchoolId = req.user?.schoolId || querySchoolId;
+
+    const where = {
+      schoolId: BigInt(effectiveSchoolId),
+      deletedAt: null
+    };
+
+    if (classId) where.classId = BigInt(classId);
+    if (startDate && endDate) {
+      where.date = {
+        gte: new Date(startDate),
+        lte: new Date(endDate)
+      };
+    }
+
+    const attendances = await prisma.attendance.findMany({
+      where,
+      include: {
+        student: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
+        class: {
+          select: {
+            name: true,
+            code: true
+          }
+        }
+      },
+      orderBy: { date: 'asc' }
+    });
+
+    // Generate chart data based on requested type
+    let chartData = {};
+
+    if (chartType === 'all' || chartType === 'daily') {
+      // Daily attendance trends
+    const dailyTrends = {};
+    attendances.forEach(record => {
+      const date = record.date.toISOString().split('T')[0];
+      if (!dailyTrends[date]) {
+          dailyTrends[date] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+      }
+      
+        dailyTrends[date].total++;
+      if (record.status === 'PRESENT') dailyTrends[date].present++;
+      else if (record.status === 'ABSENT') dailyTrends[date].absent++;
+      else if (record.status === 'LATE') dailyTrends[date].late++;
+      else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
+    });
+
+      chartData.daily = Object.entries(dailyTrends).map(([date, data]) => ({
+      date,
+        ...data,
+        rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+      }));
+    }
+
+    if (chartType === 'all' || chartType === 'weekly') {
       // Weekly patterns
       const weeklyPatterns = {};
       attendances.forEach(record => {
@@ -1078,6 +1440,14 @@
         else if (record.status === 'EXCUSED') weeklyPatterns[weekKey].excused++;
       });
 
+      chartData.weekly = Object.entries(weeklyPatterns).map(([week, data]) => ({
+        week,
+        ...data,
+        rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+      }));
+    }
+
+    if (chartType === 'all' || chartType === 'monthly') {
       // Monthly trends
       const monthlyTrends = {};
       attendances.forEach(record => {
@@ -1095,23 +1465,28 @@
         else if (record.status === 'EXCUSED') monthlyTrends[monthKey].excused++;
       });
 
+      chartData.monthly = Object.entries(monthlyTrends).map(([month, data]) => ({
+        month,
+        ...data,
+        rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
+      }));
+    }
+
+    if (chartType === 'all' || chartType === 'student') {
       // Student performance ranking
       const studentStats = {};
       attendances.forEach(record => {
         const studentId = record.studentId.toString();
         if (!studentStats[studentId]) {
-          const studentUser = record.student && record.student.user ? record.student.user : null;
-          const studentName = studentUser ? `${studentUser.firstName} ${studentUser.lastName}` : 'Unknown Student';
           studentStats[studentId] = {
             studentId,
-            studentName: studentName,
+            studentName: `${record.student.user.firstName} ${record.student.user.lastName}`,
             present: 0,
             absent: 0,
             late: 0,
             excused: 0,
             total: 0,
-            averageTime: 0,
-            totalTime: 0
+            attendanceRate: 0
           };
         }
         
@@ -1120,31 +1495,19 @@
         else if (record.status === 'ABSENT') studentStats[studentId].absent++;
         else if (record.status === 'LATE') studentStats[studentId].late++;
         else if (record.status === 'EXCUSED') studentStats[studentId].excused++;
-        
-        if (record.inTime && record.outTime) {
-          const diffMs = new Date(record.outTime) - new Date(record.inTime);
-          const hours = diffMs / (1000 * 60 * 60);
-          studentStats[studentId].totalTime += hours;
-        }
       });
 
-      // Calculate averages and rankings
+      // Calculate attendance rates
       Object.values(studentStats).forEach(student => {
         if (student.total > 0) {
-          student.averageTime = Math.round((student.totalTime / student.total) * 100) / 100;
           student.attendanceRate = Math.round((student.present / student.total) * 100);
         }
       });
 
-      // Sort students by attendance rate
-      const topStudents = Object.values(studentStats)
-        .sort((a, b) => b.attendanceRate - a.attendanceRate)
-        .slice(0, 10);
+      chartData.student = Object.values(studentStats);
+    }
 
-      const bottomStudents = Object.values(studentStats)
-        .sort((a, b) => a.attendanceRate - b.attendanceRate)
-        .slice(0, 10);
-
+    if (chartType === 'all' || chartType === 'time') {
       // Time-based analysis
       const timeAnalysis = {
         earlyArrivals: 0, // Before 8 AM
@@ -1161,9 +1524,9 @@
           const minutes = new Date(record.inTime).getMinutes();
           const timeInMinutes = hour * 60 + minutes;
           
-          if (timeInMinutes < 480) timeAnalysis.earlyArrivals++; // Before 8 AM
-          else if (timeInMinutes <= 510) timeAnalysis.onTime++; // 8 AM - 8:30 AM
-          else timeAnalysis.lateArrivals++; // After 8:30 AM
+          if (timeInMinutes < 480) timeAnalysis.earlyArrivals++;
+          else if (timeInMinutes <= 510) timeAnalysis.onTime++;
+          else timeAnalysis.lateArrivals++;
         }
         
         if (record.outTime) {
@@ -1171,821 +1534,557 @@
           const minutes = new Date(record.outTime).getMinutes();
           const timeInMinutes = hour * 60 + minutes;
           
-          if (timeInMinutes < 900) timeAnalysis.earlyDepartures++; // Before 3 PM
-          else if (timeInMinutes <= 930) timeAnalysis.onTimeDepartures++; // 3 PM - 3:30 PM
-          else timeAnalysis.lateDepartures++; // After 3:30 PM
+          if (timeInMinutes < 900) timeAnalysis.earlyDepartures++;
+          else if (timeInMinutes <= 930) timeAnalysis.onTimeDepartures++;
+          else timeAnalysis.lateDepartures++;
         }
       });
 
-      // Predictive analytics
-      const recentTrend = Object.values(dailyTrends)
-        .slice(-7) // Last 7 days
-        .reduce((sum, day) => sum + (day.present / day.total), 0) / 7;
-
-      const trendDirection = recentTrend > (averageAttendanceRate / 100) ? 'improving' : 'declining';
-      const trendPercentage = Math.abs(recentTrend - (averageAttendanceRate / 100)) * 100;
-
-      const comprehensiveStats = {
-        // Basic stats
-        totalDays,
-        totalPresent,
-        totalAbsent,
-        totalLate,
-        totalExcused,
-        averageAttendanceRate,
-        totalHours: Math.round(totalHours * 100) / 100,
-        
-        // Trends
-        dailyTrends: Object.entries(dailyTrends).map(([date, data]) => ({
-          date,
-          ...data,
-          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
-        })),
-        weeklyPatterns: Object.entries(weeklyPatterns).map(([week, data]) => ({
-          week,
-          ...data,
-          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
-        })),
-        monthlyTrends: Object.entries(monthlyTrends).map(([month, data]) => ({
-          month,
-          ...data,
-          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
-        })),
-        
-        // Student performance
-        studentStats: Object.values(studentStats),
-        topStudents,
-        bottomStudents,
-        
-        // Time analysis
-        timeAnalysis,
-        
-        // Predictive analytics
-        recentTrend: Math.round(recentTrend * 100),
-        trendDirection,
-        trendPercentage: Math.round(trendPercentage * 100) / 100,
-        
-        // Insights
-        insights: {
-          bestDay: Object.entries(dailyTrends).reduce((best, [date, data]) => 
-            data.total > 0 && (data.present / data.total) > (best.rate || 0) 
-              ? { date, rate: data.present / data.total } 
-              : best, { date: '', rate: 0 }
-          ),
-          worstDay: Object.entries(dailyTrends).reduce((worst, [date, data]) => 
-            data.total > 0 && (data.present / data.total) < (worst.rate || 1) 
-              ? { date, rate: data.present / data.total } 
-              : worst, { date: '', rate: 1 }
-          ),
-          mostPunctualStudent: topStudents[0] || null,
-          needsAttention: bottomStudents.slice(0, 3) || []
-        }
-      };
-
-      return createSuccessResponse(res, 'Comprehensive attendance statistics retrieved successfully', comprehensiveStats);
-    } catch (error) {
-      console.error('Error in getAttendanceStats:', error);
-      return createErrorResponse(res, 500, 'Failed to retrieve attendance statistics', error?.message || 'ATTENDANCE_STATS_ERROR');
+      chartData.time = timeAnalysis;
     }
-  };
 
-  /**
-   * Get comprehensive attendance analytics with chart data
-   */
-  export const getAttendanceAnalytics = async (req, res) => {
-    try {
-      console.log('🔍 getAttendanceAnalytics called with:', { query: req.query, user: req.user });
-      
-      const { classId, period = 'daily', startDate, endDate, schoolId: querySchoolId = 1, chartType = 'all' } = req.query;
-      const effectiveSchoolId = req.user?.schoolId || querySchoolId;
-
-      const where = {
-        schoolId: BigInt(effectiveSchoolId),
-        deletedAt: null
-      };
-
-      if (classId) where.classId = BigInt(classId);
-      if (startDate && endDate) {
-        where.date = {
-          gte: new Date(startDate),
-          lte: new Date(endDate)
-        };
-      }
-
-      const attendances = await prisma.attendance.findMany({
-        where,
-        include: {
-          student: {
-            include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true
-                }
-              }
-            }
-          },
-          class: {
-            select: {
-              name: true,
-              code: true
-            }
-          }
-        },
-        orderBy: { date: 'asc' }
-      });
-
-      // Generate chart data based on requested type
-      let chartData = {};
-
-      if (chartType === 'all' || chartType === 'daily') {
-        // Daily attendance trends
-      const dailyTrends = {};
+    if (chartType === 'all' || chartType === 'comparison') {
+      // Class comparison (if multiple classes)
+      const classStats = {};
       attendances.forEach(record => {
-        const date = record.date.toISOString().split('T')[0];
-        if (!dailyTrends[date]) {
-            dailyTrends[date] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+        const className = record.class.name;
+        if (!classStats[className]) {
+          classStats[className] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
         }
         
-          dailyTrends[date].total++;
-        if (record.status === 'PRESENT') dailyTrends[date].present++;
-        else if (record.status === 'ABSENT') dailyTrends[date].absent++;
-        else if (record.status === 'LATE') dailyTrends[date].late++;
-        else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
+        classStats[className].total++;
+        if (record.status === 'PRESENT') classStats[className].present++;
+        else if (record.status === 'ABSENT') classStats[className].absent++;
+        else if (record.status === 'LATE') classStats[className].late++;
+        else if (record.status === 'EXCUSED') classStats[className].excused++;
       });
 
-        chartData.daily = Object.entries(dailyTrends).map(([date, data]) => ({
-        date,
-          ...data,
-          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
-        }));
-      }
-
-      if (chartType === 'all' || chartType === 'weekly') {
-        // Weekly patterns
-        const weeklyPatterns = {};
-        attendances.forEach(record => {
-          const date = new Date(record.date);
-          const weekStart = new Date(date);
-          weekStart.setDate(date.getDate() - date.getDay());
-          const weekKey = weekStart.toISOString().split('T')[0];
-          
-          if (!weeklyPatterns[weekKey]) {
-            weeklyPatterns[weekKey] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
-          }
-          
-          weeklyPatterns[weekKey].total++;
-          if (record.status === 'PRESENT') weeklyPatterns[weekKey].present++;
-          else if (record.status === 'ABSENT') weeklyPatterns[weekKey].absent++;
-          else if (record.status === 'LATE') weeklyPatterns[weekKey].late++;
-          else if (record.status === 'EXCUSED') weeklyPatterns[weekKey].excused++;
-        });
-
-        chartData.weekly = Object.entries(weeklyPatterns).map(([week, data]) => ({
-          week,
-          ...data,
-          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
-        }));
-      }
-
-      if (chartType === 'all' || chartType === 'monthly') {
-        // Monthly trends
-        const monthlyTrends = {};
-        attendances.forEach(record => {
-          const date = new Date(record.date);
-          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-          
-          if (!monthlyTrends[monthKey]) {
-            monthlyTrends[monthKey] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
-          }
-          
-          monthlyTrends[monthKey].total++;
-          if (record.status === 'PRESENT') monthlyTrends[monthKey].present++;
-          else if (record.status === 'ABSENT') monthlyTrends[monthKey].absent++;
-          else if (record.status === 'LATE') monthlyTrends[monthKey].late++;
-          else if (record.status === 'EXCUSED') monthlyTrends[monthKey].excused++;
-        });
-
-        chartData.monthly = Object.entries(monthlyTrends).map(([month, data]) => ({
-          month,
-          ...data,
-          rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
-        }));
-      }
-
-      if (chartType === 'all' || chartType === 'student') {
-        // Student performance ranking
-        const studentStats = {};
-        attendances.forEach(record => {
-          const studentId = record.studentId.toString();
-          if (!studentStats[studentId]) {
-            studentStats[studentId] = {
-              studentId,
-              studentName: `${record.student.user.firstName} ${record.student.user.lastName}`,
-              present: 0,
-              absent: 0,
-              late: 0,
-              excused: 0,
-              total: 0,
-              attendanceRate: 0
-            };
-          }
-          
-          studentStats[studentId].total++;
-          if (record.status === 'PRESENT') studentStats[studentId].present++;
-          else if (record.status === 'ABSENT') studentStats[studentId].absent++;
-          else if (record.status === 'LATE') studentStats[studentId].late++;
-          else if (record.status === 'EXCUSED') studentStats[studentId].excused++;
-        });
-
-        // Calculate attendance rates
-        Object.values(studentStats).forEach(student => {
-          if (student.total > 0) {
-            student.attendanceRate = Math.round((student.present / student.total) * 100);
-          }
-        });
-
-        chartData.student = Object.values(studentStats);
-      }
-
-      if (chartType === 'all' || chartType === 'time') {
-        // Time-based analysis
-        const timeAnalysis = {
-          earlyArrivals: 0, // Before 8 AM
-          onTime: 0, // 8 AM - 8:30 AM
-          lateArrivals: 0, // After 8:30 AM
-          earlyDepartures: 0, // Before 3 PM
-          onTimeDepartures: 0, // 3 PM - 3:30 PM
-          lateDepartures: 0 // After 3:30 PM
-        };
-
-        attendances.forEach(record => {
-          if (record.inTime) {
-            const hour = new Date(record.inTime).getHours();
-            const minutes = new Date(record.inTime).getMinutes();
-            const timeInMinutes = hour * 60 + minutes;
-            
-            if (timeInMinutes < 480) timeAnalysis.earlyArrivals++;
-            else if (timeInMinutes <= 510) timeAnalysis.onTime++;
-            else timeAnalysis.lateArrivals++;
-          }
-          
-          if (record.outTime) {
-            const hour = new Date(record.outTime).getHours();
-            const minutes = new Date(record.outTime).getMinutes();
-            const timeInMinutes = hour * 60 + minutes;
-            
-            if (timeInMinutes < 900) timeAnalysis.earlyDepartures++;
-            else if (timeInMinutes <= 930) timeAnalysis.onTimeDepartures++;
-            else timeAnalysis.lateDepartures++;
-          }
-        });
-
-        chartData.time = timeAnalysis;
-      }
-
-      if (chartType === 'all' || chartType === 'comparison') {
-        // Class comparison (if multiple classes)
-        const classStats = {};
-        attendances.forEach(record => {
-          const className = record.class.name;
-          if (!classStats[className]) {
-            classStats[className] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
-          }
-          
-          classStats[className].total++;
-          if (record.status === 'PRESENT') classStats[className].present++;
-          else if (record.status === 'ABSENT') classStats[className].absent++;
-          else if (record.status === 'LATE') classStats[className].late++;
-          else if (record.status === 'EXCUSED') classStats[className].excused++;
-        });
-
-        // Calculate rates
-        Object.values(classStats).forEach(cls => {
-          if (cls.total > 0) {
-            cls.rate = Math.round((cls.present / cls.total) * 100);
-          }
-        });
-
-        chartData.comparison = Object.entries(classStats).map(([className, data]) => ({
-          className,
-          ...data
-        }));
-      }
-
-      // Add metadata
-      const analytics = {
-        chartData,
-        metadata: {
-          totalRecords: attendances.length,
-          dateRange: {
-            start: startDate || 'all',
-            end: endDate || 'all'
-          },
-          classId: classId || 'all',
-          period,
-          chartType,
-          generatedAt: new Date().toISOString()
+      // Calculate rates
+      Object.values(classStats).forEach(cls => {
+        if (cls.total > 0) {
+          cls.rate = Math.round((cls.present / cls.total) * 100);
         }
-      };
+      });
 
-      return createSuccessResponse(res, 'Attendance analytics retrieved successfully', analytics);
-    } catch (error) {
-      console.error('Error in getAttendanceAnalytics:', error);
-      return createErrorResponse(res, 'Failed to retrieve attendance analytics', 500);
+      chartData.comparison = Object.entries(classStats).map(([className, data]) => ({
+        className,
+        ...data
+      }));
     }
-  };
 
-  /**
-   * Get monthly attendance matrix for a class
-   */
-  export const getMonthlyAttendanceMatrix = async (req, res) => {
-    try {
-      console.log('🔍 getMonthlyAttendanceMatrix called with:', { query: req.query, user: req.user });
-      
-      const { classId, month, year, schoolId: querySchoolId = 1 } = req.query;
-      const schoolId = req.user?.schoolId || querySchoolId || 1;
-
-      if (!classId || !month || !year) {
-        return createErrorResponse(res, 'Class ID, month, and year are required', 400);
+    // Add metadata
+    const analytics = {
+      chartData,
+      metadata: {
+        totalRecords: attendances.length,
+        dateRange: {
+          start: startDate || 'all',
+          end: endDate || 'all'
+        },
+        classId: classId || 'all',
+        period,
+        chartType,
+        generatedAt: new Date().toISOString()
       }
+    };
 
-      console.log('🔍 Fetching monthly attendance for class:', classId, 'month:', month, 'year:', year, 'school:', schoolId);
-      
-      // Get all students in the class
-      const classStudents = await prisma.student.findMany({
-        where: {
-          classId: BigInt(classId),
-          schoolId: BigInt(schoolId),
-          deletedAt: null
-        },
-        include: {
-          user: {
-            select: {
-              firstName: true,
-              lastName: true
-            }
-          }
-        }
-      });
-      
-      console.log('🔍 Found students:', classStudents.length);
+    return createSuccessResponse(res, 'Attendance analytics retrieved successfully', analytics);
+  } catch (error) {
+    console.error('Error in getAttendanceAnalytics:', error);
+    return createErrorResponse(res, 'Failed to retrieve attendance analytics', 500);
+  }
+};
 
-      // Calculate month start and end dates
-      const monthStart = new Date(parseInt(year), parseInt(month) - 1, 1);
-      const monthEnd = new Date(parseInt(year), parseInt(month), 0);
-      
-      console.log('🔍 Month range:', monthStart.toISOString(), 'to', monthEnd.toISOString());
-      
-      // Get attendance records for the month
-      const attendanceRecords = await prisma.attendance.findMany({
-        where: {
-          classId: BigInt(classId),
-          date: {
-            gte: monthStart,
-            lte: monthEnd
-          },
-          schoolId: BigInt(schoolId),
-          deletedAt: null
-        },
-        include: {
-          student: {
-            include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true
-                }
-              }
-            }
-          }
-        }
-      });
-      
-      console.log('🔍 Found attendance records:', attendanceRecords.length);
+/**
+ * Get monthly attendance matrix for a class
+ */
+export const getMonthlyAttendanceMatrix = async (req, res) => {
+  try {
+    console.log('🔍 getMonthlyAttendanceMatrix called with:', { query: req.query, user: req.user });
+    
+    const { classId, month, year, schoolId: querySchoolId = 1 } = req.query;
+    const schoolId = req.user?.schoolId || querySchoolId || 1;
 
-      // Create monthly matrix data
-      const monthlyMatrix = {};
-      
-      classStudents.forEach(student => {
-        monthlyMatrix[student.id] = {
-          studentId: Number(student.id).toString(),
-          studentName: `${student.user.firstName} ${student.user.lastName}`,
-          rollNo: student.rollNo || '',
-          dailyAttendance: {}
-        };
-        
-        // Initialize all days of the month
-        for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
-          const dateStr = d.toISOString().split('T')[0];
-          monthlyMatrix[student.id].dailyAttendance[dateStr] = {
-            status: null,
-            inTime: null,
-            outTime: null
-          };
-        }
-      });
-
-      // Fill in actual attendance data
-      attendanceRecords.forEach((record) => {
-        const studentId = record.studentId.toString();
-        const dateStr = record.date.toISOString().split('T')[0];
-        
-        if (monthlyMatrix[studentId] && monthlyMatrix[studentId].dailyAttendance[dateStr]) {
-          monthlyMatrix[studentId].dailyAttendance[dateStr] = {
-            status: record.status,
-            inTime: record.inTime ? record.inTime.toISOString() : null,
-            outTime: record.outTime ? record.outTime.toISOString() : null
-          };
-        }
-      });
-
-      // Convert to array format
-      const matrixData = Object.values(monthlyMatrix);
-      
-      console.log('🔍 Returning monthly matrix with', matrixData.length, 'students');
-      console.log('🔍 Sample data:', matrixData[0] ? Object.keys(matrixData[0].dailyAttendance).length : 0, 'days');
-      
-      return createSuccessResponse(res, 'Monthly attendance matrix retrieved successfully', {
-        classId: Number(classId),
-        month: parseInt(month),
-        year: parseInt(year),
-        monthStart: monthStart.toISOString(),
-        monthEnd: monthEnd.toISOString(),
-        totalStudents: matrixData.length,
-        students: matrixData
-      });
-    } catch (error) {
-      console.error('Error in getMonthlyAttendanceMatrix:', error);
-      return createErrorResponse(res, 'Failed to retrieve monthly attendance matrix', 500);
+    if (!classId || !month || !year) {
+      return createErrorResponse(res, 'Class ID, month, and year are required', 400);
     }
-  };
 
-  /**
-   * Export attendance data in various formats
-   */
-  export const exportAttendanceData = async (req, res) => {
-    try {
-      console.log('🔍 exportAttendanceData called with:', { query: req.query, user: req.user });
-      
-      const { 
-        format = 'pdf', 
-        classId, 
-        startDate, 
-        endDate, 
-        schoolId: querySchoolId = 1 
-      } = req.query;
-      
-      const schoolId = req.user?.schoolId || querySchoolId;
-
-      if (!['pdf', 'excel', 'csv'].includes(format)) {
-        return createErrorResponse(res, 'Invalid export format. Supported formats: pdf, excel, csv', 400);
-      }
-
-      console.log('🔍 Exporting attendance data:', { format, classId, startDate, endDate, schoolId });
-
-      // Build where clause
-      const where = {
+    console.log('🔍 Fetching monthly attendance for class:', classId, 'month:', month, 'year:', year, 'school:', schoolId);
+    
+    // Get all students in the class
+    const classStudents = await prisma.student.findMany({
+      where: {
+        classId: BigInt(classId),
         schoolId: BigInt(schoolId),
         deletedAt: null
-      };
-
-      if (classId) where.classId = BigInt(classId);
-      if (startDate && endDate) {
-        where.date = {
-          gte: new Date(startDate),
-          lte: new Date(endDate)
-        };
+      },
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        }
       }
+    });
+    
+    console.log('🔍 Found students:', classStudents.length);
 
-      // Fetch attendance data
-      const attendances = await prisma.attendance.findMany({
-        where,
-        include: {
-          student: {
-            include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true
-                }
+    // Calculate month start and end dates
+    const monthStart = new Date(parseInt(year), parseInt(month) - 1, 1);
+    const monthEnd = new Date(parseInt(year), parseInt(month), 0);
+    
+    console.log('🔍 Month range:', monthStart.toISOString(), 'to', monthEnd.toISOString());
+    
+    // Get attendance records for the month
+    const attendanceRecords = await prisma.attendance.findMany({
+      where: {
+        classId: BigInt(classId),
+        date: {
+          gte: monthStart,
+          lte: monthEnd
+        },
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      include: {
+        student: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
               }
             }
-          },
-          class: {
-            select: {
-              name: true,
-              code: true
+          }
+        }
+      }
+    });
+    
+    console.log('🔍 Found attendance records:', attendanceRecords.length);
+
+    // Create monthly matrix data
+    const monthlyMatrix = {};
+    
+    classStudents.forEach(student => {
+      monthlyMatrix[student.id] = {
+        studentId: Number(student.id).toString(),
+        studentName: `${student.user.firstName} ${student.user.lastName}`,
+        rollNo: student.rollNo || '',
+        dailyAttendance: {}
+      };
+      
+      // Initialize all days of the month
+      for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
+        monthlyMatrix[student.id].dailyAttendance[dateStr] = {
+          status: null,
+          inTime: null,
+          outTime: null
+        };
+      }
+    });
+
+    // Fill in actual attendance data
+    attendanceRecords.forEach((record) => {
+      const studentId = record.studentId.toString();
+      const dateStr = record.date.toISOString().split('T')[0];
+      
+      if (monthlyMatrix[studentId] && monthlyMatrix[studentId].dailyAttendance[dateStr]) {
+        monthlyMatrix[studentId].dailyAttendance[dateStr] = {
+          status: record.status,
+          inTime: record.inTime ? record.inTime.toISOString() : null,
+          outTime: record.outTime ? record.outTime.toISOString() : null
+        };
+      }
+    });
+
+    // Convert to array format
+    const matrixData = Object.values(monthlyMatrix);
+    
+    console.log('🔍 Returning monthly matrix with', matrixData.length, 'students');
+    console.log('🔍 Sample data:', matrixData[0] ? Object.keys(matrixData[0].dailyAttendance).length : 0, 'days');
+    
+    return createSuccessResponse(res, 'Monthly attendance matrix retrieved successfully', {
+      classId: Number(classId),
+      month: parseInt(month),
+      year: parseInt(year),
+      monthStart: monthStart.toISOString(),
+      monthEnd: monthEnd.toISOString(),
+      totalStudents: matrixData.length,
+      students: matrixData
+    });
+  } catch (error) {
+    console.error('Error in getMonthlyAttendanceMatrix:', error);
+    return createErrorResponse(res, 'Failed to retrieve monthly attendance matrix', 500);
+  }
+};
+
+/**
+ * Export attendance data in various formats
+ */
+export const exportAttendanceData = async (req, res) => {
+  try {
+    console.log('🔍 exportAttendanceData called with:', { query: req.query, user: req.user });
+    
+    const { 
+      format = 'pdf', 
+      classId, 
+      startDate, 
+      endDate, 
+      schoolId: querySchoolId = 1 
+    } = req.query;
+    
+    const schoolId = req.user?.schoolId || querySchoolId;
+
+    if (!['pdf', 'excel', 'csv'].includes(format)) {
+      return createErrorResponse(res, 'Invalid export format. Supported formats: pdf, excel, csv', 400);
+    }
+
+    console.log('🔍 Exporting attendance data:', { format, classId, startDate, endDate, schoolId });
+
+    // Build where clause
+    const where = {
+      schoolId: BigInt(schoolId),
+      deletedAt: null
+    };
+
+    if (classId) where.classId = BigInt(classId);
+    if (startDate && endDate) {
+      where.date = {
+        gte: new Date(startDate),
+        lte: new Date(endDate)
+      };
+    }
+
+    // Fetch attendance data
+    const attendances = await prisma.attendance.findMany({
+      where,
+      include: {
+        student: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
             }
           }
         },
-        orderBy: [
-          { date: 'desc' },
-          { student: { rollNo: 'asc' } }
-        ]
-      });
+        class: {
+          select: {
+            name: true,
+            code: true
+          }
+        }
+      },
+      orderBy: [
+        { date: 'desc' },
+        { student: { rollNo: 'asc' } }
+      ]
+    });
 
-      console.log('🔍 Found attendance records for export:', attendances.length);
+    console.log('🔍 Found attendance records for export:', attendances.length);
 
-      // Prepare data for export
-      const exportData = attendances.map(attendance => ({
-        date: attendance.date.toISOString().split('T')[0],
-        studentName: `${attendance.student.user.firstName} ${attendance.student.user.lastName}`,
-        rollNo: attendance.student.rollNo,
-        className: attendance.class.name,
-        status: attendance.status,
-        inTime: attendance.inTime ? attendance.inTime.toISOString().split('T')[1].substring(0, 5) : '--',
-        outTime: attendance.outTime ? attendance.outTime.toISOString().split('T')[1].substring(0, 5) : '--',
-        remarks: attendance.remarks || ''
-      }));
+    // Prepare data for export
+    const exportData = attendances.map(attendance => ({
+      date: attendance.date.toISOString().split('T')[0],
+      studentName: `${attendance.student.user.firstName} ${attendance.student.user.lastName}`,
+      rollNo: attendance.student.rollNo,
+      className: attendance.class.name,
+      status: attendance.status,
+      inTime: attendance.inTime ? attendance.inTime.toISOString().split('T')[1].substring(0, 5) : '--',
+      outTime: attendance.outTime ? attendance.outTime.toISOString().split('T')[1].substring(0, 5) : '--',
+      remarks: attendance.remarks || ''
+    }));
 
-      // Generate export based on format
-      let exportContent, contentType, filename;
+    // Generate export based on format
+    let exportContent, contentType, filename;
 
-      switch (format) {
-        case 'csv':
-          const csvHeaders = ['Date', 'Student Name', 'Roll No', 'Class', 'Status', 'In Time', 'Out Time', 'Remarks'];
-          const csvRows = exportData.map(row => [
-            row.date,
-            row.studentName,
-            row.rollNo,
-            row.className,
-            row.status,
-            row.inTime,
-            row.outTime,
-            row.remarks
-          ]);
+    switch (format) {
+      case 'csv':
+        const csvHeaders = ['Date', 'Student Name', 'Roll No', 'Class', 'Status', 'In Time', 'Out Time', 'Remarks'];
+        const csvRows = exportData.map(row => [
+          row.date,
+          row.studentName,
+          row.rollNo,
+          row.className,
+          row.status,
+          row.inTime,
+          row.outTime,
+          row.remarks
+        ]);
+        
+        exportContent = [csvHeaders, ...csvRows]
+          .map(row => row.map(field => `"${field}"`).join(','))
+          .join('\n');
+        contentType = 'text/csv';
+        filename = `attendance_${startDate || 'all'}_${endDate || 'data'}.csv`;
+        break;
+
+      case 'excel':
+        // For now, return CSV as Excel (you can implement proper Excel generation later)
+        const excelHeaders = ['Date', 'Student Name', 'Roll No', 'Class', 'Status', 'In Time', 'Out Time', 'Remarks'];
+        const excelRows = exportData.map(row => [
+          row.date,
+          row.studentName,
+          row.rollNo,
+          row.className,
+          row.status,
+          row.inTime,
+          row.outTime,
+          row.remarks
+        ]);
+        
+        exportContent = [excelHeaders, ...excelRows]
+          .map(row => row.map(field => `"${field}"`).join(','))
+          .join('\n');
+        contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        filename = `attendance_${startDate || 'all'}_${endDate || 'data'}.xlsx`;
+        break;
+
+      case 'pdf':
+      default:
+        try {
+          console.log('🔍 Generating PDF file...');
           
-          exportContent = [csvHeaders, ...csvRows]
-            .map(row => row.map(field => `"${field}"`).join(','))
-            .join('\n');
-          contentType = 'text/csv';
-          filename = `attendance_${startDate || 'all'}_${endDate || 'data'}.csv`;
-          break;
-
-        case 'excel':
-          // For now, return CSV as Excel (you can implement proper Excel generation later)
-          const excelHeaders = ['Date', 'Student Name', 'Roll No', 'Class', 'Status', 'In Time', 'Out Time', 'Remarks'];
-          const excelRows = exportData.map(row => [
-            row.date,
-            row.studentName,
-            row.rollNo,
-            row.className,
-            row.status,
-            row.inTime,
-            row.outTime,
-            row.remarks
-          ]);
+          // Import PDFKit library dynamically to avoid issues
+          const PDFDocument = require('pdfkit');
+          console.log('✅ PDFKit imported successfully');
           
-          exportContent = [excelHeaders, ...excelRows]
-            .map(row => row.map(field => `"${field}"`).join(','))
-            .join('\n');
-          contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-          filename = `attendance_${startDate || 'all'}_${endDate || 'data'}.xlsx`;
-          break;
-
-        case 'pdf':
-        default:
-          try {
-            console.log('🔍 Generating PDF file...');
-            
-            // Import PDFKit library dynamically to avoid issues
-            const PDFDocument = require('pdfkit');
-            console.log('✅ PDFKit imported successfully');
-            
-            // Create a new PDF document
-            const doc = new PDFDocument({
-              size: 'A4',
-              margin: 50,
-              info: {
-                Title: 'Attendance Report',
-                Author: 'School Management System',
-                Subject: 'Student Attendance Report',
-                Keywords: 'attendance, students, report',
-                CreationDate: new Date()
-              }
-            });
-            
-            console.log('✅ PDF document created');
-            
-            // Validate that we have data to export
-            if (!exportData || exportData.length === 0) {
-              console.error('❌ No data to export for PDF');
-              throw new Error('No attendance data available for export');
+          // Create a new PDF document
+          const doc = new PDFDocument({
+            size: 'A4',
+            margin: 50,
+            info: {
+              Title: 'Attendance Report',
+              Author: 'School Management System',
+              Subject: 'Student Attendance Report',
+              Keywords: 'attendance, students, report',
+              CreationDate: new Date()
+            }
+          });
+          
+          console.log('✅ PDF document created');
+          
+          // Validate that we have data to export
+          if (!exportData || exportData.length === 0) {
+            console.error('❌ No data to export for PDF');
+            throw new Error('No attendance data available for export');
+          }
+          
+          console.log('🔍 Data validation passed, rows to export:', exportData.length);
+          
+          // Set up response headers for PDF
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="attendance_${startDate || 'all'}_${endDate || 'data'}.pdf"`);
+          res.setHeader('Cache-Control', 'no-cache');
+          
+          // Pipe the PDF to the response
+          doc.pipe(res);
+          
+          console.log('🔍 Starting PDF content generation...');
+          
+          // Add title
+          doc.fontSize(24)
+             .font('Helvetica-Bold')
+             .text('ATTENDANCE REPORT', { align: 'center' });
+          
+          doc.moveDown(0.5);
+          console.log('✅ Title added');
+          
+          // Add subtitle
+          doc.fontSize(14)
+             .font('Helvetica')
+             .text(`Generated on: ${new Date().toLocaleDateString()}`, { align: 'center' });
+          
+          doc.moveDown(0.5);
+          console.log('✅ Subtitle added');
+          
+          // Add report details
+          doc.fontSize(12)
+             .font('Helvetica-Bold')
+             .text('Report Details:', { underline: true });
+          
+          doc.fontSize(10)
+             .font('Helvetica')
+             .text(`Class: ${classId ? 'Specific Class' : 'All Classes'}`)
+             .text(`Date Range: ${startDate || 'All'} to ${endDate || 'All'}`)
+             .text(`Total Records: ${exportData.length}`);
+          
+          doc.moveDown(1);
+          console.log('✅ Report details added');
+          
+          // Create table headers
+          const tableTop = doc.y;
+          const tableLeft = 50;
+          const colWidths = [80, 120, 80, 80, 80, 80, 80];
+          const headers = ['Date', 'Student Name', 'Roll No', 'Class', 'Status', 'In Time', 'Out Time'];
+          
+          console.log('🔍 Creating table headers at Y position:', tableTop);
+          
+          // Draw table headers
+          doc.fontSize(10)
+             .font('Helvetica-Bold')
+             .fillColor('black');
+          
+          headers.forEach((header, i) => {
+            doc.text(header, tableLeft + colWidths.slice(0, i).reduce((a, b) => a + b, 0), tableTop);
+          });
+          
+          // Draw header underline
+          doc.moveTo(tableLeft, tableTop + 15)
+             .lineTo(tableLeft + colWidths.reduce((a, b) => a + b, 0), tableTop + 15)
+             .stroke();
+          
+          doc.moveDown(0.5);
+          console.log('✅ Table headers created');
+          
+          // Add data rows
+          let currentY = doc.y;
+          doc.fontSize(9)
+             .font('Helvetica');
+          
+          console.log('🔍 Adding data rows, starting Y position:', currentY);
+          console.log('🔍 Total rows to add:', exportData.length);
+          
+          exportData.forEach((row, index) => {
+            // Check if we need a new page
+            if (currentY > 700) {
+              doc.addPage();
+              currentY = 50;
+              console.log('📄 Added new page at row:', index);
             }
             
-            console.log('🔍 Data validation passed, rows to export:', exportData.length);
+            const rowData = [
+              row.date,
+              row.studentName,
+              row.rollNo,
+              row.className,
+              row.status,
+              row.inTime,
+              row.outTime
+            ];
             
-            // Set up response headers for PDF
+            // Draw row data
+            rowData.forEach((cell, i) => {
+              const x = tableLeft + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
+              doc.text(cell || '--', x, currentY);
+            });
+            
+            currentY += 20;
+            
+            // Add alternating row background
+            if (index % 2 === 0) {
+              doc.rect(tableLeft, currentY - 20, colWidths.reduce((a, b) => a + b, 0), 20)
+                 .fillColor('#f8f9fa')
+                 .fill();
+              doc.fillColor('black'); // Reset fill color
+            }
+            
+            // Log progress every 10 rows
+            if (index % 10 === 0 || index === exportData.length - 1) {
+              console.log(`📝 Processed row ${index + 1}/${exportData.length}, Y position: ${currentY}`);
+            }
+          });
+          
+          console.log('✅ All data rows added successfully');
+          
+          // Add summary at the end
+          doc.addPage();
+          doc.fontSize(16)
+             .font('Helvetica-Bold')
+             .text('Summary', { underline: true });
+          
+          doc.moveDown(0.5);
+          
+          const statusCounts = {};
+          exportData.forEach(row => {
+            statusCounts[row.status] = (statusCounts[row.status] || 0) + 1;
+          });
+          
+          doc.fontSize(12)
+             .font('Helvetica');
+          
+          Object.entries(statusCounts).forEach(([status, count]) => {
+            doc.text(`${status}: ${count} students`);
+          });
+          
+          doc.moveDown(1);
+          doc.text(`Total Students: ${exportData.length}`);
+          doc.text(`Report Generated: ${new Date().toLocaleString()}`);
+          
+          console.log('✅ PDF content added successfully');
+          console.log('🔍 PDF document info:', {
+            pageCount: doc.bufferedPageRange().count,
+            currentPage: doc.page.pageNumber,
+            yPosition: doc.y
+          });
+          
+          // Finalize the PDF
+          doc.end();
+          console.log('✅ PDF finalized and sent');
+          
+          // Add a small delay to ensure the PDF is fully written
+          setTimeout(() => {
+            console.log('✅ PDF generation completed');
+          }, 100);
+          
+          // Return early since we're piping to response
+          return;
+          
+        } catch (pdfError) {
+          console.error('❌ PDF generation failed, falling back to CSV:', pdfError);
+          console.error('❌ Error details:', {
+            message: pdfError.message,
+            stack: pdfError.stack,
+            name: pdfError.name
+          });
+          
+          // Try to generate a simple text-based PDF as fallback
+          try {
+            console.log('🔄 Attempting simple PDF fallback...');
+            
+            const simpleDoc = new (require('pdfkit'))({
+              size: 'A4',
+              margin: 50
+            });
+            
+            // Set headers for fallback PDF
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="attendance_${startDate || 'all'}_${endDate || 'data'}.pdf"`);
-            res.setHeader('Cache-Control', 'no-cache');
             
-            // Pipe the PDF to the response
-            doc.pipe(res);
+            simpleDoc.pipe(res);
+            simpleDoc.fontSize(16).text('ATTENDANCE REPORT', { align: 'center' });
+            simpleDoc.moveDown(1);
+            simpleDoc.fontSize(12).text(`Generated on: ${new Date().toLocaleDateString()}`);
+            simpleDoc.moveDown(1);
+            simpleDoc.text(`Total Records: ${exportData.length}`);
+            simpleDoc.moveDown(1);
+            simpleDoc.text('Note: This is a simplified version due to generation error.');
+            simpleDoc.end();
             
-            console.log('🔍 Starting PDF content generation...');
-            
-            // Add title
-            doc.fontSize(24)
-               .font('Helvetica-Bold')
-               .text('ATTENDANCE REPORT', { align: 'center' });
-            
-            doc.moveDown(0.5);
-            console.log('✅ Title added');
-            
-            // Add subtitle
-            doc.fontSize(14)
-               .font('Helvetica')
-               .text(`Generated on: ${new Date().toLocaleDateString()}`, { align: 'center' });
-            
-            doc.moveDown(0.5);
-            console.log('✅ Subtitle added');
-            
-            // Add report details
-            doc.fontSize(12)
-               .font('Helvetica-Bold')
-               .text('Report Details:', { underline: true });
-            
-            doc.fontSize(10)
-               .font('Helvetica')
-               .text(`Class: ${classId ? 'Specific Class' : 'All Classes'}`)
-               .text(`Date Range: ${startDate || 'All'} to ${endDate || 'All'}`)
-               .text(`Total Records: ${exportData.length}`);
-            
-            doc.moveDown(1);
-            console.log('✅ Report details added');
-            
-            // Create table headers
-            const tableTop = doc.y;
-            const tableLeft = 50;
-            const colWidths = [80, 120, 80, 80, 80, 80, 80];
-            const headers = ['Date', 'Student Name', 'Roll No', 'Class', 'Status', 'In Time', 'Out Time'];
-            
-            console.log('🔍 Creating table headers at Y position:', tableTop);
-            
-            // Draw table headers
-            doc.fontSize(10)
-               .font('Helvetica-Bold')
-               .fillColor('black');
-            
-            headers.forEach((header, i) => {
-              doc.text(header, tableLeft + colWidths.slice(0, i).reduce((a, b) => a + b, 0), tableTop);
-            });
-            
-            // Draw header underline
-            doc.moveTo(tableLeft, tableTop + 15)
-               .lineTo(tableLeft + colWidths.reduce((a, b) => a + b, 0), tableTop + 15)
-               .stroke();
-            
-            doc.moveDown(0.5);
-            console.log('✅ Table headers created');
-            
-            // Add data rows
-            let currentY = doc.y;
-            doc.fontSize(9)
-               .font('Helvetica');
-            
-            console.log('🔍 Adding data rows, starting Y position:', currentY);
-            console.log('🔍 Total rows to add:', exportData.length);
-            
-            exportData.forEach((row, index) => {
-              // Check if we need a new page
-              if (currentY > 700) {
-                doc.addPage();
-                currentY = 50;
-                console.log('📄 Added new page at row:', index);
-              }
-              
-              const rowData = [
-                row.date,
-                row.studentName,
-                row.rollNo,
-                row.className,
-                row.status,
-                row.inTime,
-                row.outTime
-              ];
-              
-              // Draw row data
-              rowData.forEach((cell, i) => {
-                const x = tableLeft + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
-                doc.text(cell || '--', x, currentY);
-              });
-              
-              currentY += 20;
-              
-              // Add alternating row background
-              if (index % 2 === 0) {
-                doc.rect(tableLeft, currentY - 20, colWidths.reduce((a, b) => a + b, 0), 20)
-                   .fillColor('#f8f9fa')
-                   .fill();
-                doc.fillColor('black'); // Reset fill color
-              }
-              
-              // Log progress every 10 rows
-              if (index % 10 === 0 || index === exportData.length - 1) {
-                console.log(`📝 Processed row ${index + 1}/${exportData.length}, Y position: ${currentY}`);
-              }
-            });
-            
-            console.log('✅ All data rows added successfully');
-            
-            // Add summary at the end
-            doc.addPage();
-            doc.fontSize(16)
-               .font('Helvetica-Bold')
-               .text('Summary', { underline: true });
-            
-            doc.moveDown(0.5);
-            
-            const statusCounts = {};
-            exportData.forEach(row => {
-              statusCounts[row.status] = (statusCounts[row.status] || 0) + 1;
-            });
-            
-            doc.fontSize(12)
-               .font('Helvetica');
-            
-            Object.entries(statusCounts).forEach(([status, count]) => {
-              doc.text(`${status}: ${count} students`);
-            });
-            
-            doc.moveDown(1);
-            doc.text(`Total Students: ${exportData.length}`);
-            doc.text(`Report Generated: ${new Date().toLocaleString()}`);
-            
-            console.log('✅ PDF content added successfully');
-            console.log('🔍 PDF document info:', {
-              pageCount: doc.bufferedPageRange().count,
-              currentPage: doc.page.pageNumber,
-              yPosition: doc.y
-            });
-            
-            // Finalize the PDF
-            doc.end();
-            console.log('✅ PDF finalized and sent');
-            
-            // Add a small delay to ensure the PDF is fully written
-            setTimeout(() => {
-              console.log('✅ PDF generation completed');
-            }, 100);
-            
-            // Return early since we're piping to response
+            console.log('✅ Simple PDF fallback sent');
             return;
+          } catch (fallbackError) {
+            console.error('❌ PDF fallback also failed:', fallbackError);
             
-          } catch (pdfError) {
-            console.error('❌ PDF generation failed, falling back to CSV:', pdfError);
-            console.error('❌ Error details:', {
-              message: pdfError.message,
-              stack: pdfError.stack,
-              name: pdfError.name
-            });
-            
-            // Try to generate a simple text-based PDF as fallback
-            try {
-              console.log('🔄 Attempting simple PDF fallback...');
-              
-              const simpleDoc = new (require('pdfkit'))({
-                size: 'A4',
-                margin: 50
-              });
-              
-              // Set headers for fallback PDF
-              res.setHeader('Content-Type', 'application/pdf');
-              res.setHeader('Content-Disposition', `attachment; filename="attendance_${startDate || 'all'}_${endDate || 'data'}.pdf"`);
-              
-              simpleDoc.pipe(res);
-              simpleDoc.fontSize(16).text('ATTENDANCE REPORT', { align: 'center' });
-              simpleDoc.moveDown(1);
-              simpleDoc.fontSize(12).text(`Generated on: ${new Date().toLocaleDateString()}`);
-              simpleDoc.moveDown(1);
-              simpleDoc.text(`Total Records: ${exportData.length}`);
-              simpleDoc.moveDown(1);
-              simpleDoc.text('Note: This is a simplified version due to generation error.');
-              simpleDoc.end();
-              
-              console.log('✅ Simple PDF fallback sent');
-              return;
-            } catch (fallbackError) {
-              console.error('❌ PDF fallback also failed:', fallbackError);
-              
-              // Final fallback to CSV
-              res.setHeader('Content-Type', 'text/csv');
-              res.setHeader('Content-Disposition', `attachment; filename="attendance_${startDate || 'all'}_${endDate || 'data'}.csv"`);
-              res.send(exportContent);
-              console.log('✅ Final fallback CSV sent');
-              return;
-            }
+            // Final fallback to CSV
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="attendance_${startDate || 'all'}_${endDate || 'data'}.csv"`);
+            res.send(exportContent);
+            console.log('✅ Final fallback CSV sent');
+            return;
           }
-          break;
+        }
+        break;
       }
 
       // Set response headers for file download (only for non-PDF formats)
       if (format !== 'pdf') {
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.setHeader('Content-Length', Buffer.byteLength(exportContent, 'utf8'));
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', Buffer.byteLength(exportContent, 'utf8'));
       }
 
       console.log('✅ Export completed successfully:', { format, filename, records: exportData.length });
@@ -2058,7 +2157,7 @@
           // Fallback to CSV if Excel fails
           res.setHeader('Content-Type', 'text/csv');
           res.setHeader('Content-Disposition', `attachment; filename="attendance_${startDate || 'all'}_${endDate || 'data'}.csv"`);
-      res.send(exportContent);
+          res.send(exportContent);
           console.log('✅ Fallback CSV sent');
         }
       } else if (format === 'csv') {
@@ -2072,5 +2171,289 @@
       console.error('Error in exportAttendanceData:', error);
       return createErrorResponse(res, 'Failed to export attendance data', 500);
     }
+  };
+
+  /**
+   * Automatically mark absent students who haven't marked in by 9 AM
+   * This function should be called by a scheduled task/cron job
+   */
+  export const autoMarkAbsentStudents = async (req, res) => {
+    try {
+      console.log('🤖 Auto-marking absent students...');
+      
+      // Check if it's time to auto-mark absent (after 9 AM Afghanistan time)
+      if (!isAutoAbsentTime()) {
+        const afghanTime = getFormattedAfghanTime();
+        console.log('⏰ Not yet time to auto-mark absent. Current Afghanistan time:', afghanTime);
+        console.log('⏰ Auto-mark absent runs after 9:00 AM Afghanistan time');
+        return createErrorResponse(res, 'Not yet time to auto-mark absent', 400, {
+          message: `Auto-mark absent runs after 9:00 AM Afghanistan time. Current time: ${afghanTime}`,
+          currentAfghanTime: afghanTime,
+          autoMarkTime: 'After 9:00 AM (Afghanistan time)'
+        });
+      }
+
+      const afghanTime = getFormattedAfghanTime();
+      const today = new Date();
+      const schoolId = req.user?.schoolId || 1;
+
+      console.log('🌍 Current Afghanistan time:', afghanTime);
+      console.log('📅 Processing date:', today.toISOString());
+      console.log('🏫 School ID:', schoolId);
+
+      // Get all active students for the school
+      const students = await prisma.student.findMany({
+        where: {
+          schoolId: BigInt(schoolId),
+          deletedAt: null,
+          user: {
+            status: 'ACTIVE'
+          }
+        },
+        include: {
+          class: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          user: {
+            select: {
+              firstName: true,
+              lastName: true,
+              phone: true
+            }
+          }
+        }
+      });
+
+      console.log(`📚 Found ${students.length} active students`);
+
+      let absentCount = 0;
+      let presentCount = 0;
+      let errorCount = 0;
+
+      // Process each student
+      for (const student of students) {
+        try {
+          // Check if attendance record already exists for today
+          const existingAttendance = await prisma.attendance.findFirst({
+            where: {
+              studentId: student.id,
+              classId: student.classId,
+              date: today,
+              schoolId: BigInt(schoolId),
+              deletedAt: null
+            }
+          });
+
+          if (existingAttendance) {
+            // Student already has attendance record for today
+            if (existingAttendance.status === 'PRESENT' || existingAttendance.inTime) {
+              presentCount++;
+              console.log(`✅ Student ${student.user.firstName} ${student.user.lastName} already marked present`);
+            } else {
+              // Update existing record to mark as absent
+              await prisma.attendance.update({
+                where: { id: existingAttendance.id },
+                data: {
+                  status: 'ABSENT',
+                  updatedAt: new Date()
+                }
+              });
+              absentCount++;
+              console.log(`❌ Updated student ${student.user.firstName} ${student.user.lastName} as absent`);
+            }
+          } else {
+            // Create new absent record
+            await prisma.attendance.create({
+              data: {
+                date: today,
+                status: 'ABSENT',
+                studentId: student.id,
+                classId: student.classId,
+                schoolId: BigInt(schoolId),
+                createdBy: BigInt(req.user?.id || 1),
+                createdAt: new Date()
+              }
+            });
+            absentCount++;
+            console.log(`❌ Created absent record for student ${student.user.firstName} ${student.user.lastName}`);
+
+            // Send SMS notification for absent student (non-blocking)
+            try {
+              if (student.user && student.user.phone) {
+                smsService.sendAttendanceSMS(
+                  {
+                    name: `${student.user.firstName} ${student.user.lastName}`,
+                    phone: student.user.phone
+                  },
+                  {
+                    date: today,
+                    className: student.class?.name || 'Unknown Class',
+                    status: 'ABSENT',
+                    reason: 'No mark-in recorded by 9:00 AM'
+                  },
+                  'absent' // Use appropriate campaign ID for absent notifications
+                ).then(smsResult => {
+                  if (smsResult && smsResult.success) {
+                    console.log(`📱 Absent SMS sent to ${student.user.firstName} ${student.user.lastName}`);
+                  }
+                }).catch(smsError => {
+                  console.error(`❌ Failed to send absent SMS to ${student.user.firstName}:`, smsError.message);
+                });
+              }
+            } catch (smsError) {
+              console.error(`❌ SMS preparation failed for ${student.user.firstName}:`, smsError.message);
+            }
+          }
+        } catch (studentError) {
+          errorCount++;
+          console.error(`❌ Error processing student ${student.user?.firstName || 'Unknown'}:`, studentError.message);
+        }
+      }
+
+      const summary = {
+        totalStudents: students.length,
+        presentCount,
+        absentCount,
+        errorCount,
+        processedAt: afghanTime,
+        date: today.toISOString()
+      };
+
+      console.log('📊 Auto-mark absent summary:', summary);
+
+      return createSuccessResponse(res, 'Auto-mark absent completed successfully', summary);
+    } catch (error) {
+      console.error('❌ Error in autoMarkAbsentStudents:', error);
+      return createErrorResponse(res, 'Failed to auto-mark absent students', 500, {
+        error: error.message
+      });
+    }
+  };
+
+  /**
+   * Get attendance time windows and current status
+   */
+  export const getAttendanceTimeStatus = async (req, res) => {
+    try {
+      const afghanTime = getAfghanistanTime();
+      const currentHour = afghanTime.getHours();
+      const currentMinute = afghanTime.getMinutes();
+
+      const status = {
+        currentAfghanTime: getFormattedAfghanTime(),
+        currentHour,
+        currentMinute,
+        timeWindows: {
+          markIn: {
+            start: ATTENDANCE_TIMES.MARK_IN_START,
+            end: ATTENDANCE_TIMES.MARK_IN_END,
+            isOpen: isMarkInTimeWindow(),
+            description: '7:00 AM - 8:00 AM (Afghanistan time)'
+          },
+          markOut: {
+            start: ATTENDANCE_TIMES.MARK_OUT_START,
+            end: ATTENDANCE_TIMES.MARK_OUT_END,
+            isOpen: isMarkOutTimeWindow(),
+            description: '12:00 PM - 1:00 PM (Afghanistan time)'
+          },
+          autoAbsent: {
+            time: ATTENDANCE_TIMES.AUTO_ABSENT_TIME,
+            isActive: isAutoAbsentTime(),
+            description: 'After 9:00 AM - automatically mark absent students'
+          }
+        },
+        nextWindow: getNextWindowInfo(currentHour),
+        timezone: AFGHANISTAN_TIMEZONE,
+        utcOffset: '+04:30'
+      };
+
+      return createSuccessResponse(res, 'Attendance time status retrieved successfully', status);
+    } catch (error) {
+      console.error('❌ Error in getAttendanceTimeStatus:', error);
+      return createErrorResponse(res, 'Failed to get attendance time status', 500, {
+        error: error.message
+      });
+    }
+  };
+
+  /**
+   * Get information about the next available time window
+   */
+  const getNextWindowInfo = (currentHour) => {
+    if (currentHour < ATTENDANCE_TIMES.MARK_IN_START) {
+      return {
+        type: 'markIn',
+        time: `${ATTENDANCE_TIMES.MARK_IN_START}:00 AM`,
+        description: 'Mark-in window opens at 7:00 AM',
+        waitTime: `${ATTENDANCE_TIMES.MARK_IN_START - currentHour} hours`
+      };
+    } else if (currentHour < ATTENDANCE_TIMES.MARK_IN_END) {
+      return {
+        type: 'markIn',
+        time: `${ATTENDANCE_TIMES.MARK_IN_END}:00 AM`,
+        description: 'Mark-in window closes at 8:00 AM',
+        remainingTime: `${ATTENDANCE_TIMES.MARK_IN_END - currentHour} hours`
+      };
+    } else if (currentHour < ATTENDANCE_TIMES.MARK_OUT_START) {
+      return {
+        type: 'markOut',
+        time: `${ATTENDANCE_TIMES.MARK_OUT_START}:00 PM`,
+        description: 'Mark-out window opens at 12:00 PM',
+        waitTime: `${ATTENDANCE_TIMES.MARK_OUT_START - currentHour} hours`
+      };
+    } else if (currentHour < ATTENDANCE_TIMES.MARK_OUT_END) {
+      return {
+        type: 'markOut',
+        time: `${ATTENDANCE_TIMES.MARK_OUT_END}:00 PM`,
+        description: 'Mark-out window closes at 1:00 PM',
+        remainingTime: `${ATTENDANCE_TIMES.MARK_OUT_END - currentHour} hours`
+      };
+    } else {
+      return {
+        type: 'nextDay',
+        time: '7:00 AM tomorrow',
+        description: 'Next mark-in window opens tomorrow at 7:00 AM',
+        waitTime: 'Next day'
+      };
+    }
+  };
+
+  export default {
+    createAttendance,
+    getAttendance,
+    getAttendanceByStudent,
+    getAttendanceByClass,
+    getAttendanceByDate,
+    getAttendanceStats,
+    getAttendanceAnalytics,
+    markInTime,
+    markOutTime,
+    bulkCreateAttendance,
+    updateAttendance,
+    deleteAttendance,
+    getAttendanceBySubject,
+    getAttendanceByTeacher,
+    getAttendanceBySchool,
+    getAttendanceByPeriod,
+    getAttendanceByStatus,
+    getAttendanceByGrade,
+    getAttendanceBySection,
+    getAttendanceByRollNo,
+    getAttendanceByPhone,
+    getAttendanceByEmail,
+    getAttendanceByParent,
+    getAttendanceByGuardian,
+    getAttendanceByEmergencyContact,
+    getAttendanceByAddress,
+    getAttendanceByBloodGroup,
+    getAttendanceByGender,
+    getAttendanceByAge,
+    getAttendanceByEnrollmentDate,
+    exportAttendanceData,
+    autoMarkAbsentStudents,
+    getAttendanceTimeStatus
   };
 
