@@ -16,8 +16,8 @@
  * - SCHOOL_ID: Default school ID (defaults to 1)
  */
 
-import { PrismaClient } from '../generated/prisma/client.js';
-import { smsService } from '../services/smsService.js';
+import { PrismaClient } from './generated/prisma/client.js';
+import { smsService } from './services/smsService.js';
 
 const prisma = new PrismaClient();
 
@@ -239,6 +239,4 @@ const main = async () => {
 // Run the script if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   main();
-}
-
-export { autoMarkAbsentStudents, getAttendanceTimeStatus }; 
+} 
