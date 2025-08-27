@@ -535,6 +535,566 @@ class ParentController {
       });
     }
   }
+
+  // ======================
+  // COMPREHENSIVE PARENT PORTAL ENDPOINTS
+  // ======================
+
+  // Get student attendance data
+  async getStudentAttendance(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { parentId, studentId } = req.params;
+      const { startDate, endDate } = req.query;
+
+      // Verify parent has access to this student
+      const parent = await prisma.parent.findFirst({
+        where: {
+          userId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        include: {
+          students: {
+            where: { id: BigInt(studentId) }
+          }
+        }
+      });
+
+      if (!parent || parent.students.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied to student data'
+        });
+      }
+
+      // Build date filter
+      const dateFilter = {};
+      if (startDate && endDate) {
+        dateFilter.date = {
+          gte: new Date(startDate),
+          lte: new Date(endDate)
+        };
+      }
+
+      // Get attendance records
+      const attendance = await prisma.attendance.findMany({
+        where: {
+          studentId: BigInt(studentId),
+          ...dateFilter
+        },
+        orderBy: { date: 'desc' },
+        take: 100 // Limit to last 100 records
+      });
+
+      const convertedAttendance = convertBigInts(attendance);
+
+      return res.json({
+        success: true,
+        message: 'Student attendance retrieved successfully',
+        data: convertedAttendance
+      });
+
+    } catch (error) {
+      console.error('Get student attendance error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve attendance data',
+        error: error.message
+      });
+    }
+  }
+
+  // Get student grades data
+  async getStudentGrades(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { parentId, studentId } = req.params;
+      const { subject, term, academicYear } = req.query;
+
+      // Verify parent has access to this student
+      const parent = await prisma.parent.findFirst({
+        where: {
+          userId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        include: {
+          students: {
+            where: { id: BigInt(studentId) }
+          }
+        }
+      });
+
+      if (!parent || parent.students.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied to student data'
+        });
+      }
+
+      // Build filter
+      const filter = { studentId: BigInt(studentId) };
+      if (subject) filter.subject = { name: { contains: subject, mode: 'insensitive' } };
+      if (term) filter.term = { name: { contains: term, mode: 'insensitive' } };
+      if (academicYear) filter.academicYear = { name: { contains: academicYear, mode: 'insensitive' } };
+
+      // Get grades
+      const grades = await prisma.grade.findMany({
+        where: filter,
+        include: {
+          subject: { select: { name: true } },
+          term: { select: { name: true } },
+          academicYear: { select: { name: true } }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100
+      });
+
+      const convertedGrades = convertBigInts(grades);
+
+      return res.json({
+        success: true,
+        message: 'Student grades retrieved successfully',
+        data: convertedGrades
+      });
+
+    } catch (error) {
+      console.error('Get student grades error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve grades data',
+        error: error.message
+      });
+    }
+  }
+
+  // Get student assignments data
+  async getStudentAssignments(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { parentId, studentId } = req.params;
+      const { status, subject, dueDate } = req.query;
+
+      // Verify parent has access to this student
+      const parent = await prisma.parent.findFirst({
+        where: {
+          userId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        include: {
+          students: {
+            where: { id: BigInt(studentId) }
+          }
+        }
+      });
+
+      if (!parent || parent.students.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied to student data'
+        });
+      }
+
+      // Build filter
+      const filter = { studentId: BigInt(studentId) };
+      if (status) filter.status = status.toUpperCase();
+      if (subject) filter.subject = { name: { contains: subject, mode: 'insensitive' } };
+      if (dueDate) filter.dueDate = { gte: new Date(dueDate) };
+
+      // Get assignments
+      const assignments = await prisma.assignment.findMany({
+        where: filter,
+        include: {
+          subject: { select: { name: true } },
+          class: { select: { name: true } }
+        },
+        orderBy: { dueDate: 'asc' },
+        take: 100
+      });
+
+      const convertedAssignments = convertBigInts(assignments);
+
+      return res.json({
+        success: true,
+        message: 'Student assignments retrieved successfully',
+        data: convertedAssignments
+      });
+
+    } catch (error) {
+      console.error('Get student assignments error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve assignments data',
+        error: error.message
+      });
+    }
+  }
+
+  // Get student exams data
+  async getStudentExams(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { parentId, studentId } = req.params;
+      const { subject, status, academicYear } = req.query;
+
+      // Verify parent has access to this student
+      const parent = await prisma.parent.findFirst({
+        where: {
+          userId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        include: {
+          students: {
+            where: { id: BigInt(studentId) }
+          }
+        }
+      });
+
+      if (!parent || parent.students.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied to student data'
+        });
+      }
+
+      // Build filter
+      const filter = { studentId: BigInt(studentId) };
+      if (subject) filter.subject = { name: { contains: subject, mode: 'insensitive' } };
+      if (status) filter.status = status.toUpperCase();
+      if (academicYear) filter.academicYear = { name: { contains: academicYear, mode: 'insensitive' } };
+
+      // Get exams
+      const exams = await prisma.exam.findMany({
+        where: filter,
+        include: {
+          subject: { select: { name: true } },
+          class: { select: { name: true } },
+          academicYear: { select: { name: true } }
+        },
+        orderBy: { date: 'asc' },
+        take: 100
+      });
+
+      const convertedExams = convertBigInts(exams);
+
+      return res.json({
+        success: true,
+        message: 'Student exams retrieved successfully',
+        data: convertedExams
+      });
+
+    } catch (error) {
+      console.error('Get student exams error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve exams data',
+        error: error.message
+      });
+    }
+  }
+
+  // Get student fees data
+  async getStudentFees(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { parentId, studentId } = req.params;
+      const { status, academicYear, feeType } = req.query;
+
+      // Verify parent has access to this student
+      const parent = await prisma.parent.findFirst({
+        where: {
+          userId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        include: {
+          students: {
+            where: { id: BigInt(studentId) }
+          }
+        }
+      });
+
+      if (!parent || parent.students.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied to student data'
+        });
+      }
+
+      // Build filter
+      const filter = { studentId: BigInt(studentId) };
+      if (status) filter.status = status.toUpperCase();
+      if (academicYear) filter.academicYear = { name: { contains: academicYear, mode: 'insensitive' } };
+      if (feeType) filter.feeType = { name: { contains: feeType, mode: 'insensitive' } };
+
+      // Get fees
+      const fees = await prisma.fee.findMany({
+        where: filter,
+        include: {
+          feeType: { select: { name: true } },
+          academicYear: { select: { name: true } }
+        },
+        orderBy: { dueDate: 'asc' },
+        take: 100
+      });
+
+      const convertedFees = convertBigInts(fees);
+
+      return res.json({
+        success: true,
+        message: 'Student fees retrieved successfully',
+        data: convertedFees
+      });
+
+    } catch (error) {
+      console.error('Get student fees error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve fees data',
+        error: error.message
+      });
+    }
+  }
+
+  // Get student timetable
+  async getStudentTimetable(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { parentId, studentId } = req.params;
+      const { day, week } = req.query;
+
+      // Verify parent has access to this student
+      const parent = await prisma.parent.findFirst({
+        where: {
+          userId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        include: {
+          students: {
+            where: { id: BigInt(studentId) }
+          }
+        }
+      });
+
+      if (!parent || parent.students.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied to student data'
+        });
+      }
+
+      // Get student's class
+      const student = await prisma.student.findUnique({
+        where: { id: BigInt(studentId) },
+        include: { class: true }
+      });
+
+      if (!student?.class) {
+        return res.status(404).json({
+          success: false,
+          message: 'Student class not found'
+        });
+      }
+
+      // Build filter
+      const filter = { classId: student.class.id };
+      if (day) filter.day = day;
+
+      // Get timetable
+      const timetable = await prisma.timetable.findMany({
+        where: filter,
+        include: {
+          subject: { select: { name: true } },
+          teacher: { 
+            select: { 
+              user: { select: { firstName: true, lastName: true, email: true } }
+            }
+          }
+        },
+        orderBy: [{ day: 'asc' }, { startTime: 'asc' }]
+      });
+
+      const convertedTimetable = convertBigInts(timetable);
+
+      return res.json({
+        success: true,
+        message: 'Student timetable retrieved successfully',
+        data: convertedTimetable
+      });
+
+    } catch (error) {
+      console.error('Get student timetable error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve timetable data',
+        error: error.message
+      });
+    }
+  }
+
+  // Get student notifications
+  async getStudentNotifications(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { parentId, studentId } = req.params;
+      const { type, read, limit = 50 } = req.query;
+
+      // Verify parent has access to this student
+      const parent = await prisma.parent.findFirst({
+        where: {
+          userId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        include: {
+          students: {
+            where: { id: BigInt(studentId) }
+          }
+        }
+      });
+
+      if (!parent || parent.students.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied to student data'
+        });
+      }
+
+      // Build filter
+      const filter = { 
+        studentId: BigInt(studentId),
+        schoolId: BigInt(schoolId)
+      };
+      if (type) filter.type = type.toUpperCase();
+      if (read !== undefined) filter.read = read === 'true';
+
+      // Get notifications
+      const notifications = await prisma.notification.findMany({
+        where: filter,
+        orderBy: { createdAt: 'desc' },
+        take: parseInt(limit)
+      });
+
+      const convertedNotifications = convertBigInts(notifications);
+
+      return res.json({
+        success: true,
+        message: 'Student notifications retrieved successfully',
+        data: convertedNotifications
+      });
+
+    } catch (error) {
+      console.error('Get student notifications error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve notifications data',
+        error: error.message
+      });
+    }
+  }
+
+  // Get student academic summary
+  async getStudentAcademicSummary(req, res) {
+    try {
+      const { schoolId } = req.user;
+      const { parentId, studentId } = req.params;
+      const { academicYear, term } = req.query;
+
+      // Verify parent has access to this student
+      const parent = await prisma.parent.findFirst({
+        where: {
+          userId: BigInt(parentId),
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        include: {
+          students: {
+            where: { id: BigInt(studentId) }
+          }
+        }
+      });
+
+      if (!parent || parent.students.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied to student data'
+        });
+      }
+
+      // Build filter
+      const filter = { studentId: BigInt(studentId) };
+      if (academicYear) filter.academicYear = { name: { contains: academicYear, mode: 'insensitive' } };
+      if (term) filter.term = { name: { contains: term, mode: 'insensitive' } };
+
+      // Get academic summary data
+      const [grades, attendance, assignments] = await Promise.all([
+        prisma.grade.findMany({
+          where: filter,
+          include: { subject: { select: { name: true } } }
+        }),
+        prisma.attendance.findMany({
+          where: { studentId: BigInt(studentId) }
+        }),
+        prisma.assignment.findMany({
+          where: filter,
+          include: { subject: { select: { name: true } } }
+        })
+      ]);
+
+      // Calculate summary statistics
+      const totalGrades = grades.length;
+      const averageGrade = totalGrades > 0 
+        ? grades.reduce((sum, grade) => sum + parseFloat(grade.score), 0) / totalGrades 
+        : 0;
+
+      const totalAttendance = attendance.length;
+      const presentDays = attendance.filter(a => a.status === 'PRESENT').length;
+      const attendancePercentage = totalAttendance > 0 ? (presentDays / totalAttendance) * 100 : 0;
+
+      const totalAssignments = assignments.length;
+      const completedAssignments = assignments.filter(a => a.status === 'COMPLETED').length;
+      const assignmentCompletionRate = totalAssignments > 0 ? (completedAssignments / totalAssignments) * 100 : 0;
+
+      const summary = {
+        studentId,
+        academicYear: academicYear || 'Current',
+        term: term || 'All',
+        grades: {
+          total: totalGrades,
+          average: Math.round(averageGrade * 100) / 100,
+          subjects: grades.map(g => g.subject.name)
+        },
+        attendance: {
+          total: totalAttendance,
+          present: presentDays,
+          percentage: Math.round(attendancePercentage * 100) / 100
+        },
+        assignments: {
+          total: totalAssignments,
+          completed: completedAssignments,
+          completionRate: Math.round(assignmentCompletionRate * 100) / 100
+        }
+      };
+
+      return res.json({
+        success: true,
+        message: 'Student academic summary retrieved successfully',
+        data: summary
+      });
+
+    } catch (error) {
+      console.error('Get student academic summary error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve academic summary',
+        error: error.message
+      });
+    }
+  }
 }
 
 export default new ParentController(); 
