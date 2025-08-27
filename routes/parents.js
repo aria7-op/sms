@@ -84,6 +84,12 @@ router.get('/:id/students',
   parentController.getParentStudents.bind(parentController)
 );
 
+// Debug endpoint
+router.get('/:id/debug', authenticateToken, authorizePermissions(['parent:read']), parentController.debugParent.bind(parentController));
+
+// Get parent by ID
+router.get('/:id', authenticateToken, authorizePermissions(['parent:read']), parentController.getParentById.bind(parentController));
+
 // ============================================================================
 // Comprehensive Student Data Endpoints
 // ============================================================================
@@ -158,6 +164,42 @@ router.get('/:parentId/students/:studentId/timetable',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
   parentController.getStudentTimetable.bind(parentController)
+);
+
+/**
+ * @route   GET /api/parents/:parentId/notifications
+ * @desc    Get parent notifications (for parent and their children)
+ * @access  Private (Parent)
+ * @permissions parent:read, notification:read
+ */
+router.get('/:parentId/notifications',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'notification:read']),
+  parentController.getParentNotifications.bind(parentController)
+);
+
+/**
+ * @route   PATCH /api/parents/:parentId/notifications/:notificationId/read
+ * @desc    Mark a specific notification as read
+ * @access  Private (Parent)
+ * @permissions parent:read, notification:read
+ */
+router.patch('/:parentId/notifications/:notificationId/read',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'notification:read']),
+  parentController.markParentNotificationAsRead.bind(parentController)
+);
+
+/**
+ * @route   PATCH /api/parents/:parentId/notifications/read-all
+ * @desc    Mark all notifications as read
+ * @access  Private (Parent)
+ * @permissions parent:read, notification:read
+ */
+router.patch('/:parentId/notifications/read-all',
+  authenticateToken,
+  authorizePermissions(['parent:read', 'notification:read']),
+  parentController.markAllParentNotificationsAsRead.bind(parentController)
 );
 
 /**
