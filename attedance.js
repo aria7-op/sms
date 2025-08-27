@@ -17,7 +17,7 @@
  */
 
 import { PrismaClient } from './generated/prisma/client.js';
-import { smsService } from './services/smsService.js';
+import smsService from './services/smsService.js';
 
 const prisma = new PrismaClient();
 
