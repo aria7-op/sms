@@ -1,6 +1,6 @@
 import { PrismaClient } from '../generated/prisma/client.js';
 import { createSuccessResponse, createErrorResponse } from '../utils/responseUtils.js';
-import { smsService } from '../services/smsService.js';
+import smsService from '../services/smsService.js';
 
 // ======================
 // TIME-BASED ATTENDANCE CONSTRAINTS
