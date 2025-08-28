@@ -414,19 +414,8 @@ export const markInTime = async (req, res) => {
     const schoolId = 1; // Default school ID for testing
     const createdBy = 1; // Default user ID for testing
 
-    // Check if current time is within mark-in window (7-8 AM Afghanistan time)
-    if (!isMarkInTimeWindow()) {
-      const afghanTime = getFormattedAfghanTime();
-      console.log('❌ Mark-in time window closed. Current Afghanistan time:', afghanTime);
-      console.log('⏰ Mark-in allowed only from 7:00 AM to 8:00 AM Afghanistan time');
-      return res.status(400).json({
-        success: false,
-        error: 'Mark-in time window closed',
-        message: `Mark-in is only allowed from 7:00 AM to 8:00 AM Afghanistan time. Current time: ${afghanTime}`,
-        currentAfghanTime: afghanTime,
-        allowedWindow: '7:00 AM - 8:00 AM (Afghanistan time)'
-      });
-    }
+    // Time window check removed - attendance can be marked at any time
+    console.log('✅ Time window restrictions removed - attendance can be marked at any time');
 
     console.log('⏰ Current time:', currentTime);
     console.log('📅 Attendance date:', attendanceDate);
@@ -652,17 +641,8 @@ export const markOutTime = async (req, res) => {
     const currentTime = new Date();
     const attendanceDate = new Date(date);
 
-    // Check if current time is within mark-out window (12-1 PM Afghanistan time)
-    if (!isMarkOutTimeWindow()) {
-      const afghanTime = getFormattedAfghanTime();
-      console.log('❌ Mark-out time window closed. Current Afghanistan time:', afghanTime);
-      console.log('⏰ Mark-out allowed only from 12:00 PM to 1:00 PM Afghanistan time');
-      return createErrorResponse(res, 'Mark-out time window closed', 400, {
-        message: `Mark-out is only allowed from 12:00 PM to 1:00 PM Afghanistan time. Current time: ${afghanTime}`,
-        currentAfghanTime: afghanTime,
-        allowedWindow: '12:00 PM - 1:00 PM (Afghanistan time)'
-      });
-    }
+    // Time window check removed - attendance can be marked at any time
+    console.log('✅ Time window restrictions removed - attendance can be marked at any time');
 
     console.log('⏰ Current time:', currentTime);
     console.log('📅 Attendance date:', attendanceDate);
@@ -2347,21 +2327,21 @@ export const exportAttendanceData = async (req, res) => {
         currentMinute,
         timeWindows: {
           markIn: {
-            start: ATTENDANCE_TIMES.MARK_IN_START,
-            end: ATTENDANCE_TIMES.MARK_IN_END,
-            isOpen: isMarkInTimeWindow(),
-            description: '7:00 AM - 8:00 AM (Afghanistan time)'
+            start: 'Any time',
+            end: 'Any time',
+            isOpen: true,
+            description: 'Time restrictions removed - attendance can be marked at any time'
           },
           markOut: {
-            start: ATTENDANCE_TIMES.MARK_OUT_START,
-            end: ATTENDANCE_TIMES.MARK_OUT_END,
-            isOpen: isMarkOutTimeWindow(),
-            description: '12:00 PM - 1:00 PM (Afghanistan time)'
+            start: 'Any time',
+            end: 'Any time',
+            isOpen: true,
+            description: 'Time restrictions removed - attendance can be marked at any time'
           },
           autoAbsent: {
-            time: ATTENDANCE_TIMES.AUTO_ABSENT_TIME,
-            isActive: isAutoAbsentTime(),
-            description: 'After 9:00 AM - automatically mark absent students'
+            time: 'Disabled',
+            isActive: false,
+            description: 'Auto-absent feature disabled - time restrictions removed'
           }
         },
         nextWindow: getNextWindowInfo(currentHour),
