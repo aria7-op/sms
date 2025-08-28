@@ -18,7 +18,21 @@ const convertBigInts = (obj) => {
 
 export const getAllExpenses = async (req, res) => {
   try {
+    console.log('🔍 getAllExpenses called');
+    console.log('🔍 req.user:', req.user);
+    console.log('🔍 req.headers:', req.headers);
+    
+    // Safety check for req.user
+    if (!req.user) {
+      console.error('❌ req.user is undefined in getAllExpenses');
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Authentication required - req.user is undefined' 
+      });
+    }
+    
     const { schoolId } = req.user;
+    console.log('🔍 schoolId extracted:', schoolId);
     
     // Check if prisma and expense model exist
     if (!prisma || !prisma.expense) {
