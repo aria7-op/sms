@@ -1624,18 +1624,13 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
     
     console.log('🔍 Found students:', classStudents.length);
 
-    // Calculate month start and end dates
+    // Get month range - FIXED
     const monthStart = new Date(parseInt(year), parseInt(month) - 1, 1);
-    const monthEnd = new Date(parseInt(year), parseInt(month), 0);
+    const monthEnd = new Date(parseInt(year), parseInt(month), 0); // Last day of the month
     
-    // Fix: monthEnd calculation was wrong, it was getting last day of previous month
-    // Correct way: get the first day of next month and subtract 1 day
-    const nextMonthFirstDay = new Date(parseInt(year), parseInt(month), 1);
-    const monthEndFixed = new Date(nextMonthFirstDay.getTime() - 1);
-    
-    console.log('🔍 Month range:', monthStart.toISOString(), 'to', monthEndFixed.toISOString());
+    console.log('🔍 Month range:', monthStart.toISOString(), 'to', monthEnd.toISOString());
     console.log('🔍 Month start date:', monthStart.toDateString());
-    console.log('🔍 Month end date:', monthEndFixed.toDateString());
+    console.log('🔍 Month end date:', monthEnd.toDateString());
     
     // Debug: Check what classes have attendance records
     const classesWithAttendance = await prisma.attendance.groupBy({
@@ -1645,7 +1640,7 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
         deletedAt: null,
         date: {
           gte: monthStart,
-          lte: monthEndFixed
+          lte: monthEnd
         }
       },
       _count: {
@@ -1716,15 +1711,17 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
         dailyAttendance: {}
       };
       
-      // Initialize all days of the month - SIMPLIFIED
-      for (let day = 1; day <= 31; day++) {
-        const dateStr = `2025-08-${day.toString().padStart(2, '0')}`;
+      // Initialize all days of the month - FIXED
+      for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
         monthlyMatrix[student.id].dailyAttendance[dateStr] = {
           status: null,
           inTime: null,
           outTime: null
         };
       }
+      
+      console.log(`🔍 Created matrix for student ${student.id} with ${Object.keys(monthlyMatrix[student.id].dailyAttendance).length} days`);
     });
     
     console.log('🔍 Created matrix for 31 days of August');
@@ -1761,7 +1758,7 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
       month: parseInt(month),
       year: parseInt(year),
       monthStart: monthStart.toISOString(),
-      monthEnd: monthEndFixed.toISOString(),
+      monthEnd: monthEnd.toISOString(),
       totalStudents: matrixData.length,
       students: matrixData
     });
@@ -2490,4 +2487,3 @@ export const exportAttendanceData = async (req, res) => {
     autoMarkAbsentStudents,
     getAttendanceTimeStatus
   };
-
