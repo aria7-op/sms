@@ -42,13 +42,13 @@ export const authenticateToken = async (req, res, next) => {
     console.log('Token verified for user:', decoded.userId);
     console.log('Decoded token:', decoded);
     
-    // Check if this is an owner token or user token
-    if (decoded.role === 'SUPER_ADMIN' || decoded.ownerId) {
-      // This could be an owner or a SUPER_ADMIN user
+    // Check if this is an owner token or SUPER_ADMIN user
+    if (decoded.role === 'SUPER_ADMIN' && decoded.ownerId) {
+      // This is a SUPER_ADMIN user with ownerId
       console.log('Fetching owner from database...');
       try {
         const owner = await prisma.owner.findUnique({
-          where: { id: BigInt(decoded.userId || decoded.id) },
+          where: { id: BigInt(decoded.ownerId) },
           include: {
             schools: {
               select: {
@@ -72,80 +72,60 @@ export const authenticateToken = async (req, res, next) => {
           };
           console.log('=== authenticateToken END (Owner) ===');
           return next();
-        } else {
-          // Owner not found, check if it's a SUPER_ADMIN user
-          console.log('Owner not found, checking users table...');
-          const user = await prisma.user.findUnique({
-            where: { id: BigInt(decoded.userId || decoded.id) },
-            include: {
-              school: true,
-              createdByOwner: true,
-              teacher: true,
-              parent: true,
-              student: true,
-              staff: true
-            }
-          });
-          
-          if (!user) {
-            console.log('=== authenticateToken ERROR: User not found ===');
-            return res.status(401).json({
-              success: false,
-              error: 'Access denied',
-              message: 'User not found'
-            });
-          }
-
-          console.log('User found:', user.id, user.email);
-          req.user = user;
-          console.log('=== authenticateToken END (User) ===');
-          return next();
         }
       } catch (error) {
-        console.error('=== authenticateToken DATABASE ERROR ===', error);
+        console.error('=== authenticateToken OWNER DATABASE ERROR ===', error);
         return res.status(500).json({
           success: false,
           error: 'Authentication error',
-          message: 'Database error during authentication'
+          message: 'Database error during owner authentication'
         });
       }
-    } else {
-      // This is a regular user token
-      console.log('Fetching user from database...');
-      try {
-        const user = await prisma.user.findUnique({
-          where: { id: BigInt(decoded.userId || decoded.id) },
-          include: {
-            school: true,
-            createdByOwner: true,
-            teacher: true,
-            parent: true,
-            student: true,
-            staff: true
-          }
-        });
-        
-        if (!user) {
-          console.log('=== authenticateToken ERROR: User not found ===');
-          return res.status(401).json({
-            success: false,
-            error: 'Access denied',
-            message: 'User not found'
-          });
+    }
+    
+    // For all other cases (including TEACHER, SCHOOL_ADMIN, etc.), fetch user from users table
+    console.log('Fetching user from database...');
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: BigInt(decoded.userId) },
+        include: {
+          school: true,
+          createdByOwner: true,
+          teacher: true,
+          parent: true,
+          student: true,
+          staff: true
         }
-
-        console.log('User found:', user.id, user.email);
-        req.user = user;
-        console.log('=== authenticateToken END (User) ===');
-        return next();
-      } catch (error) {
-        console.error('=== authenticateToken DATABASE ERROR ===', error);
-        return res.status(500).json({
+      });
+      
+      if (!user) {
+        console.log('=== authenticateToken ERROR: User not found ===');
+        return res.status(401).json({
           success: false,
-          error: 'Authentication error',
-          message: 'Database error during authentication'
+          error: 'Access denied',
+          message: 'User not found'
         });
       }
+
+      console.log('User found:', user.id, user.email);
+      
+      // Ensure schoolId is properly set
+      req.user = {
+        ...user,
+        schoolId: user.schoolId || (user.school ? user.school.id : null),
+        role: decoded.role || user.role
+      };
+      
+      console.log('=== authenticateToken END (User) ===');
+      console.log('req.user set with schoolId:', req.user.schoolId);
+      return next();
+    } catch (error) {
+      console.error('=== authenticateToken USER DATABASE ERROR ===', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Authentication error',
+        message: 'Database error during user authentication'
+      });
     }
   } catch (error) {
     console.error('=== authenticateToken JWT ERROR ===', error);
@@ -1238,6 +1218,99 @@ export const authorize = (allowedRoles = [], requiredPermissions = [], options =
   };
 };
 
+/**
+ * Hybrid authorization that checks both roles and permissions
+ * Useful for endpoints that need to support both role-based and permission-based access
+ */
+export const authorizeRolesOrPermissions = (allowedRoles, requiredPermissions) => {
+  return (req, res, next) => {
+    console.log('=== authorizeRolesOrPermissions START ===');
+    console.log('Allowed roles:', allowedRoles);
+    console.log('Required permissions:', requiredPermissions);
+    console.log('User role:', req.user?.role);
+    
+    try {
+      if (!req.user) {
+        console.log('=== authorizeRolesOrPermissions ERROR: No user ===');
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required',
+          message: 'Please login to access this resource.',
+          meta: {
+            timestamp: new Date().toISOString(),
+            statusCode: 401
+          }
+        });
+      }
+
+      // Super admins (owners) have all access
+      if (req.user.role === 'SUPER_ADMIN') {
+        console.log('=== authorizeRolesOrPermissions END: SUPER_ADMIN access granted ===');
+        return next();
+      }
+
+      // Check role-based access first
+      if (allowedRoles && allowedRoles.includes(req.user.role)) {
+        console.log('=== authorizeRolesOrPermissions END: Role-based access granted ===');
+        return next();
+      }
+
+      // If role check fails, check permissions
+      if (requiredPermissions && requiredPermissions.length > 0) {
+        const userPermissions = getUserPermissions(req.user.role);
+        console.log('User permissions:', userPermissions);
+        
+        for (const permission of requiredPermissions) {
+          if (!userPermissions.includes(permission)) {
+            console.log('=== authorizeRolesOrPermissions ERROR: Permission denied ===');
+            return res.status(403).json({
+              success: false,
+              error: 'Insufficient permissions',
+              message: `You don't have permission to perform this action. Required permission: ${permission}`,
+              meta: {
+                timestamp: new Date().toISOString(),
+                statusCode: 403,
+                userRole: req.user.role,
+                requiredPermissions,
+                userPermissions
+              }
+            });
+          }
+        }
+        
+        console.log('=== authorizeRolesOrPermissions END: Permission-based access granted ===');
+        return next();
+      }
+
+      // If neither role nor permission check passes
+      console.log('=== authorizeRolesOrPermissions ERROR: Access denied ===');
+      return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions',
+        message: `You don't have permission to perform this action. Required roles: ${allowedRoles?.join(', ') || 'None'}, Required permissions: ${requiredPermissions?.join(', ') || 'None'}`,
+        meta: {
+          timestamp: new Date().toISOString(),
+          statusCode: 403,
+          userRole: req.user.role,
+          requiredRoles: allowedRoles,
+          requiredPermissions
+        }
+      });
+    } catch (error) {
+      console.error('=== authorizeRolesOrPermissions ERROR ===', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Authorization check failed',
+        message: 'Authorization service error. Please try again.',
+        meta: {
+          timestamp: new Date().toISOString(),
+          statusCode: 500
+        }
+      });
+    }
+  };
+};
+
 export default {
   authenticateToken,
   authenticate, // Add the alias to default export
@@ -1255,5 +1328,6 @@ export default {
   authorizeSubjectAccess,
   authorizeTeacherAccess,
   authorizeStudentAccess,
-  authorizeStaffAccess
+  authorizeStaffAccess,
+  authorizeRolesOrPermissions
 };
