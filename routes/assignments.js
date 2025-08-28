@@ -148,7 +148,7 @@ router.get('/:id/details',
  * @access  Private (ADMIN, TEACHER, STUDENT, PARENT)
  */
 router.get('/dashboard',
-    authorizeRoles(['ADMIN', 'TEACHER', 'STUDENT', 'PARENT']),
+    authorizeRoles(['ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STUDENT', 'PARENT']),
     async (req, res) => {
         await assignmentController.getAssignmentDashboard(req, res);
     }
@@ -200,7 +200,7 @@ router.post('/',
  * @access  Private (ADMIN, TEACHER, STUDENT, PARENT)
  */
 router.get('/',
-    authorizeRoles(['ADMIN', 'TEACHER', 'STUDENT', 'PARENT']),
+    authorizeRoles(['ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STUDENT', 'PARENT']),
     async (req, res) => {
         await assignmentController.getAllAssignments(req, res);
     }
