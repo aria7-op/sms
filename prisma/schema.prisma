@@ -921,7 +921,7 @@ model PaymentItem {
 model Payroll {
   id            BigInt        @id @default(autoincrement())
   uuid          String        @unique @default(uuid()) @db.VarChar(36)
-  staffId       BigInt
+  staffId       BigInt?
   salaryMonth   DateTime
   basicSalary   Decimal       @db.Decimal(10, 2)
   allowances    Decimal       @db.Decimal(10, 2)
@@ -940,7 +940,7 @@ model Payroll {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   deletedAt     DateTime?
-  staff         Staff         @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  staff         Staff?        @relation(fields: [staffId], references: [id], onDelete: Cascade)
   school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   createdByUser User          @relation("Payroll_createdByUser", fields: [createdBy], references: [id], onDelete: Cascade)
   updatedByUser User?         @relation("Payroll_updatedByUser", fields: [updatedBy], references: [id], onDelete: SetNull)
@@ -2870,6 +2870,7 @@ enum PaymentStatus {
   OVERDUE
   CANCELLED
   REFUNDED
+  PENDING
 }
 
 enum PaymentMethod {
@@ -3113,6 +3114,7 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
+
 
 
 
