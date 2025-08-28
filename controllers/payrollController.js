@@ -18,7 +18,21 @@ const convertBigInts = (obj) => {
 
 export const getAllPayrolls = async (req, res) => {
   try {
+    console.log('🔍 getAllPayrolls called');
+    console.log('🔍 req.user:', req.user);
+    console.log('🔍 req.headers:', req.headers);
+    
+    // Safety check for req.user
+    if (!req.user) {
+      console.error('❌ req.user is undefined in getAllPayrolls');
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Authentication required - req.user is undefined' 
+      });
+    }
+    
     const { schoolId } = req.user;
+    console.log('🔍 schoolId extracted:', schoolId);
     
     if (!prisma || !prisma.payroll) {
       console.log('⚠️ Payroll model not available in Prisma schema');
