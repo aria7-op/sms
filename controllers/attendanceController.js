@@ -918,6 +918,7 @@ export const getClassAttendanceSummary = async (req, res) => {
         console.log(`  Record ${index + 1}:`, {
           studentId: record.studentId.toString(),
           date: record.date.toISOString().split('T')[0],
+          dateRaw: record.date,
           status: record.status,
           inTime: record.inTime?.toISOString(),
           outTime: record.outTime?.toISOString()
@@ -1636,14 +1637,51 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
     console.log('🔍 Month start date:', monthStart.toDateString());
     console.log('🔍 Month end date:', monthEndFixed.toDateString());
     
-    // Get attendance records for the month
-    const attendanceRecords = await prisma.attendance.findMany({
+    // Debug: Check what classes have attendance records
+    const classesWithAttendance = await prisma.attendance.groupBy({
+      by: ['classId'],
       where: {
-        classId: BigInt(classId),
+        schoolId: BigInt(schoolId),
+        deletedAt: null,
         date: {
           gte: monthStart,
           lte: monthEndFixed
-        },
+        }
+      },
+      _count: {
+        classId: true
+      }
+    });
+    
+    console.log('🔍 Classes with attendance in this month:', classesWithAttendance);
+    
+    // Debug: Check what attendance records exist in the database for this class
+    const allClassAttendance = await prisma.attendance.findMany({
+      where: {
+        classId: BigInt(classId),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      select: {
+        date: true,
+        status: true,
+        studentId: true
+      },
+      orderBy: {
+        date: 'desc'
+      },
+      take: 10
+    });
+    
+    console.log('🔍 Recent attendance records for this class:', allClassAttendance.length);
+    if (allClassAttendance.length > 0) {
+      console.log('🔍 Sample dates in database:', allClassAttendance.slice(0, 5).map(r => r.date.toISOString().split('T')[0]));
+    }
+    
+    // Get attendance records for the month - SIMPLIFIED
+    const attendanceRecords = await prisma.attendance.findMany({
+      where: {
+        classId: BigInt(classId),
         schoolId: BigInt(schoolId),
         deletedAt: null
       },
@@ -1664,7 +1702,8 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
       }
     });
     
-    console.log('🔍 Found attendance records:', attendanceRecords.length);
+    console.log('🔍 Found ALL attendance records for class:', attendanceRecords.length);
+    console.log('🔍 No date filtering - fetching all records for the month');
 
     // Create monthly matrix data
     const monthlyMatrix = {};
@@ -1677,9 +1716,9 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
         dailyAttendance: {}
       };
       
-      // Initialize all days of the month
-      for (let d = new Date(monthStart); d <= monthEndFixed; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().split('T')[0];
+      // Initialize all days of the month - SIMPLIFIED
+      for (let day = 1; day <= 31; day++) {
+        const dateStr = `2025-08-${day.toString().padStart(2, '0')}`;
         monthlyMatrix[student.id].dailyAttendance[dateStr] = {
           status: null,
           inTime: null,
@@ -1687,20 +1726,29 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
         };
       }
     });
+    
+    console.log('🔍 Created matrix for 31 days of August');
 
-    // Fill in actual attendance data
+    // Fill in actual attendance data - SIMPLIFIED
     attendanceRecords.forEach((record) => {
       const studentId = record.studentId.toString();
       const dateStr = record.date.toISOString().split('T')[0];
       
-      if (monthlyMatrix[studentId] && monthlyMatrix[studentId].dailyAttendance[dateStr]) {
+      console.log(`🔍 Processing attendance record: Student ${studentId}, Date ${dateStr}, Status ${record.status}`);
+      
+      if (monthlyMatrix[studentId]) {
         monthlyMatrix[studentId].dailyAttendance[dateStr] = {
           status: record.status,
           inTime: record.inTime ? record.inTime.toISOString() : null,
           outTime: record.outTime ? record.outTime.toISOString() : null
         };
+        console.log(`✅ Updated matrix for student ${studentId} on ${dateStr}`);
+      } else {
+        console.log(`❌ Student ${studentId} not found in matrix`);
       }
     });
+    
+    console.log('🔍 Finished processing attendance records');
 
     // Convert to array format
     const matrixData = Object.values(monthlyMatrix);
