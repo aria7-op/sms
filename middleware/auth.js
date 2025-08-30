@@ -5,7 +5,10 @@ import { default as ownersStore } from '../store/ownersStore.js';
 // Initialize Prisma client with error handling
 let prisma;
 try {
-  prisma = new PrismaClient();
+  prisma = new PrismaClient({
+    log: ['error', 'warn'],
+    errorFormat: 'pretty',
+  });
   console.log('✅ Prisma client initialized successfully in auth middleware');
   
   // Test the connection
