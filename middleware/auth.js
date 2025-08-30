@@ -1071,18 +1071,72 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
           console.log('🔍 Prisma client status in teacher check:', prisma ? 'Available' : 'Not available');
           
           try {
-            const teacherClass = await prisma.teacherClass.findFirst({
+            // Ensure IDs are properly typed
+            const teacherId = BigInt(req.user.id);
+            const classId = BigInt(student.classId);
+            const schoolId = BigInt(req.user.schoolId);
+            
+            console.log('🔍 ID types:', {
+              teacherId: teacherId.toString(),
+              classId: classId.toString(),
+              schoolId: schoolId.toString(),
+              teacherIdType: typeof teacherId,
+              classIdType: typeof classId,
+              schoolIdType: typeof schoolId
+            });
+            
+            // Check if this teacher is the class teacher for the student's class
+            const classData = await prisma.class.findFirst({
               where: {
-                teacherId: req.user.id,
-                classId: student.classId
+                id: classId,
+                classTeacherId: teacherId,
+                schoolId: schoolId,
+                deletedAt: null
+              },
+              select: {
+                id: true,
+                name: true,
+                classTeacherId: true
               }
             });
 
-            console.log('🔍 Teacher class query result:', teacherClass);
+            console.log('🔍 Class query result:', classData);
 
-            if (teacherClass) {
+            if (classData && classData.classTeacherId === req.user.id) {
+              console.log('✅ Teacher is class teacher for this class');
               return next();
             }
+
+            // Also check if teacher teaches subjects in this class (via timetables)
+            const teacherSubject = await prisma.timetable.findFirst({
+              where: {
+                classId: student.classId,
+                teacherId: req.user.id,
+                schoolId: req.user.schoolId,
+                deletedAt: null
+              },
+              select: {
+                id: true,
+                subjectId: true
+              }
+            });
+
+            console.log('🔍 Teacher subject query result:', teacherSubject);
+
+            if (teacherSubject) {
+              console.log('✅ Teacher teaches subjects in this class');
+              return next();
+            }
+
+            console.log('❌ Teacher has no access to this class');
+            
+            // Log additional debugging info
+            console.log('🔍 Debug info:', {
+              teacherId: req.user.id,
+              studentClassId: student.classId,
+              studentSchoolId: student.schoolId,
+              userSchoolId: req.user.schoolId
+            });
           } catch (teacherClassError) {
             console.error('❌ Error checking teacher class assignment:', teacherClassError);
             console.error('❌ Error details:', {
@@ -1114,31 +1168,63 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
 
       // Parents can access their children
       if (req.user.role === 'PARENT') {
-        const parent = await prisma.parent.findFirst({
-          where: {
-            userId: req.user.id,
-            schoolId: req.user.schoolId
-          },
-          select: { id: true }
-        });
-
-        if (parent) {
-          const parentStudent = await prisma.student.findFirst({
+        console.log('🔍 Checking parent access for user:', req.user.id);
+        console.log('🔍 Prisma client status in parent check:', prisma ? 'Available' : 'Not available');
+        
+        try {
+          const parent = await prisma.parent.findFirst({
             where: {
-              id: parseInt(studentId),
-              parentId: parent.id,
-              schoolId: req.user.schoolId,
-              deletedAt: null
+              userId: req.user.id,
+              schoolId: req.user.schoolId
             },
             select: { id: true }
           });
 
-          if (parentStudent) {
-            return next();
+          console.log('🔍 Parent query result:', parent);
+
+          if (parent) {
+            const parentStudent = await prisma.student.findFirst({
+              where: {
+                id: parseInt(studentId),
+                parentId: parent.id,
+                schoolId: req.user.schoolId,
+                deletedAt: null
+              },
+              select: { id: true }
+            });
+
+            console.log('🔍 Parent student query result:', parentStudent);
+
+            if (parentStudent) {
+              return next();
+            }
           }
+        } catch (parentError) {
+          console.error('❌ Error checking parent access:', parentError);
+          console.error('❌ Error details:', {
+            message: parentError.message,
+            stack: parentError.stack,
+            userId: req.user.id,
+            schoolId: req.user.schoolId
+          });
+          
+          // If there's a database error, deny access for security
+          return res.status(500).json({
+            success: false,
+            error: 'Database error during authorization',
+            message: 'Failed to verify parent access.',
+            meta: {
+              timestamp: new Date().toISOString(),
+              statusCode: 500,
+              error: parentError.message
+            }
+          });
         }
       }
 
+      console.log('🔍 Access denied - no matching permissions found');
+      console.log('🔍 Final Prisma client status:', prisma ? 'Available' : 'Not available');
+      
       return res.status(403).json({
         success: false,
         error: 'Access denied',
