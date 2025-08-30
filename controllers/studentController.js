@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import { 
   handlePrismaError, 
   createSuccessResponse, 
@@ -505,21 +505,77 @@ class StudentController {
       }
 
       // EVENT-FIRST WORKFLOW: Log event before updating student
-      const studentEventService = new StudentEventService();
-      const eventData = {
-        studentId: existingStudent.id,
-        updateData,
-        previousData: existingStudent,
-        updatedBy: req.user.id,
-        schoolId: req.user.schoolId
-      };
-      
-      // Log the student update event FIRST
-      const event = await studentEventService.createStudentUpdateEvent(
-        eventData,
-        req.user.id,
-        req.user.schoolId
-      );
+      let event = null;
+      try {
+        const studentEventService = new StudentEventService();
+        console.log('StudentEventService instantiated:', typeof studentEventService);
+        console.log('Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(studentEventService)));
+        
+        const eventData = {
+          studentId: existingStudent.id,
+          updateData,
+          previousData: existingStudent,
+          updatedBy: req.user.id,
+          schoolId: req.user.schoolId
+        };
+        
+        // Check if the method exists
+        if (typeof studentEventService.createStudentUpdateEvent === 'function') {
+          // Log the student update event FIRST
+          event = await studentEventService.createStudentUpdateEvent(
+            eventData,
+            req.user.id,
+            req.user.schoolId
+          );
+        } else {
+          console.error('createStudentUpdateEvent method not found on service');
+          // Create a basic event record directly
+          event = await prisma.studentEvent.create({
+            data: {
+              studentId: existingStudent.id,
+              eventType: 'STUDENT_UPDATED',
+              title: 'Student Information Updated',
+              description: 'Student information has been updated',
+              metadata: JSON.stringify({
+                updatedFields: Object.keys(updateData),
+                previousData: existingStudent,
+                updatedBy: req.user.id,
+                schoolId: req.user.schoolId,
+                updateTimestamp: new Date().toISOString()
+              }),
+              createdBy: req.user.id,
+              schoolId: req.user.schoolId,
+              severity: 'INFO'
+            }
+          });
+        }
+      } catch (eventError) {
+        console.error('Error creating student update event:', eventError);
+        // Create a fallback event record
+        try {
+          event = await prisma.studentEvent.create({
+            data: {
+              studentId: existingStudent.id,
+              eventType: 'STUDENT_UPDATED',
+              title: 'Student Information Updated',
+              description: 'Student information has been updated',
+              metadata: JSON.stringify({
+                updatedFields: Object.keys(updateData),
+                previousData: existingStudent,
+                updatedBy: req.user.id,
+                schoolId: req.user.schoolId,
+                updateTimestamp: new Date().toISOString()
+              }),
+              createdBy: req.user.id,
+              schoolId: req.user.schoolId,
+              severity: 'INFO'
+            }
+          });
+        } catch (fallbackError) {
+          console.error('Failed to create fallback event:', fallbackError);
+          // Continue without event if both fail
+        }
+      }
 
       // Update student
       const updatedStudent = await prisma.student.update({
@@ -569,16 +625,23 @@ class StudentController {
       });
 
       // Update the event with the final student data
-      await prisma.studentEvent.update({
-        where: { id: event.id },
-        data: { 
-          metadata: { 
-            ...event.metadata, 
-            updatedStudentData: updatedStudent,
-            updatedFields: Object.keys(updateData)
-          }
+      if (event && event.id) {
+        try {
+          await prisma.studentEvent.update({
+            where: { id: event.id },
+            data: { 
+              metadata: JSON.stringify({
+                ...JSON.parse(event.metadata || '{}'),
+                updatedStudentData: updatedStudent,
+                updatedFields: Object.keys(updateData)
+              })
+            }
+          });
+        } catch (updateEventError) {
+          console.error('Failed to update event with final data:', updateEventError);
+          // Continue without updating the event
         }
-      });
+      }
 
       // Invalidate cache
       await invalidateStudentCacheOnUpdate(updatedStudent, existingStudent);
