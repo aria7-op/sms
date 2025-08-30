@@ -381,16 +381,24 @@ export const createClass = async (req, res) => {
       return res.status(400).json(formatResponse(false, null, 'schoolId is required for non-owner users.'));
     }
     
-    // Check if class code already exists in the school
-    const existingClass = await prisma.class.findFirst({
-      where: {
-        code: data.code,
-        schoolId: schoolId,
+    // Auto-generate class code if not provided or if it's just the class name
+    let classCode = data.code;
+    if (!classCode || classCode === data.name) {
+      console.log(`Auto-generating class code for class name: ${data.name}`);
+      classCode = await generateClassCode(data.name, schoolId);
+      data.code = classCode;
+    } else {
+      // Check if the provided class code already exists in the school
+      const existingClass = await prisma.class.findFirst({
+        where: {
+          code: classCode,
+          schoolId: schoolId,
+        }
+      });
+      
+      if (existingClass) {
+        return res.status(409).json(formatResponse(false, null, 'Class code already exists in this school'));
       }
-    });
-    
-    if (existingClass) {
-      return res.status(409).json(formatResponse(false, null, 'Class code already exists in this school'));
     }
     
     // Validate class teacher if provided
@@ -868,10 +876,18 @@ export const bulkCreateClasses = async (req, res) => {
             continue;
           }
           
+          // Auto-generate class code if not provided or if it's just the class name
+          let classCode = classData.code;
+          if (!classCode || classCode === classData.name) {
+            console.log(`Auto-generating class code for validation: ${classData.name}`);
+            classCode = await generateClassCode(classData.name, schoolId);
+            classData.code = classCode;
+          }
+          
           // Check if class code already exists
           const existingClass = await prisma.class.findFirst({
             where: {
-              code: classData.code,
+              code: classCode,
               schoolId: schoolId,
             }
           });
@@ -922,30 +938,38 @@ export const bulkCreateClasses = async (req, res) => {
           continue;
         }
         
-        // Check if class code already exists
-        const existingClass = await prisma.class.findFirst({
-          where: {
-            code: classData.code,
-            schoolId: schoolId,
+        // Auto-generate class code if not provided or if it's just the class name
+        let classCode = classData.code;
+        if (!classCode || classCode === classData.name) {
+          console.log(`Auto-generating class code for class name: ${classData.name}`);
+          classCode = await generateClassCode(classData.name, schoolId);
+          classData.code = classCode;
+        } else {
+          // Check if the provided class code already exists
+          const existingClass = await prisma.class.findFirst({
+            where: {
+              code: classCode,
+              schoolId: schoolId,
+            }
+          });
+          
+          if (existingClass && options.skipDuplicates) {
+            results.skipped.push({
+              data: classData,
+              reason: 'Class code already exists',
+            });
+            results.summary.skipped++;
+            continue;
           }
-        });
-        
-        if (existingClass && options.skipDuplicates) {
-          results.skipped.push({
-            data: classData,
-            reason: 'Class code already exists',
-          });
-          results.summary.skipped++;
-          continue;
-        }
-        
-        if (existingClass) {
-          results.failed.push({
-            data: classData,
-            error: 'Class code already exists',
-          });
-          results.summary.failed++;
-          continue;
+          
+          if (existingClass) {
+            results.failed.push({
+              data: classData,
+              error: 'Class code already exists',
+            });
+            results.summary.failed++;
+            continue;
+          }
         }
         
         // Validate class teacher if provided
@@ -2752,6 +2776,25 @@ export const generateClassSections = async (req, res) => {
 };
 
 // ======================
+// GET NEXT AVAILABLE CLASS CODE
+// ======================
+export const getNextClassCode = async (req, res) => {
+  try {
+    const { className, schoolId } = req.query;
+    
+    if (!className || !schoolId) {
+      return res.status(400).json(formatResponse(false, null, 'className and schoolId are required'));
+    }
+
+    const nextCode = await generateClassCode(className, schoolId);
+    
+    return res.json(formatResponse(true, { nextCode }, 'Next available class code generated successfully'));
+  } catch (error) {
+    return handleError(error, res, 'get next class code');
+  }
+};
+
+// ======================
 // GET CLASS COUNT
 // ======================
 export const getClassCount = async (req, res) => {
@@ -3505,6 +3548,8 @@ export const getClassStudents = async (req, res) => {
       return res.status(400).json(formatResponse(false, null, 'Invalid class ID'));
     }
     
+    console.log(`🔍 getClassStudents called for class ID: ${id}`);
+    
     const students = await prisma.student.findMany({
       where: { classId: id },
       include: {
@@ -3519,9 +3564,12 @@ export const getClassStudents = async (req, res) => {
       }
     });
     
+    console.log(`✅ Found ${students.length} students for class ${id}:`, students.map(s => ({ id: s.id, name: `${s.user?.firstName} ${s.user?.lastName}` })));
+    
     return res.json(formatResponse(true, convertBigInts(students), 'Class students fetched successfully'));
     
   } catch (error) {
+    console.error(`❌ getClassStudents error for class ${req.params.id}:`, error);
     return handleError(error, res, 'fetch students');
   }
 };
@@ -3939,6 +3987,8 @@ export const addStudentsToClass = async (req, res) => {
     }
     
     // Update students to assign them to the class
+    console.log(`🔄 Adding ${studentIds.length} students to class ${classId}`);
+    
     const results = {
       added: [],
       failed: [],
@@ -3972,6 +4022,7 @@ export const addStudentsToClass = async (req, res) => {
           }
         });
         
+        console.log(`✅ Successfully added student ${studentId} to class ${classId}`);
         results.added.push({
           id: studentId,
           data: convertBigInts(updatedStudent),
@@ -3990,9 +4041,98 @@ export const addStudentsToClass = async (req, res) => {
     // Invalidate cache for the class
     await classCache.invalidateClassCacheOnUpdate({ id: Number(classId) });
     
+    console.log(`🎯 Final results: ${results.summary.added} students added, ${results.summary.failed} failed`);
+    
     return res.json(formatResponse(true, convertBigInts(results), 'Students added to class successfully'));
     
   } catch (error) {
     return handleError(error, res, 'add students to class');
   }
-}; 
+};
+
+// ======================
+// HELPER FUNCTIONS
+// ======================
+
+/**
+ * Auto-generate class code based on existing classes with the same name
+ * @param {string} className - The class name (e.g., "10")
+ * @param {number} schoolId - The school ID
+ * @returns {string} - The next available class code (e.g., "10d")
+ */
+const generateClassCode = async (className, schoolId) => {
+  // Validate class name format (should be a number or simple text)
+  if (!className || typeof className !== 'string') {
+    throw new Error('Invalid class name');
+  }
+  
+  // Clean the class name (remove extra spaces, convert to string)
+  const cleanClassName = className.trim().toString();
+  
+  if (cleanClassName.length === 0) {
+    throw new Error('Class name cannot be empty');
+  }
+  
+  // Validate schoolId
+  if (!schoolId || isNaN(Number(schoolId))) {
+    throw new Error('Invalid school ID');
+  }
+      try {
+      // Find all existing classes with the same name in the school
+      const existingClasses = await prisma.class.findMany({
+        where: {
+          name: cleanClassName,
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        select: {
+          code: true
+        },
+        orderBy: {
+          code: 'asc'
+        }
+      });
+
+      console.log(`Found ${existingClasses.length} existing classes with name "${cleanClassName}" in school ${schoolId}`);
+
+          if (existingClasses.length === 0) {
+        // No existing classes with this name, start with 'a'
+        return `${cleanClassName}a`;
+      }
+
+      // Extract the suffix letters from existing codes
+      const existingSuffixes = existingClasses.map(cls => {
+        const match = cls.code.match(new RegExp(`^${cleanClassName}([a-z])$`, 'i'));
+        return match ? match[1].toLowerCase() : null;
+      }).filter(Boolean);
+
+      console.log('Existing suffixes:', existingSuffixes);
+
+      if (existingSuffixes.length === 0) {
+        // No valid suffixes found, start with 'a'
+        return `${cleanClassName}a`;
+      }
+
+      // Find the next available letter
+      const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+      let nextSuffix = 'a';
+
+      for (let i = 0; i < alphabet.length; i++) {
+        const letter = alphabet[i];
+        if (!existingSuffixes.includes(letter)) {
+          nextSuffix = letter;
+          break;
+        }
+      }
+
+      const generatedCode = `${cleanClassName}${nextSuffix}`;
+      console.log(`Generated class code: ${generatedCode}`);
+      
+      return generatedCode;
+  } catch (error) {
+    console.error('Error generating class code:', error);
+    // Fallback: return a timestamp-based code
+    return `${cleanClassName}_${Date.now().toString(36)}`;
+  }
+};
+  
