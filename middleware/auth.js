@@ -706,8 +706,18 @@ export const auditLog = (action, entityType) => {
               action,
               entityType,
               entityId: responseData.data?.id || 0,
-              oldData: req.method === 'PUT' || req.method === 'PATCH' ? req.body : null,
-              newData: responseData.data,
+              oldData: req.method === 'PUT' || req.method === 'PATCH' ? JSON.stringify(req.body, (key, value) => {
+                if (typeof value === 'bigint') {
+                  return value.toString();
+                }
+                return value;
+              }) : null,
+              newData: responseData.data ? JSON.stringify(responseData.data, (key, value) => {
+                if (typeof value === 'bigint') {
+                  return value.toString();
+                }
+                return value;
+              }) : null,
               ipAddress: req.ip,
               userAgent: req.get('User-Agent'),
               ownerId: req.user.type === 'owner' ? req.user.id : null,
