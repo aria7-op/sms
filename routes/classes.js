@@ -78,6 +78,19 @@ router.get('/analytics',
 );
 
 /**
+ * @route   GET /api/classes/next-code
+ * @desc    Get next available class code for a class name
+ * @access  Private (All authenticated users)
+ * @query   {className, schoolId} - Required filters
+ * @permissions class:read
+ */
+router.get('/next-code',
+  authenticateToken,
+  authorizePermissions(['class:read']),
+  classController.getNextClassCode
+);
+
+/**
  * @route   GET /api/classes/count
  * @desc    Get class count with filters
  * @access  Private (All authenticated users)
