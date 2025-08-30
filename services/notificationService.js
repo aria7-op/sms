@@ -916,7 +916,7 @@ export const triggerEntityCreatedNotification = async (entityType, entityId, ent
     // Get notification rules for this entity type
     const rules = await prisma.notificationRule.findMany({
       where: {
-        trigger: 'entity_created',
+        eventType: 'entity_created',
         entityType,
         isActive: true,
         schoolId: schoolId ? BigInt(schoolId) : null,
@@ -940,11 +940,11 @@ export const triggerEntityCreatedNotification = async (entityType, entityId, ent
 
         // Create notification
         await createNotification({
-          type: rule.type,
+          type: 'SYSTEM', // Default type since NotificationRule doesn't have a type field
           title: template.title,
           message: template.message,
-          priority: rule.priority,
-          channels: rule.channels,
+          priority: 'NORMAL', // Default priority since NotificationRule doesn't have a priority field
+          channels: rule.channels ? JSON.parse(rule.channels) : ['IN_APP'],
           entityType,
           entityId,
           entityAction: 'created',
@@ -996,11 +996,11 @@ export const triggerEntityUpdatedNotification = async (entityType, entityId, ent
 
         // Create notification
         await createNotification({
-          type: rule.type,
+          type: 'SYSTEM', // Default type since NotificationRule doesn't have a type field
           title: template.title,
           message: template.message,
-          priority: rule.priority,
-          channels: rule.channels,
+          priority: 'NORMAL', // Default priority since NotificationRule doesn't have a priority field
+          channels: rule.channels ? JSON.parse(rule.channels) : ['IN_APP'],
           entityType,
           entityId,
           entityAction: 'updated',
@@ -1026,7 +1026,14 @@ export const checkRuleConditions = async (rule, entityData, oldData = null) => {
   try {
     if (!rule.conditions) return true;
 
-    const conditions = rule.conditions;
+    // Parse conditions from JSON string
+    let conditions;
+    try {
+      conditions = JSON.parse(rule.conditions);
+    } catch (parseError) {
+      console.error('Error parsing rule conditions:', parseError);
+      return false;
+    }
     
     for (const [field, condition] of Object.entries(conditions)) {
       const value = entityData[field];
@@ -1070,8 +1077,16 @@ export const getRuleRecipients = async (rule, entityData) => {
   try {
     if (!rule.recipients) return [];
 
+    // Parse recipients from JSON string
+    let recipientConfig;
+    try {
+      recipientConfig = JSON.parse(rule.recipients);
+    } catch (parseError) {
+      console.error('Error parsing rule recipients:', parseError);
+      return [];
+    }
+
     const recipients = [];
-    const recipientConfig = rule.recipients;
 
     // Get users by role
     if (recipientConfig.roles) {
