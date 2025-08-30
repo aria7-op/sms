@@ -46,6 +46,8 @@ import documentsRoutes from './routes/documents.js';
 import filesRoutes from './routes/files.js';
 import { authenticateToken } from './middleware/auth.js';
 import feeController from './controllers/feeController.js';
+import WebSocketService from './services/websocket/WebSocketService.js';
+import { setWebSocketService } from './services/notificationService.js';
 
   dotenv.config();
 
@@ -1651,6 +1653,21 @@ app.use('/api/files', filesRoutes);
       ]
     });
   });
+
+  // Initialize WebSocket service
+let websocketService = null;
+try {
+  websocketService = new WebSocketService();
+  websocketService.initialize(server);
+  
+  // Set WebSocket service reference in notification service
+  setWebSocketService(websocketService);
+  
+  console.log('✅ WebSocket service initialized successfully');
+} catch (error) {
+  console.error('❌ Failed to initialize WebSocket service:', error);
+  websocketService = null;
+}
 
   // Global error handler
   app.use((err, req, res, next) => {
