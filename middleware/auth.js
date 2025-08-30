@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import { default as ownersStore } from '../store/ownersStore.js';
 
 const prisma = new PrismaClient();
