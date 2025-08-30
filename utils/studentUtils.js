@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 
 const prisma = new PrismaClient();
 
@@ -13,7 +13,7 @@ export const StudentCreateSchema = z.object({
   classId: z.union([z.string(), z.number()]).transform(val => val ? parseInt(val) : undefined).optional(),
   sectionId: z.union([z.string(), z.number()]).transform(val => val ? parseInt(val) : undefined).optional(),
   parentId: z.union([z.string(), z.number()]).transform(val => val ? parseInt(val) : undefined).optional(),
-  admissionDate: z.string().datetime().optional(),
+  admissionDate: z.string().optional(),
   bloodGroup: z.string().max(5).optional(),
   nationality: z.string().max(50).optional(),
   religion: z.string().max(50).optional(),
@@ -31,7 +31,7 @@ export const StudentCreateSchema = z.object({
     phone: z.string().regex(/^\+?[\d\s\-\(\)]+$/).optional(),
     password: z.string().min(8).optional(),
     gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
-    dateOfBirth: z.string().datetime().optional(),
+    dateOfBirth: z.string().optional(),
     address: z.string().max(255).optional(),
     city: z.string().max(100).optional(),
     state: z.string().max(100).optional(),
@@ -46,7 +46,7 @@ export const StudentUpdateSchema = z.object({
   classId: z.number().int().positive().optional(),
   sectionId: z.number().int().positive().optional(),
   parentId: z.number().int().positive().optional(),
-  admissionDate: z.string().datetime().optional(),
+  admissionDate: z.string().optional(),
   bloodGroup: z.string().max(5).optional(),
   nationality: z.string().max(50).optional(),
   religion: z.string().max(50).optional(),
@@ -62,7 +62,7 @@ export const StudentUpdateSchema = z.object({
     email: z.string().email().optional(),
     phone: z.string().regex(/^\+?[\d\s\-\(\)]+$/).optional(),
     gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
-    dateOfBirth: z.string().datetime().optional(),
+    dateOfBirth: z.string().optional(),
     address: z.string().max(255).optional(),
     city: z.string().max(100).optional(),
     state: z.string().max(100).optional(),
@@ -81,8 +81,8 @@ export const StudentSearchSchema = z.object({
   bloodGroup: z.string().optional(),
   nationality: z.string().optional(),
   religion: z.string().optional(),
-  admissionDateFrom: z.string().datetime().optional(),
-  admissionDateTo: z.string().datetime().optional(),
+  admissionDateFrom: z.string().optional(),
+  admissionDateTo: z.string().optional(),
   page: z.string().transform(val => parseInt(val) || 1).optional(),
   limit: z.string().transform(val => {
     if (val === 'all' || val === 'unlimited') return val;
