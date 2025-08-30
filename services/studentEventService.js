@@ -1,5 +1,5 @@
 import StudentEvent from '../models/StudentEvent.js';
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import logger from '../config/logger.js';
 import { createNotification } from './notificationService.js';
 
@@ -475,6 +475,51 @@ class StudentEventService {
       return { success: true, data: createdEvents };
     } catch (error) {
       logger.error('Error creating bulk student events:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create student update event
+   */
+  async createStudentUpdateEvent(eventData, userId, schoolId) {
+    try {
+      const event = {
+        studentId: eventData.studentId,
+        eventType: 'STUDENT_UPDATED',
+        title: 'Student Information Updated',
+        description: `Student information has been updated`,
+        metadata: {
+          updatedFields: eventData.updateData ? Object.keys(eventData.updateData) : [],
+          previousData: eventData.previousData,
+          updatedBy: eventData.updatedBy,
+          schoolId: eventData.schoolId,
+          updateTimestamp: new Date().toISOString()
+        },
+        createdBy: userId,
+        schoolId: schoolId,
+        severity: 'INFO'
+      };
+
+      const result = await this.studentEventModel.create(event);
+
+      // Create notification for student update
+      await createNotification({
+        title: 'Student Information Updated',
+        message: `Student information has been updated successfully`,
+        type: 'STUDENT_UPDATED',
+        userId: userId,
+        schoolId: schoolId,
+        metadata: {
+          studentId: eventData.studentId,
+          updatedFields: eventData.updateData ? Object.keys(eventData.updateData) : [],
+          updatedBy: eventData.updatedBy
+        }
+      });
+
+      return result;
+    } catch (error) {
+      logger.error('Error creating student update event:', error);
       throw error;
     }
   }
