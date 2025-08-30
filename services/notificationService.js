@@ -766,7 +766,7 @@ export const sendEmailNotification = async (emailData) => {
       message: 'Email notification sent successfully',
       data: {
         messageId: `email_${Date.now()}`,
-        sentAt: new Date().toISOString()
+        timestamp: new Date().toISOString()
       }
     };
   } catch (error) {
@@ -867,7 +867,7 @@ export const sendPushNotification = async (pushData) => {
       message: 'Push notification sent successfully',
       data: {
         messageId: `push_${Date.now()}`,
-        sentAt: new Date().toISOString()
+        timestamp: new Date().toISOString()
       }
     };
   } catch (error) {
@@ -918,7 +918,7 @@ export const sendSMSNotification = async (smsData) => {
       message: 'SMS notification sent successfully',
       data: {
         messageId: `sms_${Date.now()}`,
-        sentAt: new Date().toISOString()
+        timestamp: new Date().toISOString()
       }
     };
   } catch (error) {
