@@ -101,100 +101,82 @@ router.get('/stats', authenticateToken, notificationController.getNotificationSt
  */
 router.get('/templates', authenticateToken, notificationController.getNotificationTemplatesHandler);
 
-/**
- * @route   POST /api/notifications/templates/process
- * @desc    Process notification template with data
- * @access  Private
- */
-router.post('/templates/process', authenticateToken, notificationController.processNotificationTemplateHandler);
-
 // ======================
-// DELIVERY CHANNEL ROUTES
+// REAL-TIME NOTIFICATION ROUTES
 // ======================
 
 /**
- * @route   POST /api/notifications/email
- * @desc    Send email notification
+ * @route   GET /api/notifications/unread/count
+ * @desc    Get unread notification count for current user
  * @access  Private
  */
-router.post('/email', authenticateToken, notificationController.sendEmailNotificationHandler);
+router.get('/unread/count', authenticateToken, notificationController.getUnreadCount);
 
 /**
- * @route   POST /api/notifications/push
- * @desc    Send push notification
+ * @route   PUT /api/notifications/:id/read
+ * @desc    Mark single notification as read
  * @access  Private
  */
-router.post('/push', authenticateToken, notificationController.sendPushNotificationHandler);
+router.put('/:id/read', authenticateToken, notificationController.markSingleNotificationAsRead);
 
 /**
- * @route   POST /api/notifications/sms
- * @desc    Send SMS notification
+ * @route   GET /api/notifications/realtime
+ * @desc    Get notifications for real-time updates
  * @access  Private
  */
-router.post('/sms', authenticateToken, notificationController.sendSMSNotificationHandler);
+router.get('/realtime', authenticateToken, notificationController.getRealtimeNotifications);
 
 // ======================
-// PREFERENCES ROUTES
-// ======================
-
-/**
- * @route   GET /api/notifications/preferences
- * @desc    Get user notification preferences
- * @access  Private
- */
-router.get('/preferences', authenticateToken, notificationController.getNotificationPreferences);
-
-/**
- * @route   PUT /api/notifications/preferences
- * @desc    Update user notification preferences
- * @access  Private
- */
-router.put('/preferences', authenticateToken, notificationController.updateNotificationPreferences);
-
-// ======================
-// RULES ROUTES
+// SYSTEM OPERATION NOTIFICATION ROUTES
 // ======================
 
 /**
- * @route   GET /api/notifications/rules
- * @desc    Get notification rules
+ * @route   POST /api/notifications/student
+ * @desc    Create student operation notification
  * @access  Private
  */
-router.get('/rules', authenticateToken, notificationController.getNotificationRules);
+router.post('/student', authenticateToken, notificationController.createStudentNotificationHandler);
 
 /**
- * @route   POST /api/notifications/rules
- * @desc    Create notification rule
+ * @route   POST /api/notifications/attendance
+ * @desc    Create attendance operation notification
  * @access  Private
  */
-router.post('/rules', authenticateToken, notificationController.createNotificationRule);
-
-// ======================
-// SCHEDULES ROUTES
-// ======================
+router.post('/attendance', authenticateToken, notificationController.createAttendanceNotificationHandler);
 
 /**
- * @route   GET /api/notifications/schedules
- * @desc    Get notification schedules
+ * @route   POST /api/notifications/payment
+ * @desc    Create payment operation notification
  * @access  Private
  */
-router.get('/schedules', authenticateToken, notificationController.getNotificationSchedules);
+router.post('/payment', authenticateToken, notificationController.createPaymentNotificationHandler);
 
 /**
- * @route   POST /api/notifications/schedules
- * @desc    Create notification schedule
+ * @route   POST /api/notifications/user
+ * @desc    Create user operation notification
  * @access  Private
  */
-router.post('/schedules', authenticateToken, notificationController.createNotificationSchedule);
-
-// ======================
-// MAINTENANCE ROUTES
-// ======================
+router.post('/user', authenticateToken, notificationController.createUserNotificationHandler);
 
 /**
- * @route   POST /api/notifications/cleanup
- * @desc    Clean up old notifications
- * @access  Private (Admin only)
+ * @route   POST /api/notifications/system
+ * @desc    Create system notification
+ * @access  Private
  */
+router.post('/system', authenticateToken, notificationController.createSystemNotificationHandler);
+
+/**
+ * @route   POST /api/notifications/customer
+ * @desc    Create customer operation notification
+ * @access  Private
+ */
+router.post('/customer', authenticateToken, notificationController.createCustomerNotificationHandler);
+
+/**
+ * @route   POST /api/notifications/inventory
+ * @desc    Create inventory operation notification
+ * @access  Private
+ */
+router.post('/inventory', authenticateToken, notificationController.createInventoryNotificationHandler);
 
 export default router; 
