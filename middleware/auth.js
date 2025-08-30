@@ -1067,15 +1067,42 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
       if (req.user.role === 'TEACHER') {
         // Check if teacher is assigned to the student's class
         if (student.classId) {
-          const teacherClass = await prisma.teacherClass.findFirst({
-            where: {
+          console.log('🔍 Checking teacher class assignment for teacher:', req.user.id, 'class:', student.classId);
+          console.log('🔍 Prisma client status in teacher check:', prisma ? 'Available' : 'Not available');
+          
+          try {
+            const teacherClass = await prisma.teacherClass.findFirst({
+              where: {
+                teacherId: req.user.id,
+                classId: student.classId
+              }
+            });
+
+            console.log('🔍 Teacher class query result:', teacherClass);
+
+            if (teacherClass) {
+              return next();
+            }
+          } catch (teacherClassError) {
+            console.error('❌ Error checking teacher class assignment:', teacherClassError);
+            console.error('❌ Error details:', {
+              message: teacherClassError.message,
+              stack: teacherClassError.stack,
               teacherId: req.user.id,
               classId: student.classId
-            }
-          });
-
-          if (teacherClass) {
-            return next();
+            });
+            
+            // If there's a database error, deny access for security
+            return res.status(500).json({
+              success: false,
+              error: 'Database error during authorization',
+              message: 'Failed to verify teacher class assignment.',
+              meta: {
+                timestamp: new Date().toISOString(),
+                statusCode: 500,
+                error: teacherClassError.message
+              }
+            });
           }
         }
       }
