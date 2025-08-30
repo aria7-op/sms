@@ -280,8 +280,7 @@ export const createNotification = async (notificationData) => {
       recipients = [],
       channels = ['IN_APP'],
       attachments = [],
-      isSystem = false,
-      isRead = false
+      isSystem = false
     } = notificationData;
 
     // Validate required fields
@@ -355,8 +354,7 @@ export const createNotification = async (notificationData) => {
         ownerId: ownerId ? BigInt(ownerId) : null,
         templateKey,
         templateData,
-        isSystem,
-        isRead
+        isSystem
       }
     });
 
@@ -366,9 +364,7 @@ export const createNotification = async (notificationData) => {
         notificationId: notification.id,
         userId: BigInt(recipientId),
         channel: 'IN_APP',
-        status: 'PENDING',
-        isRead: false,
-        readAt: null
+        status: 'PENDING'
       }));
 
       await prisma.notificationRecipient.createMany({
