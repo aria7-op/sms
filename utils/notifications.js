@@ -84,9 +84,7 @@ export const buildNotificationIncludeQuery = (include) => {
         id: true,
         channel: true,
         status: true,
-        deliveredAt: true,
-        readAt: true,
-        error: true
+         deliveredAt: true
       }
     };
   }
@@ -137,12 +135,8 @@ export const formatNotificationResponse = (notification, options = {}) => {
         userId: recipient.userId,
         channel: recipient.channel,
         status: recipient.status,
-        sentAt: recipient.sentAt,
         deliveredAt: recipient.deliveredAt,
         readAt: recipient.readAt,
-        failedAt: recipient.failedAt,
-        errorMessage: recipient.errorMessage,
-        deliveryAttempts: recipient.deliveryAttempts,
         metadata: recipient.metadata,
         createdAt: recipient.createdAt,
         updatedAt: recipient.updatedAt,
@@ -176,8 +170,7 @@ export const formatNotificationResponse = (notification, options = {}) => {
       response.deliveryStatus = notification.deliveryStatus.map(status => ({
         channel: status.channel,
         status: status.status,
-        deliveredAt: status.deliveredAt,
-        readAt: status.readAt
+        deliveredAt: status.deliveredAt
       }));
     }
   }
