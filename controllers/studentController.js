@@ -504,6 +504,41 @@ class StudentController {
         await validateClassAccess(req.user, updateData.classId, req.user.schoolId);
       }
 
+      // Clean and validate update data
+      const cleanedUpdateData = { ...updateData };
+      
+      // Handle empty date strings - convert to null or valid dates
+      if (cleanedUpdateData.admissionDate === '') {
+        cleanedUpdateData.admissionDate = null;
+      } else if (cleanedUpdateData.admissionDate && typeof cleanedUpdateData.admissionDate === 'string') {
+        try {
+          const parsedDate = new Date(cleanedUpdateData.admissionDate);
+          if (isNaN(parsedDate.getTime())) {
+            cleanedUpdateData.admissionDate = null;
+          } else {
+            cleanedUpdateData.admissionDate = parsedDate;
+          }
+        } catch (dateError) {
+          console.warn('Invalid admissionDate, setting to null:', cleanedUpdateData.admissionDate);
+          cleanedUpdateData.admissionDate = null;
+        }
+      }
+
+      // Handle other empty strings that should be null
+      const fieldsToClean = ['previousSchool', 'bloodGroup', 'rollNo'];
+      fieldsToClean.forEach(field => {
+        if (cleanedUpdateData[field] === '') {
+          cleanedUpdateData[field] = null;
+        }
+      });
+
+      // Convert BigInt values to proper types
+      if (cleanedUpdateData.updatedBy && typeof cleanedUpdateData.updatedBy === 'bigint') {
+        cleanedUpdateData.updatedBy = cleanedUpdateData.updatedBy.toString();
+      }
+
+      console.log('Cleaned update data:', cleanedUpdateData);
+
       // EVENT-FIRST WORKFLOW: Log event before updating student
       let event = null;
       try {
@@ -513,7 +548,7 @@ class StudentController {
         
         const eventData = {
           studentId: existingStudent.id,
-          updateData,
+          updateData: cleanedUpdateData,
           previousData: existingStudent,
           updatedBy: req.user.id,
           schoolId: req.user.schoolId
@@ -581,7 +616,7 @@ class StudentController {
       const updatedStudent = await prisma.student.update({
         where: { id: parseInt(id) },
         data: {
-          ...updateData,
+          ...cleanedUpdateData,
           updatedBy: req.user.id
         },
         include: {
