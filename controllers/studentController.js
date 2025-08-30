@@ -549,34 +549,37 @@ class StudentController {
       // Clean and validate update data
       const cleanedUpdateData = { ...updateData };
       
+      // Remove relation fields that should be handled separately
+      const { classId, sectionId, parentId, ...cleanedUpdateDataWithoutRelations } = cleanedUpdateData;
+      
       // Handle empty date strings - convert to null or valid dates
-      if (cleanedUpdateData.admissionDate === '' || cleanedUpdateData.admissionDate === null || cleanedUpdateData.admissionDate === undefined) {
-        cleanedUpdateData.admissionDate = null;
-      } else if (cleanedUpdateData.admissionDate && typeof cleanedUpdateData.admissionDate === 'string') {
+      if (cleanedUpdateDataWithoutRelations.admissionDate === '' || cleanedUpdateDataWithoutRelations.admissionDate === null || cleanedUpdateDataWithoutRelations.admissionDate === undefined) {
+        cleanedUpdateDataWithoutRelations.admissionDate = null;
+      } else if (cleanedUpdateDataWithoutRelations.admissionDate && typeof cleanedUpdateDataWithoutRelations.admissionDate === 'string') {
         try {
-          const parsedDate = new Date(cleanedUpdateData.admissionDate);
+          const parsedDate = new Date(cleanedUpdateDataWithoutRelations.admissionDate);
           if (isNaN(parsedDate.getTime())) {
-            cleanedUpdateData.admissionDate = null;
+            cleanedUpdateDataWithoutRelations.admissionDate = null;
           } else {
-            cleanedUpdateData.admissionDate = parsedDate;
+            cleanedUpdateDataWithoutRelations.admissionDate = parsedDate;
           }
         } catch (dateError) {
-          console.warn('Invalid admissionDate, setting to null:', cleanedUpdateData.admissionDate);
-          cleanedUpdateData.admissionDate = null;
+          console.warn('Invalid admissionDate, setting to null:', cleanedUpdateDataWithoutRelations.admissionDate);
+          cleanedUpdateDataWithoutRelations.admissionDate = null;
         }
       }
 
       // Handle other empty strings that should be null
       const fieldsToClean = ['previousSchool', 'bloodGroup', 'rollNo'];
       fieldsToClean.forEach(field => {
-        if (cleanedUpdateData[field] === '') {
-          cleanedUpdateData[field] = null;
+        if (cleanedUpdateDataWithoutRelations[field] === '') {
+          cleanedUpdateDataWithoutRelations[field] = null;
         }
       });
 
       // Convert BigInt values to proper types
-      if (cleanedUpdateData.updatedBy && typeof cleanedUpdateData.updatedBy === 'bigint') {
-        cleanedUpdateData.updatedBy = cleanedUpdateData.updatedBy.toString();
+      if (cleanedUpdateDataWithoutRelations.updatedBy && typeof cleanedUpdateDataWithoutRelations.updatedBy === 'bigint') {
+        cleanedUpdateDataWithoutRelations.updatedBy = cleanedUpdateDataWithoutRelations.updatedBy.toString();
       }
 
       // Handle user data separately - don't include it in student update
@@ -599,7 +602,7 @@ class StudentController {
         
         const eventData = {
           studentId: existingStudent.id,
-          updateData: cleanedUpdateData,
+          updateData: cleanedUpdateDataWithoutRelations,
           previousData: existingStudent,
           updatedBy: req.user.id,
           schoolId: req.user.schoolId
@@ -623,7 +626,7 @@ class StudentController {
               title: 'Student Information Updated',
               description: 'Student information has been updated',
               metadata: JSON.stringify({
-                updatedFields: Object.keys(cleanedUpdateData),
+                updatedFields: Object.keys(cleanedUpdateDataWithoutRelations),
                 previousData: existingStudent,
                 updatedBy: req.user.id,
                 schoolId: req.user.schoolId,
@@ -651,7 +654,7 @@ class StudentController {
               title: 'Student Information Updated',
               description: 'Student information has been updated',
               metadata: JSON.stringify({
-                updatedFields: Object.keys(cleanedUpdateData),
+                updatedFields: Object.keys(cleanedUpdateDataWithoutRelations),
                 previousData: existingStudent,
                 updatedBy: req.user.id,
                 schoolId: req.user.schoolId,
@@ -677,8 +680,26 @@ class StudentController {
       const updatedStudent = await prisma.student.update({
         where: { id: parseInt(id) },
         data: {
-          ...cleanedUpdateData,
-          updatedBy: req.user.id
+          ...cleanedUpdateDataWithoutRelations,
+          updatedBy: req.user.id,
+          // Handle class relation if classId is provided
+          ...(classId && {
+            class: {
+              connect: { id: BigInt(classId) }
+            }
+          }),
+          // Handle section relation if sectionId is provided
+          ...(sectionId && {
+            section: {
+              connect: { id: BigInt(sectionId) }
+            }
+          }),
+          // Handle parent relation if parentId is provided
+          ...(parentId && {
+            parent: {
+              connect: { id: BigInt(parentId) }
+            }
+          })
         },
         include: {
           user: {
@@ -743,7 +764,7 @@ class StudentController {
               metadata: JSON.stringify({
                 ...JSON.parse(event.metadata || '{}'),
                 updatedStudentData: updatedStudent,
-                updatedFields: Object.keys(cleanedUpdateData)
+                updatedFields: Object.keys(cleanedUpdateDataWithoutRelations)
               }, (key, value) => {
                 if (typeof value === 'bigint') {
                   return value.toString();
@@ -782,7 +803,7 @@ class StudentController {
         }),
         details: {
           studentId: updatedStudent.id,
-          updatedFields: Object.keys(cleanedUpdateData)
+          updatedFields: Object.keys(cleanedUpdateDataWithoutRelations)
         }
       });
 
