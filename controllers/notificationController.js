@@ -1,5 +1,25 @@
-import { PrismaClient } from '../generated/prisma/client.js';
-import { createNotification, getUserNotifications, markNotificationAsRead, deleteNotification, sendEmailNotification, sendBulkEmailNotifications, sendPushNotification, sendSMSNotification, getNotificationTemplates, processNotificationTemplate, getNotificationStats } from '../services/notificationService.js';
+import { PrismaClient } from '../generated/prisma/index.js';
+import { 
+  createNotification, 
+  getUserNotifications, 
+  markNotificationAsRead, 
+  deleteNotification, 
+  sendEmailNotification, 
+  sendBulkEmailNotifications, 
+  sendPushNotification, 
+  sendSMSNotification, 
+  getNotificationTemplates, 
+  processNotificationTemplate, 
+  getNotificationStats,
+  getUnreadNotificationCount,
+  createStudentNotification,
+  createAttendanceNotification,
+  createPaymentNotification,
+  createUserNotification,
+  createSystemNotification,
+  createCustomerNotification,
+  createInventoryNotification
+} from '../services/notificationService.js';
 import { createAuditLog } from '../services/notificationService.js';
 import { formatNotificationResponse, buildNotificationIncludeQuery, buildNotificationSearchQuery, validateNotificationData } from '../utils/notifications.js';
 
@@ -14,13 +34,13 @@ const prisma = new PrismaClient();
  */
 export const getAllNotifications = async (req, res) => {
   try {
-          const {
-        page = 1,
-        limit = 20,
-        type,
-        priority,
-        status,
-        schoolId,
+    const {
+      page = 1,
+      limit = 20,
+      type,
+      priority,
+      status,
+      schoolId,
       ownerId,
       senderId,
       entityType,
@@ -100,19 +120,53 @@ export const getAllNotifications = async (req, res) => {
 export const getNotificationById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { include } = req.query;
-
-    const includeQuery = buildNotificationIncludeQuery(include);
+    const userId = req.user?.id;
 
     const notification = await prisma.notification.findUnique({
       where: { id: BigInt(id) },
-      include: includeQuery
+      include: {
+        recipients: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                role: true
+              }
+            }
+          }
+        },
+        sender: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            role: true
+          }
+        },
+        attachments: true
+      }
     });
 
     if (!notification) {
       return res.status(404).json({
         success: false,
         error: 'Notification not found'
+      });
+    }
+
+    // Check if user has access to this notification
+    const hasAccess = notification.recipients.some(recipient => 
+      recipient.userId.toString() === userId
+    ) || notification.senderId?.toString() === userId;
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied to this notification'
       });
     }
 
@@ -152,31 +206,33 @@ export const createNotificationHandler = async (req, res) => {
       });
     }
 
-    // Create notification using service
-    const result = await createNotification({
+    // Add sender and school/owner information
+    const enrichedData = {
       ...notificationData,
-      schoolId: notificationData.schoolId || schoolId,
-      ownerId: notificationData.ownerId || ownerId,
-      senderId: notificationData.senderId || userId
-    });
+      senderId: userId,
+      schoolId: schoolId || notificationData.schoolId,
+      ownerId: ownerId || notificationData.ownerId
+    };
+
+    const notification = await createNotification(enrichedData);
 
     // Create audit log
     await createAuditLog({
       action: 'CREATE',
       entity: 'Notification',
-      entityId: result.id,
+      entityId: notification.id,
       userId,
       schoolId,
       ownerId,
-      newData: result,
+      newData: JSON.stringify(notification),
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
 
     res.status(201).json({
       success: true,
-      data: formatNotificationResponse(result, { minimal: false }),
-      message: 'Notification created successfully'
+      message: 'Notification created successfully',
+      data: formatNotificationResponse(notification, { minimal: true })
     });
   } catch (error) {
     console.error('Error creating notification:', error);
@@ -197,9 +253,10 @@ export const updateNotification = async (req, res) => {
     const updateData = req.body;
     const userId = req.user?.id;
 
-    // Get existing notification
+    // Check if notification exists and user has permission
     const existingNotification = await prisma.notification.findUnique({
-      where: { id: BigInt(id) }
+      where: { id: BigInt(id) },
+      include: { recipients: true }
     });
 
     if (!existingNotification) {
@@ -209,14 +266,22 @@ export const updateNotification = async (req, res) => {
       });
     }
 
+    // Check permissions
+    const hasPermission = existingNotification.senderId?.toString() === userId ||
+                         req.user?.role === 'SCHOOL_ADMIN' ||
+                         req.user?.role === 'SUPER_ADMIN';
+
+    if (!hasPermission) {
+      return res.status(403).json({
+        success: false,
+        error: 'Permission denied to update this notification'
+      });
+    }
+
     // Update notification
     const updatedNotification = await prisma.notification.update({
       where: { id: BigInt(id) },
-      data: {
-        ...updateData,
-        updatedBy: userId
-      },
-      include: buildNotificationIncludeQuery()
+      data: updateData
     });
 
     // Create audit log
@@ -225,18 +290,18 @@ export const updateNotification = async (req, res) => {
       entity: 'Notification',
       entityId: id,
       userId,
-      schoolId: existingNotification.schoolId,
-      ownerId: existingNotification.ownerId,
-      oldData: existingNotification,
-      newData: updatedNotification,
+      schoolId: req.user?.schoolId,
+      ownerId: req.user?.createdByOwnerId,
+      oldData: JSON.stringify(existingNotification),
+      newData: JSON.stringify(updatedNotification),
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
 
     res.json({
       success: true,
-      data: formatNotificationResponse(updatedNotification, { minimal: false }),
-      message: 'Notification updated successfully'
+      message: 'Notification updated successfully',
+      data: formatNotificationResponse(updatedNotification, { minimal: true })
     });
   } catch (error) {
     console.error('Error updating notification:', error);
@@ -256,7 +321,7 @@ export const deleteNotificationHandler = async (req, res) => {
     const { id } = req.params;
     const userId = req.user?.id;
 
-    // Get existing notification
+    // Check if notification exists and user has permission
     const existingNotification = await prisma.notification.findUnique({
       where: { id: BigInt(id) }
     });
@@ -268,9 +333,22 @@ export const deleteNotificationHandler = async (req, res) => {
       });
     }
 
-    // Delete notification
-    await prisma.notification.delete({
-      where: { id: BigInt(id) }
+    // Check permissions
+    const hasPermission = existingNotification.senderId?.toString() === userId ||
+                         req.user?.role === 'SCHOOL_ADMIN' ||
+                         req.user?.role === 'SUPER_ADMIN';
+
+    if (!hasPermission) {
+      return res.status(403).json({
+        success: false,
+        error: 'Permission denied to delete this notification'
+      });
+    }
+
+    // Soft delete notification
+    await prisma.notification.update({
+      where: { id: BigInt(id) },
+      data: { deletedAt: new Date() }
     });
 
     // Create audit log
@@ -279,9 +357,9 @@ export const deleteNotificationHandler = async (req, res) => {
       entity: 'Notification',
       entityId: id,
       userId,
-      schoolId: existingNotification.schoolId,
-      ownerId: existingNotification.ownerId,
-      oldData: existingNotification,
+      schoolId: req.user?.schoolId,
+      ownerId: req.user?.createdByOwnerId,
+      oldData: JSON.stringify(existingNotification),
       ipAddress: req.ip,
       userAgent: req.get('User-Agent')
     });
@@ -300,8 +378,12 @@ export const deleteNotificationHandler = async (req, res) => {
   }
 };
 
+// ======================
+// USER NOTIFICATION ROUTES
+// ======================
+
 /**
- * Get user's notifications
+ * Get current user's notifications
  */
 export const getUserNotificationsHandler = async (req, res) => {
   try {
@@ -309,30 +391,28 @@ export const getUserNotificationsHandler = async (req, res) => {
     const {
       page = 1,
       limit = 20,
-      status,
       type,
       priority,
-      include,
-      sortBy = 'createdAt',
-      sortOrder = 'desc'
+      status,
+      include
     } = req.query;
 
     const filters = {
-      status,
       type,
-      priority
+      priority,
+      status,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      include
     };
 
     const result = await getUserNotifications(userId, filters);
 
-    // Format responses
-    const formattedNotifications = result.data.map(notification => 
-      formatNotificationResponse(notification, { minimal: false })
-    );
-
     res.json({
       success: true,
-      data: formattedNotifications,
+      data: result.data.map(notification => 
+        formatNotificationResponse(notification, { minimal: true })
+      ),
       pagination: result.pagination
     });
   } catch (error) {
@@ -346,7 +426,7 @@ export const getUserNotificationsHandler = async (req, res) => {
 };
 
 /**
- * Mark notification as read
+ * Mark notifications as read
  */
 export const markNotificationAsReadHandler = async (req, res) => {
   try {
@@ -356,7 +436,7 @@ export const markNotificationAsReadHandler = async (req, res) => {
     if (!notificationIds || !Array.isArray(notificationIds)) {
       return res.status(400).json({
         success: false,
-        error: 'Notification IDs are required'
+        error: 'Notification IDs array is required'
       });
     }
 
@@ -364,8 +444,8 @@ export const markNotificationAsReadHandler = async (req, res) => {
 
     res.json({
       success: true,
-      data: result,
-      message: 'Notifications marked as read successfully'
+      message: result.message,
+      data: result
     });
   } catch (error) {
     console.error('Error marking notifications as read:', error);
@@ -386,14 +466,7 @@ export const updateNotificationStatus = async (req, res) => {
     const { status } = req.body;
     const userId = req.user?.id;
 
-    if (!status) {
-      return res.status(400).json({
-        success: false,
-        error: 'Status is required'
-      });
-    }
-
-    // Get existing notification
+    // Check if notification exists
     const existingNotification = await prisma.notification.findUnique({
       where: { id: BigInt(id) }
     });
@@ -408,32 +481,13 @@ export const updateNotificationStatus = async (req, res) => {
     // Update status
     const updatedNotification = await prisma.notification.update({
       where: { id: BigInt(id) },
-      data: {
-        status,
-        updatedBy: userId,
-        ...(status === 'READ' && { readAt: new Date() }),
-        ...(status === 'ARCHIVED' && { archivedAt: new Date() })
-      }
-    });
-
-    // Create audit log
-    await createAuditLog({
-      action: 'STATUS_UPDATE',
-      entity: 'Notification',
-      entityId: id,
-      userId,
-      schoolId: existingNotification.schoolId,
-      ownerId: existingNotification.ownerId,
-      oldData: { status: existingNotification.status },
-      newData: { status },
-      ipAddress: req.ip,
-      userAgent: req.get('User-Agent')
+      data: { status }
     });
 
     res.json({
       success: true,
-      data: formatNotificationResponse(updatedNotification, { minimal: false }),
-      message: 'Notification status updated successfully'
+      message: 'Notification status updated successfully',
+      data: formatNotificationResponse(updatedNotification, { minimal: true })
     });
   } catch (error) {
     console.error('Error updating notification status:', error);
@@ -445,23 +499,16 @@ export const updateNotificationStatus = async (req, res) => {
   }
 };
 
+// ======================
+// BULK NOTIFICATION ROUTES
+// ======================
+
 /**
  * Send notification to multiple recipients
  */
 export const sendBulkNotification = async (req, res) => {
   try {
-    const {
-      recipients,
-      type,
-      title,
-      message,
-      priority = 'NORMAL',
-      channels = ['IN_APP'],
-      scheduledAt,
-      expiresAt,
-      metadata
-    } = req.body;
-
+    const { recipients, notificationData } = req.body;
     const userId = req.user?.id;
     const schoolId = req.user?.schoolId;
     const ownerId = req.user?.createdByOwnerId;
@@ -469,36 +516,48 @@ export const sendBulkNotification = async (req, res) => {
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'Recipients are required'
+        error: 'Recipients array is required and must not be empty'
+      });
+    }
+
+    if (!notificationData || !notificationData.title || !notificationData.message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Notification title and message are required'
       });
     }
 
     const notifications = [];
+    const errors = [];
 
     // Create notifications for each recipient
     for (const recipientId of recipients) {
-      const notification = await createNotification({
-        type,
-        title,
-        message,
-        priority,
-        channels,
-        recipients: [recipientId],
-        schoolId,
-        ownerId,
-        senderId: userId,
-        scheduledAt,
-        expiresAt,
-        metadata
-      });
-
-      notifications.push(notification);
+      try {
+        const notification = await createNotification({
+          ...notificationData,
+          recipients: [recipientId],
+          senderId: userId,
+          schoolId: schoolId || notificationData.schoolId,
+          ownerId: ownerId || notificationData.ownerId
+        });
+        notifications.push(notification);
+      } catch (error) {
+        errors.push({
+          recipientId,
+          error: error.message
+        });
+      }
     }
 
-    res.status(201).json({
+    res.json({
       success: true,
-      data: notifications.map(n => formatNotificationResponse(n, { minimal: false })),
-      message: `Notifications sent to ${recipients.length} recipients successfully`
+      message: `Bulk notification sent: ${notifications.length} successful, ${errors.length} failed`,
+      data: {
+        successful: notifications.length,
+        failed: errors.length,
+        notifications: notifications.map(n => formatNotificationResponse(n, { minimal: true })),
+        errors
+      }
     });
   } catch (error) {
     console.error('Error sending bulk notification:', error);
@@ -510,14 +569,18 @@ export const sendBulkNotification = async (req, res) => {
   }
 };
 
+// ======================
+// STATISTICS ROUTES
+// ======================
+
 /**
  * Get notification statistics
  */
 export const getNotificationStatsHandler = async (req, res) => {
   try {
-    const { period = '30d' } = req.query;
-    const schoolId = req.user?.schoolId;
     const userId = req.user?.id;
+    const schoolId = req.user?.schoolId;
+    const period = req.query.period || '30d';
 
     const stats = await getNotificationStats(schoolId, userId, period);
 
@@ -534,6 +597,10 @@ export const getNotificationStatsHandler = async (req, res) => {
     });
   }
 };
+
+// ======================
+// TEMPLATE ROUTES
+// ======================
 
 /**
  * Get notification templates
@@ -556,340 +623,419 @@ export const getNotificationTemplatesHandler = async (req, res) => {
   }
 };
 
-/**
- * Process notification template
- */
-export const processNotificationTemplateHandler = async (req, res) => {
-  try {
-    const { templateKey, data } = req.body;
+// ======================
+// REAL-TIME NOTIFICATION ROUTES
+// ======================
 
-    if (!templateKey) {
+/**
+ * Get unread notification count for current user
+ */
+export const getUnreadCount = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const count = await getUnreadNotificationCount(userId);
+
+    res.json({
+      success: true,
+      data: { count }
+    });
+  } catch (error) {
+    console.error('Error getting unread count:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get unread count',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Mark single notification as read
+ */
+export const markSingleNotificationAsRead = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id;
+
+    const result = await markNotificationAsRead([id], userId);
+
+    res.json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    console.error('Error marking notification as read:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to mark notification as read',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Get notifications for real-time updates
+ */
+export const getRealtimeNotifications = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { limit = 10 } = req.query;
+
+    const result = await getUserNotifications(userId, {
+      page: 1,
+      limit: parseInt(limit),
+      include: 'minimal'
+    });
+
+    res.json({
+      success: true,
+      data: result.data.map(notification => 
+        formatNotificationResponse(notification, { minimal: true })
+      ),
+      hasMore: result.pagination.total > result.data.length
+    });
+  } catch (error) {
+    console.error('Error getting realtime notifications:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get realtime notifications',
+      message: error.message
+    });
+  }
+};
+
+// ======================
+// SYSTEM OPERATION NOTIFICATION ROUTES
+// ======================
+
+/**
+ * Create student operation notification
+ */
+export const createStudentNotificationHandler = async (req, res) => {
+  try {
+    const { operation, studentData, additionalData } = req.body;
+    const userId = req.user?.id;
+    const schoolId = req.user?.schoolId;
+    const ownerId = req.user?.createdByOwnerId;
+
+    if (!operation || !studentData) {
       return res.status(400).json({
         success: false,
-        error: 'Template key is required'
+        error: 'Operation and student data are required'
       });
     }
 
-    const processedTemplate = await processNotificationTemplate(templateKey, data);
+    const notification = await createStudentNotification(
+      operation,
+      studentData,
+      userId,
+      schoolId,
+      ownerId,
+      additionalData
+    );
 
-    res.json({
-      success: true,
-      data: processedTemplate
-    });
-  } catch (error) {
-    console.error('Error processing notification template:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to process notification template',
-      message: error.message
-    });
-  }
-};
-
-/**
- * Send email notification
- */
-export const sendEmailNotificationHandler = async (req, res) => {
-  try {
-    const emailData = req.body;
-
-    const result = await sendEmailNotification(emailData);
-
-    res.json({
-      success: true,
-      data: result,
-      message: 'Email notification sent successfully'
-    });
-  } catch (error) {
-    console.error('Error sending email notification:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to send email notification',
-      message: error.message
-    });
-  }
-};
-
-/**
- * Send push notification
- */
-export const sendPushNotificationHandler = async (req, res) => {
-  try {
-    const pushData = req.body;
-    const result = await sendPushNotification(pushData);
-    res.json({
-      success: true,
-      data: result,
-      message: 'Push notification sent successfully'
-    });
-  } catch (error) {
-    console.error('Error sending push notification:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to send push notification',
-      message: error.message
-    });
-  }
-};
-
-/**
- * Send SMS notification
- */
-export const sendSMSNotificationHandler = async (req, res) => {
-  try {
-    const smsData = req.body;
-    const result = await sendSMSNotification(smsData);
-    res.json({
-      success: true,
-      data: result,
-      message: 'SMS notification sent successfully'
-    });
-  } catch (error) {
-    console.error('Error sending SMS notification:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to send SMS notification',
-      message: error.message
-    });
-  }
-};
-
-/**
- * Get notification preferences
- */
-export const getNotificationPreferences = async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    const schoolId = req.user?.schoolId;
-    const ownerId = req.user?.createdByOwnerId;
-
-    const preferences = await prisma.notificationPreference.findMany({
-      where: {
-        userId: BigInt(userId),
-        schoolId: schoolId ? BigInt(schoolId) : null,
-        ownerId: ownerId ? BigInt(ownerId) : null
-      }
-    });
-
-    res.json({
-      success: true,
-      data: preferences
-    });
-  } catch (error) {
-    console.error('Error getting notification preferences:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get notification preferences',
-      message: error.message
-    });
-  }
-};
-
-/**
- * Update notification preferences
- */
-export const updateNotificationPreferences = async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    const schoolId = req.user?.schoolId;
-    const ownerId = req.user?.createdByOwnerId;
-    const preferences = req.body;
-
-    const updatedPreferences = [];
-
-    for (const preference of preferences) {
-      const { type, channel, isEnabled, frequency, quietHoursStart, quietHoursEnd, timezone } = preference;
-
-      const updatedPreference = await prisma.notificationPreference.upsert({
-        where: {
-          userId_type_channel: {
-            userId: BigInt(userId),
-            type,
-            channel
-          }
-        },
-        update: {
-          isEnabled,
-          frequency,
-          quietHoursStart,
-          quietHoursEnd,
-          timezone
-        },
-        create: {
-          userId: BigInt(userId),
-          schoolId: schoolId ? BigInt(schoolId) : null,
-          ownerId: ownerId ? BigInt(ownerId) : null,
-          type,
-          channel,
-          isEnabled,
-          frequency,
-          quietHoursStart,
-          quietHoursEnd,
-          timezone
-        }
+    if (!notification) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create student notification'
       });
-
-      updatedPreferences.push(updatedPreference);
     }
 
     res.json({
       success: true,
-      data: updatedPreferences,
-      message: 'Notification preferences updated successfully'
+      message: 'Student notification created successfully',
+      data: formatNotificationResponse(notification, { minimal: true })
     });
   } catch (error) {
-    console.error('Error updating notification preferences:', error);
+    console.error('Error creating student notification:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update notification preferences',
+      error: 'Failed to create student notification',
       message: error.message
     });
   }
 };
 
 /**
- * Get notification rules
+ * Create attendance operation notification
  */
-export const getNotificationRules = async (req, res) => {
+export const createAttendanceNotificationHandler = async (req, res) => {
   try {
-    const schoolId = req.user?.schoolId;
-    const ownerId = req.user?.createdByOwnerId;
-
-    const rules = await prisma.notificationRule.findMany({
-      where: {
-        schoolId: schoolId ? BigInt(schoolId) : null,
-        ownerId: ownerId ? BigInt(ownerId) : null,
-        isActive: true
-      },
-      include: {
-        createdByUser: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        }
-      }
-    });
-
-    res.json({
-      success: true,
-      data: rules
-    });
-  } catch (error) {
-    console.error('Error getting notification rules:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get notification rules',
-      message: error.message
-    });
-  }
-};
-
-/**
- * Create notification rule
- */
-export const createNotificationRule = async (req, res) => {
-  try {
-    const ruleData = req.body;
+    const { operation, attendanceData } = req.body;
     const userId = req.user?.id;
     const schoolId = req.user?.schoolId;
     const ownerId = req.user?.createdByOwnerId;
 
-    const rule = await prisma.notificationRule.create({
-      data: {
-        ...ruleData,
-        schoolId: ruleData.schoolId || schoolId,
-        ownerId: ruleData.ownerId || ownerId,
-        createdBy: userId
-      }
-    });
+    if (!operation || !attendanceData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Operation and attendance data are required'
+      });
+    }
 
-    res.status(201).json({
-      success: true,
-      data: rule,
-      message: 'Notification rule created successfully'
-    });
-  } catch (error) {
-    console.error('Error creating notification rule:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create notification rule',
-      message: error.message
-    });
-  }
-};
+    const notification = await createAttendanceNotification(
+      operation,
+      attendanceData,
+      userId,
+      schoolId,
+      ownerId
+    );
 
-/**
- * Get notification schedules
- */
-export const getNotificationSchedules = async (req, res) => {
-  try {
-    const schoolId = req.user?.schoolId;
-    const ownerId = req.user?.createdByOwnerId;
-
-    const schedules = await prisma.notificationSchedule.findMany({
-      where: {
-        schoolId: schoolId ? BigInt(schoolId) : null,
-        ownerId: ownerId ? BigInt(ownerId) : null,
-        isActive: true
-      },
-      include: {
-        createdByUser: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        }
-      }
-    });
+    if (!notification) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create attendance notification'
+      });
+    }
 
     res.json({
       success: true,
-      data: schedules
+      message: 'Attendance notification created successfully',
+      data: formatNotificationResponse(notification, { minimal: true })
     });
   } catch (error) {
-    console.error('Error getting notification schedules:', error);
+    console.error('Error creating attendance notification:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get notification schedules',
+      error: 'Failed to create attendance notification',
       message: error.message
     });
   }
 };
 
 /**
- * Create notification schedule
+ * Create payment operation notification
  */
-export const createNotificationSchedule = async (req, res) => {
+export const createPaymentNotificationHandler = async (req, res) => {
   try {
-    const scheduleData = req.body;
+    const { operation, paymentData } = req.body;
     const userId = req.user?.id;
     const schoolId = req.user?.schoolId;
     const ownerId = req.user?.createdByOwnerId;
 
-    const schedule = await prisma.notificationSchedule.create({
-      data: {
-        ...scheduleData,
-        schoolId: scheduleData.schoolId || schoolId,
-        ownerId: scheduleData.ownerId || ownerId,
-        createdBy: userId
-      }
-    });
+    if (!operation || !paymentData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Operation and payment data are required'
+      });
+    }
 
-    res.status(201).json({
+    const notification = await createPaymentNotification(
+      operation,
+      paymentData,
+      userId,
+      schoolId,
+      ownerId
+    );
+
+    if (!notification) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create payment notification'
+      });
+    }
+
+    res.json({
       success: true,
-      data: schedule,
-      message: 'Notification schedule created successfully'
+      message: 'Payment notification created successfully',
+      data: formatNotificationResponse(notification, { minimal: true })
     });
   } catch (error) {
-    console.error('Error creating notification schedule:', error);
+    console.error('Error creating payment notification:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create notification schedule',
+      error: 'Failed to create payment notification',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Create user operation notification
+ */
+export const createUserNotificationHandler = async (req, res) => {
+  try {
+    const { operation, userData } = req.body;
+    const userId = req.user?.id;
+    const schoolId = req.user?.schoolId;
+    const ownerId = req.user?.createdByOwnerId;
+
+    if (!operation || !userData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Operation and user data are required'
+      });
+    }
+
+    const notification = await createUserNotification(
+      operation,
+      userData,
+      userId,
+      schoolId,
+      ownerId
+    );
+
+    if (!notification) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create user notification'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'User notification created successfully',
+      data: formatNotificationResponse(notification, { minimal: true })
+    });
+  } catch (error) {
+    console.error('Error creating user notification:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create user notification',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Create system notification
+ */
+export const createSystemNotificationHandler = async (req, res) => {
+  try {
+    const { type, title, message, priority, recipients } = req.body;
+    const userId = req.user?.id;
+    const schoolId = req.user?.schoolId;
+    const ownerId = req.user?.createdByOwnerId;
+
+    if (!type || !title || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Type, title, and message are required'
+      });
+    }
+
+    const notification = await createSystemNotification(
+      type,
+      title,
+      message,
+      priority,
+      schoolId,
+      ownerId,
+      recipients
+    );
+
+    if (!notification) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create system notification'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'System notification created successfully',
+      data: formatNotificationResponse(notification, { minimal: true })
+    });
+  } catch (error) {
+    console.error('Error creating system notification:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create system notification',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Create customer operation notification
+ */
+export const createCustomerNotificationHandler = async (req, res) => {
+  try {
+    const { operation, customerData } = req.body;
+    const userId = req.user?.id;
+    const schoolId = req.user?.schoolId;
+    const ownerId = req.user?.createdByOwnerId;
+
+    if (!operation || !customerData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Operation and customer data are required'
+      });
+    }
+
+    const notification = await createCustomerNotification(
+      operation,
+      customerData,
+      userId,
+      schoolId,
+      ownerId
+    );
+
+    if (!notification) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create customer notification'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Customer notification created successfully',
+      data: formatNotificationResponse(notification, { minimal: true })
+    });
+  } catch (error) {
+    console.error('Error creating customer notification:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create customer notification',
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Create inventory operation notification
+ */
+export const createInventoryNotificationHandler = async (req, res) => {
+  try {
+    const { operation, inventoryData } = req.body;
+    const userId = req.user?.id;
+    const schoolId = req.user?.schoolId;
+    const ownerId = req.user?.createdByOwnerId;
+
+    if (!operation || !inventoryData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Operation and inventory data are required'
+      });
+    }
+
+    const notification = await createInventoryNotification(
+      operation,
+      inventoryData,
+      userId,
+      schoolId,
+      ownerId
+    );
+
+    if (!notification) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to create inventory notification'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Inventory notification created successfully',
+      data: formatNotificationResponse(notification, { minimal: true })
+    });
+  } catch (error) {
+    console.error('Error creating inventory notification:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create inventory notification',
       message: error.message
     });
   }
