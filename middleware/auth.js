@@ -961,14 +961,42 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
 
       // Debug: Check if prisma client is available
       if (!prisma) {
-        console.error('❌ Prisma client is undefined in authorizeStudentAccess');
+        console.error('❌ Prisma client is undefined in authorizeStudentAccess, attempting to reinitialize...');
+        try {
+          prisma = new PrismaClient({
+            log: ['error', 'warn'],
+            errorFormat: 'pretty',
+          });
+          console.log('✅ Prisma client reinitialized successfully');
+        } catch (reinitError) {
+          console.error('❌ Failed to reinitialize Prisma client:', reinitError);
+          return res.status(500).json({
+            success: false,
+            error: 'Database connection error',
+            message: 'Database client not available.',
+            meta: {
+              timestamp: new Date().toISOString(),
+              statusCode: 500
+            }
+          });
+        }
+      }
+      
+      // Test database connectivity
+      try {
+        console.log('🔍 Testing database connectivity...');
+        await prisma.$queryRaw`SELECT 1 as test`;
+        console.log('✅ Database connectivity test passed');
+      } catch (connectivityError) {
+        console.error('❌ Database connectivity test failed:', connectivityError);
         return res.status(500).json({
           success: false,
-          error: 'Database connection error',
-          message: 'Database client not available.',
+          error: 'Database connectivity error',
+          message: 'Cannot connect to database.',
           meta: {
             timestamp: new Date().toISOString(),
-            statusCode: 500
+            statusCode: 500,
+            error: connectivityError.message
           }
         });
       }
@@ -980,9 +1008,12 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
 
       // Check if student exists and belongs to user's school
       console.log('🔍 Checking student access for ID:', studentId, 'School ID:', req.user.schoolId);
+      console.log('🔍 Prisma client status:', prisma ? 'Available' : 'Not available');
+      console.log('🔍 Prisma client type:', typeof prisma);
       
       let student;
       try {
+        console.log('🔍 About to execute Prisma query...');
         student = await prisma.student.findFirst({
           where: {
             id: parseInt(studentId),
@@ -1012,6 +1043,9 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
         }
       } catch (dbError) {
         console.error('❌ Database error in authorizeStudentAccess:', dbError);
+        console.error('❌ Error stack:', dbError.stack);
+        console.error('❌ Error name:', dbError.name);
+        console.error('❌ Error message:', dbError.message);
         return res.status(500).json({
           success: false,
           error: 'Database error',
