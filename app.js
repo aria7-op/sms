@@ -1,4 +1,4 @@
-  import express from 'express';
+import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -49,7 +49,7 @@ import feeController from './controllers/feeController.js';
 import WebSocketService from './services/websocket/WebSocketService.js';
 import { setWebSocketService } from './services/notificationService.js';
 
-  dotenv.config();
+dotenv.config();
 
   const app = express();
   const server = http.createServer(app);
