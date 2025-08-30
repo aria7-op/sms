@@ -381,25 +381,32 @@
         return res.status(400).json(formatResponse(false, null, 'schoolId is required for non-owner users.'));
       }
       
-      // Auto-generate class code if not provided or if it's just the class name
-      let classCode = data.code;
-      if (!classCode || classCode === data.name) {
-              console.log(`Auto-generating class code for class name: ${data.name}`);
+          // Auto-generate class code if not provided or if it's just the class name
+    let classCode = data.code;
+    if (!classCode || classCode === data.name) {
+      console.log(`Auto-generating class code for class name: ${data.name}`);
       classCode = await generateNextClassCode(data.name, schoolId);
+      console.log(`Generated class code: ${classCode}`);
       data.code = classCode;
-      } else {
-        // Check if the provided class code already exists in the school
-        const existingClass = await prisma.class.findFirst({
-          where: {
-            code: classCode,
-            schoolId: schoolId,
-          }
-        });
-        
-        if (existingClass) {
-          return res.status(409).json(formatResponse(false, null, 'Class code already exists in this school'));
-        }
+    } else {
+      console.log(`Using provided class code: ${classCode}`);
+    }
+
+    // Always check if the class code already exists in the school
+    console.log(`Checking if class code "${classCode}" already exists in school ${schoolId}`);
+    const existingClass = await prisma.class.findFirst({
+      where: {
+        code: classCode,
+        schoolId: schoolId,
       }
+    });
+    
+    if (existingClass) {
+      console.log(`Class code "${classCode}" already exists:`, existingClass);
+      return res.status(409).json(formatResponse(false, null, 'Class code already exists in this school'));
+    }
+    
+    console.log(`Class code "${classCode}" is available, proceeding with creation`);
       
       // Validate class teacher if provided
       if (data.classTeacherId) {
@@ -2779,20 +2786,28 @@
   // GET NEXT AVAILABLE CLASS CODE
   // ======================
   export const getNextClassCode = async (req, res) => {
-    try {
-      const { className, schoolId } = req.query;
-      
-      if (!className || !schoolId) {
-        return res.status(400).json(formatResponse(false, null, 'className and schoolId are required'));
-      }
-
-      const nextCode = await generateNextClassCode(className, schoolId);
-      
-      return res.json(formatResponse(true, { nextCode }, 'Next available class code generated successfully'));
-    } catch (error) {
-      return handleError(error, res, 'get next class code');
+  try {
+    const { className, schoolId } = req.query;
+    
+    if (!className || !schoolId) {
+      return res.status(400).json(formatResponse(false, null, 'className and schoolId are required'));
     }
-  };
+
+    console.log(`=== Testing class code generation ===`);
+    console.log(`Class name: ${className}`);
+    console.log(`School ID: ${schoolId}`);
+
+    const nextCode = await generateNextClassCode(className, schoolId);
+    
+    console.log(`Generated next code: ${nextCode}`);
+    console.log(`=== End test ===`);
+    
+    return res.json(formatResponse(true, { nextCode }, 'Next available class code generated successfully'));
+  } catch (error) {
+    console.error('Error in getNextClassCode:', error);
+    return handleError(error, res, 'get next class code');
+  }
+};
 
   // ======================
   // GET CLASS COUNT
@@ -4061,79 +4076,124 @@
    * @returns {string} - The next available class code (e.g., "10d")
    */
   const generateNextClassCode = async (className, schoolId) => {
-  // Validate class name format (should be a number or simple text)
-  if (!className || typeof className !== 'string') {
-    throw new Error('Invalid class name');
-  }
-  
-  // Clean the class name (remove extra spaces, convert to string)
-  const cleanClassName = className.trim().toString();
-  
-  if (cleanClassName.length === 0) {
-    throw new Error('Class name cannot be empty');
-  }
-  
-  // Validate schoolId
-  if (!schoolId || isNaN(Number(schoolId))) {
-    throw new Error('Invalid school ID');
-  }
-  
-  try {
-    // Find all existing classes with the same name in the school
-    const existingClasses = await prisma.class.findMany({
-      where: {
-        name: cleanClassName,
-        schoolId: BigInt(schoolId),
-        deletedAt: null
-      },
-      select: {
-        code: true
-      },
-      orderBy: {
-        code: 'asc'
-      }
-    });
-
-    console.log(`Found ${existingClasses.length} existing classes with name "${cleanClassName}" in school ${schoolId}`);
-
-          if (existingClasses.length === 0) {
-        // No existing classes with this name, start with 'A'
-        return `${cleanClassName}A`;
-      }
-
-          // Extract the suffix letters from existing codes
-      const existingSuffixes = existingClasses.map(cls => {
-        const match = cls.code.match(new RegExp(`^${cleanClassName}([A-Z])$`, 'i'));
-        return match ? match[1].toUpperCase() : null;
-      }).filter(Boolean);
-
-    console.log('Existing suffixes:', existingSuffixes);
-
-          if (existingSuffixes.length === 0) {
-        // No valid suffixes found, start with 'A'
-        return `${cleanClassName}A`;
-      }
-
-          // Find the next available letter
-      const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-      let nextSuffix = 'A';
-
-    for (let i = 0; i < alphabet.length; i++) {
-      const letter = alphabet[i];
-      if (!existingSuffixes.includes(letter)) {
-        nextSuffix = letter;
-        break;
-      }
+    // Validate class name format (should be a number or simple text)
+    if (!className || typeof className !== 'string') {
+      throw new Error('Invalid class name');
     }
-
-    const generatedCode = `${cleanClassName}${nextSuffix}`;
-    console.log(`Generated class code: ${generatedCode}`);
     
-    return generatedCode;
-  } catch (error) {
-    console.error('Error generating class code:', error);
-    // Fallback: return a timestamp-based code
-    return `${cleanClassName}_${Date.now().toString(36).toUpperCase()}`;
-  }
-};
+    // Clean the class name (remove extra spaces, convert to string)
+    const cleanClassName = className.trim().toString();
+    
+    if (cleanClassName.length === 0) {
+      throw new Error('Class name cannot be empty');
+    }
+    
+    // Validate schoolId
+    if (!schoolId || isNaN(Number(schoolId))) {
+      throw new Error('Invalid school ID');
+    }
+    
+    try {
+      // Find all existing classes with the same name in the school
+      const existingClasses = await prisma.class.findMany({
+        where: {
+          name: cleanClassName,
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        select: {
+          code: true
+        },
+        orderBy: {
+          code: 'asc'
+        }
+      });
+
+      console.log(`Found ${existingClasses.length} existing classes with name "${cleanClassName}" in school ${schoolId}`);
+      console.log('Existing class codes:', existingClasses.map(cls => cls.code));
+      
+      // Also check for any classes with similar codes (for debugging)
+      const similarClasses = await prisma.class.findMany({
+        where: {
+          code: {
+            startsWith: cleanClassName
+          },
+          schoolId: BigInt(schoolId),
+          deletedAt: null
+        },
+        select: {
+          code: true
+        }
+      });
+      console.log('Classes with similar codes:', similarClasses.map(cls => cls.code));
+
+      if (existingClasses.length === 0) {
+        // No existing classes with this name, start with 'A'
+        const newCode = `${cleanClassName}A`;
+        console.log(`No existing classes found, starting with: ${newCode}`);
+        return newCode;
+      }
+
+      // Extract the suffix letters from existing codes
+      const existingSuffixes = [];
+      for (const cls of existingClasses) {
+        // More flexible regex to handle various code patterns
+        const match = cls.code.match(new RegExp(`^${cleanClassName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([A-Za-z])$`));
+        if (match) {
+          const suffix = match[1].toUpperCase();
+          existingSuffixes.push(suffix);
+        }
+      }
+
+      console.log('Extracted existing suffixes:', existingSuffixes);
+
+      if (existingSuffixes.length === 0) {
+        // No valid suffixes found, start with 'A'
+        const newCode = `${cleanClassName}A`;
+        console.log(`No valid suffixes found, starting with: ${newCode}`);
+        return newCode;
+      }
+
+      // Find the next available letter
+      const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      let nextSuffix = null;
+
+      for (const letter of alphabet) {
+        if (!existingSuffixes.includes(letter)) {
+          nextSuffix = letter;
+          break;
+        }
+      }
+
+      if (!nextSuffix) {
+        // All letters A-Z are used, start with numbers
+        for (let i = 1; i <= 9; i++) {
+          const numSuffix = i.toString();
+          if (!existingSuffixes.includes(numSuffix)) {
+            nextSuffix = numSuffix;
+            break;
+          }
+        }
+        
+        if (!nextSuffix) {
+          // All single characters used, use timestamp
+          const timestamp = Date.now().toString(36).toUpperCase().slice(-3);
+          const newCode = `${cleanClassName}${timestamp}`;
+          console.log(`All single characters used, using timestamp: ${newCode}`);
+          return newCode;
+        }
+      }
+
+      const generatedCode = `${cleanClassName}${nextSuffix}`;
+      console.log(`Generated next available class code: ${generatedCode}`);
+      
+      return generatedCode;
+    } catch (error) {
+      console.error('Error generating class code:', error);
+      // Fallback: return a timestamp-based code
+      const fallbackCode = `${cleanClassName}_${Date.now().toString(36).toUpperCase()}`;
+      console.log(`Using fallback code: ${fallbackCode}`);
+      return fallbackCode;
+    }
+  };
     
