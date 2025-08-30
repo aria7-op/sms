@@ -16,6 +16,13 @@ const router = express.Router();
 router.get('/', authenticateToken, notificationController.getAllNotifications);
 
 /**
+ * @route   GET /api/notifications/realtime
+ * @desc    Get recent notifications for real-time display
+ * @access  Private
+ */
+router.get('/realtime', authenticateToken, notificationController.getRealtimeNotifications);
+
+/**
  * @route   GET /api/notifications/:id
  * @desc    Get notification by ID with full details
  * @access  Private
@@ -118,13 +125,6 @@ router.get('/unread/count', authenticateToken, notificationController.getUnreadC
  * @access  Private
  */
 router.put('/:id/read', authenticateToken, notificationController.markSingleNotificationAsRead);
-
-/**
- * @route   GET /api/notifications/realtime
- * @desc    Get notifications for real-time updates
- * @access  Private
- */
-router.get('/realtime', authenticateToken, notificationController.getRealtimeNotifications);
 
 // ======================
 // SYSTEM OPERATION NOTIFICATION ROUTES
