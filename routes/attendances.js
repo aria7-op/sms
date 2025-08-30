@@ -63,6 +63,9 @@ router.get('/export', authorizeRolesOrPermissions(['ADMIN', 'SCHOOL_ADMIN', 'TEA
 // Automated attendance management
 router.post('/auto-mark-absent', authorizeRolesOrPermissions(['ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'], ['attendance:create', 'attendance:update']), autoMarkAbsentStudents);
 
+// Mark incomplete attendance as absent (students without both inTime and outTime)
+router.post('/mark-incomplete-absent', authorizeRolesOrPermissions(['ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'], ['attendance:create', 'attendance:update']), markIncompleteAttendanceAsAbsent);
+
 // Bulk create attendance records - MUST come before /:id routes
 router.post('/bulk', authorizeRolesOrPermissions(['ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'], ['attendance:create']), bulkCreateAttendance);
 
