@@ -66,7 +66,7 @@ const getFormattedAfghanTime = () => {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false
+    hour12: true
   });
 };
 
@@ -1627,8 +1627,10 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
     // Get month range - FIXED
     const monthStart = new Date(parseInt(year), parseInt(month) - 1, 1);
     const monthEnd = new Date(parseInt(year), parseInt(month), 0); // Last day of the month
+    const monthEndInclusive = new Date(monthEnd);
+    monthEndInclusive.setHours(23, 59, 59, 999);
     
-    console.log('🔍 Month range:', monthStart.toISOString(), 'to', monthEnd.toISOString());
+    console.log('🔍 Month range:', monthStart.toISOString(), 'to', monthEndInclusive.toISOString());
     console.log('🔍 Month start date:', monthStart.toDateString());
     console.log('🔍 Month end date:', monthEnd.toDateString());
     
@@ -1640,7 +1642,7 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
         deletedAt: null,
         date: {
           gte: monthStart,
-          lte: monthEnd
+          lte: monthEndInclusive
         }
       },
       _count: {
@@ -1673,10 +1675,14 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
       console.log('🔍 Sample dates in database:', allClassAttendance.slice(0, 5).map(r => r.date.toISOString().split('T')[0]));
     }
     
-    // Get attendance records for the month - SIMPLIFIED
+    // Get attendance records for the month - DATE FILTERED (inclusive end of month)
     const attendanceRecords = await prisma.attendance.findMany({
       where: {
         classId: BigInt(classId),
+        date: {
+          gte: monthStart,
+          lte: monthEndInclusive
+        },
         schoolId: BigInt(schoolId),
         deletedAt: null
       },
@@ -1697,8 +1703,7 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
       }
     });
     
-    console.log('🔍 Found ALL attendance records for class:', attendanceRecords.length);
-    console.log('🔍 No date filtering - fetching all records for the month');
+    console.log('🔍 Found attendance records for month (date-filtered):', attendanceRecords.length);
 
     // Create monthly matrix data
     const monthlyMatrix = {};
@@ -2060,7 +2065,14 @@ export const exportAttendanceData = async (req, res) => {
           
           doc.moveDown(1);
           doc.text(`Total Students: ${exportData.length}`);
-          doc.text(`Report Generated: ${new Date().toLocaleString()}`);
+          doc.text(`Report Generated: ${new Date().toLocaleString('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      })}`);
           
           console.log('✅ PDF content added successfully');
           console.log('🔍 PDF document info:', {
@@ -2382,6 +2394,157 @@ export const exportAttendanceData = async (req, res) => {
   };
 
   /**
+   * Automatically mark absent students who don't have both inTime and outTime before today
+   * This function checks for students without complete attendance records and marks them absent
+   */
+  export const markIncompleteAttendanceAsAbsent = async (req, res) => {
+    try {
+      console.log('🤖 Marking students with incomplete attendance as absent...');
+      
+      const afghanTime = getFormattedAfghanTime();
+      const today = new Date();
+      const schoolId = req.user?.schoolId || 1;
+
+      console.log('🌍 Current Afghanistan time:', afghanTime);
+      console.log('📅 Processing date:', today.toISOString());
+      console.log('🏫 School ID:', schoolId);
+
+      // Get all active students for the school
+      const students = await prisma.student.findMany({
+        where: {
+          schoolId: BigInt(schoolId),
+          deletedAt: null,
+          user: {
+            status: 'ACTIVE'
+          }
+        },
+        include: {
+          class: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          user: {
+            select: {
+              firstName: true,
+              lastName: true,
+              phone: true
+            }
+          }
+        }
+      });
+
+      console.log(`📚 Found ${students.length} active students`);
+
+      let absentCount = 0;
+      let presentCount = 0;
+      let errorCount = 0;
+
+      // Process each student
+      for (const student of students) {
+        try {
+          // Check if student has complete attendance record for today (both inTime and outTime)
+          const existingAttendance = await prisma.attendance.findFirst({
+            where: {
+              studentId: student.id,
+              classId: student.classId,
+              date: today,
+              schoolId: BigInt(schoolId),
+              deletedAt: null
+            }
+          });
+
+          if (existingAttendance) {
+            // Check if the student has both inTime and outTime
+            if (existingAttendance.inTime && existingAttendance.outTime) {
+              // Student has complete attendance record
+              presentCount++;
+              console.log(`✅ Student ${student.user.firstName} ${student.user.lastName} has complete attendance record`);
+            } else {
+              // Student has incomplete attendance record (missing inTime or outTime)
+              // Mark as absent
+              await prisma.attendance.update({
+                where: { id: existingAttendance.id },
+                data: {
+                  status: 'ABSENT',
+                  updatedAt: new Date()
+                }
+              });
+              absentCount++;
+              console.log(`❌ Updated student ${student.user.firstName} ${student.user.lastName} as absent (incomplete attendance)`);
+            }
+          } else {
+            // No attendance record exists for today - create absent record
+            await prisma.attendance.create({
+              data: {
+                date: today,
+                status: 'ABSENT',
+                studentId: student.id,
+                classId: student.classId,
+                schoolId: BigInt(schoolId),
+                createdBy: BigInt(req.user?.id || 1),
+                createdAt: new Date()
+              }
+            });
+            absentCount++;
+            console.log(`❌ Created absent record for student ${student.user.firstName} ${student.user.lastName} (no attendance record)`);
+          }
+
+          // Send SMS notification for absent student (non-blocking)
+          try {
+            if (student.user && student.user.phone) {
+              smsService.sendAttendanceSMS(
+                {
+                  name: `${student.user.firstName} ${student.user.lastName}`,
+                  phone: student.user.phone
+                },
+                {
+                  date: today,
+                  className: student.class?.name || 'Unknown Class',
+                  status: 'ABSENT',
+                  reason: 'Incomplete attendance record (missing inTime or outTime)'
+                },
+                'absent'
+              ).then(smsResult => {
+                if (smsResult && smsResult.success) {
+                  console.log(`📱 Absent SMS sent to ${student.user.firstName} ${student.user.lastName}`);
+                }
+              }).catch(smsError => {
+                console.error(`❌ Failed to send absent SMS to ${student.user.firstName}:`, smsError.message);
+              });
+            }
+          } catch (smsError) {
+            console.error(`❌ SMS preparation failed for ${student.user.firstName}:`, smsError.message);
+          }
+        } catch (studentError) {
+          errorCount++;
+          console.error(`❌ Error processing student ${student.user?.firstName || 'Unknown'}:`, studentError.message);
+        }
+      }
+
+      const summary = {
+        totalStudents: students.length,
+        presentCount,
+        absentCount,
+        errorCount,
+        processedAt: afghanTime,
+        date: today.toISOString(),
+        description: 'Marked students absent who have incomplete attendance records (missing inTime or outTime)'
+      };
+
+      console.log('📊 Mark incomplete attendance as absent summary:', summary);
+
+      return createSuccessResponse(res, 'Marked incomplete attendance as absent successfully', summary);
+    } catch (error) {
+      console.error('❌ Error in markIncompleteAttendanceAsAbsent:', error);
+      return createErrorResponse(res, 'Failed to mark incomplete attendance as absent', 500, {
+        error: error.message
+      });
+    }
+  };
+
+  /**
    * Get attendance time windows and current status
    */
   export const getAttendanceTimeStatus = async (req, res) => {
@@ -2485,5 +2648,7 @@ export const exportAttendanceData = async (req, res) => {
     getMonthlyAttendanceMatrix,
     exportAttendanceData,
     autoMarkAbsentStudents,
+    markIncompleteAttendanceAsAbsent,
     getAttendanceTimeStatus
   };
+
