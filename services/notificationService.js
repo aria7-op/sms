@@ -919,8 +919,7 @@ export const triggerEntityCreatedNotification = async (entityType, entityId, ent
         eventType: 'entity_created',
         entityType,
         isActive: true,
-        schoolId: schoolId ? BigInt(schoolId) : null,
-        ownerId: ownerId ? BigInt(ownerId) : null
+        schoolId: schoolId ? BigInt(schoolId) : null
       }
     });
 
@@ -974,8 +973,7 @@ export const triggerEntityUpdatedNotification = async (entityType, entityId, ent
         eventType: 'entity_updated',
         entityType,
         isActive: true,
-        schoolId: schoolId ? BigInt(schoolId) : null,
-        ownerId: ownerId ? BigInt(ownerId) : null
+        schoolId: schoolId ? BigInt(schoolId) : null
       }
     });
 
