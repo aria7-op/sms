@@ -1,5 +1,5 @@
 // utils/notificationUtils.js
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import { formatResponse } from './responseUtils.js';
 
 const prisma = new PrismaClient();
@@ -32,12 +32,8 @@ export const buildNotificationIncludeQuery = (include) => {
         userId: true,
         channel: true,
         status: true,
-        sentAt: true,
         deliveredAt: true,
         readAt: true,
-        failedAt: true,
-        errorMessage: true,
-        deliveryAttempts: true,
         metadata: true,
         createdAt: true,
         updatedAt: true,
