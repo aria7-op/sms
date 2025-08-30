@@ -406,7 +406,7 @@ export const createNotification = async (notificationData) => {
               entityType: notification.entityType,
               entityId: notification.entityId,
               createdAt: notification.createdAt,
-              isRead: notification.isRead
+              isRead: false
             });
           });
         }
@@ -422,7 +422,7 @@ export const createNotification = async (notificationData) => {
             entityType: notification.entityType,
             entityId: notification.entityId,
             createdAt: notification.createdAt,
-            isRead: notification.isRead
+            isRead: false
           });
         }
         
@@ -437,7 +437,7 @@ export const createNotification = async (notificationData) => {
             entityType: notification.entityType,
             entityId: notification.entityId,
             createdAt: notification.createdAt,
-            isRead: notification.isRead
+            isRead: false
           });
         }
         
@@ -661,8 +661,7 @@ export const markNotificationAsRead = async (notificationIds, userId) => {
         await prisma.notification.update({
           where: { id: BigInt(notificationId) },
           data: {
-            status: 'READ',
-            readAt: new Date()
+            status: 'READ'
           }
         });
       }
@@ -1786,7 +1785,7 @@ export const getUnreadNotificationCount = async (userId) => {
     const count = await prisma.notificationRecipient.count({
       where: {
         userId: BigInt(userId),
-        isRead: false
+        status: { not: 'READ' }
       }
     });
     
