@@ -1,1807 +1,1805 @@
-  import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import http from 'http';
-import bcryptjs from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import multer from 'multer';
-import compression from 'compression';
-import helmet from 'helmet';
-import mysql from 'mysql2/promise';
-import CryptoJS from 'crypto-js';
+import { PrismaClient } from '../generated/prisma/index.js';
 
-// Import all route modules
-import usersRoutes from './routes/users.js';
-import studentsRoutes from './routes/students.js';
-import customersRoutes from './routes/customers.js';
-import classesRoutes from './routes/classes.js';
-import teachersRoutes from './routes/teachers.js';
-import parentsRoutes from './routes/parents.js';
-import schoolsRoutes from './routes/schools.js';
-import staffRoutes from './routes/staff.js';
-import subjectsRoutes from './routes/subjects.js';
-import gradesRoutes from './routes/grades.js';
-import attendancesRoutes from './routes/attendances.js';
-import paymentsRoutes from './routes/payments.js';
-import feesRoutes from './routes/fees.js';
-import expensesRoutes from './routes/expenses.js';
-import incomesRoutes from './routes/incomes.js';
-import budgetsRoutes from './routes/budgets.js';
-import payrollsRoutes from './routes/payrolls.js';
-import financeRoutes from './routes/finance.js';
-import noticesRoutes from './routes/notices.js';
-import messagesRoutes from './routes/messages.js';
-import eventsRoutes from './routes/events.js';
-import assignmentsRoutes from './routes/assignments.js';
-import libraryRoutes from './routes/libraryRoutes.js';
-// import inventoryRoutes from './routes/inventory.js';
-// import transportRoutes from './routes/transportRoutes.js';
-// import hostelRoutes from './routes/hostelRoutes.js';
-// import equipmentRoutes from './routes/equipmentRoutes.js';
-import authRoutes from './routes/auth.js';
-import notificationsRoutes from './routes/notifications.js';
-import documentsRoutes from './routes/documents.js';
-import filesRoutes from './routes/files.js';
-import { authenticateToken } from './middleware/auth.js';
-import feeController from './controllers/feeController.js';
-import WebSocketService from './services/websocket/WebSocketService.js';
-import { setWebSocketService } from './services/notificationService.js';
+const prisma = new PrismaClient();
 
-  dotenv.config();
-
-  const app = express();
-  const server = http.createServer(app);
-  const PORT = process.env.PORT || 4000;
-
-  // Database connection pool
-  let dbPool;
-
-  // Parse DATABASE_URL from environment
-  function parseDatabaseUrl(url) {
-    if (!url) return null;
-    
-    try {
-      // Remove mysql:// prefix
-      const cleanUrl = url.replace('mysql://', '');
-      
-      // Split into parts
-      const [credentials, hostAndDb] = cleanUrl.split('@');
-      const [user, password] = credentials.split(':');
-      const [host, database] = hostAndDb.split('/');
-      
-      return {
-        host: host.split(':')[0],
-        port: host.split(':')[1] || 3306,
-        user: user,
-        password: password,
-        database: database
-      };
-    } catch (error) {
-      console.error('Error parsing DATABASE_URL:', error);
-      return null;
-    }
-  }
-
-  // Initialize database connection
-  async function initializeDatabase() {
-    try {
-      let dbConfig;
-      
-      // Try to parse DATABASE_URL first
-      if (process.env.DATABASE_URL) {
-        dbConfig = parseDatabaseUrl(process.env.DATABASE_URL);
-        // console.log('📋 Using DATABASE_URL from environment');
-      }
-      
-      // If DATABASE_URL parsing failed or not available, use individual env vars
-      if (!dbConfig) {
-        dbConfig = {
-          host: process.env.DB_HOST || 'localhost',
-          port: process.env.DB_PORT || 3306,
-          user: process.env.DB_USER || 'mohammad1_ahmadi1',
-          password: process.env.DB_PASSWORD || 'mohammad112_',
-          database: process.env.DB_NAME || 'mohammad1_school'
-        };
-        // console.log('📋 Using individual environment variables');
-      }
-      
-              // console.log('🔧 Attempting database connection with:', {
-        //   host: dbConfig.host,
-        //   port: dbConfig.port,
-        //   user: dbConfig.user,
-        //   database: dbConfig.database
-        // });
-      
-      // For cPanel, try both localhost and 127.0.0.1
-      const connectionOptions = {
-        host: dbConfig.host,
-        port: dbConfig.port,
-        user: dbConfig.user,
-        password: dbConfig.password,
-        database: dbConfig.database,
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
-        acquireTimeout: 30000, // 30 seconds
-        connectTimeout: 30000 // 30 seconds for initial connection
-      };
-      
-      // console.log('🔧 Connection options:', {
-      //   host: connectionOptions.host,
-      //   port: connectionOptions.port,
-      //   user: connectionOptions.user,
-      //   database: connectionOptions.database
-      // });
-      
-      dbPool = mysql.createPool(connectionOptions);
-
-      // Test connection
-      const connection = await dbPool.getConnection();
-      // console.log('✅ Database connected successfully');
-      // console.log(`📊 Connected to: ${dbConfig.database} on ${dbConfig.host}:${dbConfig.port}`);
-      connection.release();
-    } catch (error) {
-      console.error('❌ Database connection failed:', error.message);
-      console.error('🔍 Error details:', error);
-      
-      // Try alternative connection if localhost fails
-      if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost')) {
-        // console.log('🔄 Trying with 127.0.0.1 instead of localhost...');
-        try {
-          const altDbConfig = parseDatabaseUrl(process.env.DATABASE_URL.replace('localhost', '127.0.0.1'));
-          if (altDbConfig) {
-            dbPool = mysql.createPool({
-              host: altDbConfig.host,
-              port: altDbConfig.port,
-              user: altDbConfig.user,
-              password: altDbConfig.password,
-              database: altDbConfig.database,
-              waitForConnections: true,
-              connectionLimit: 10,
-              queueLimit: 0,
-              acquireTimeout: 30000, // 30 seconds
-              connectTimeout: 30000 // 30 seconds for initial connection
-            });
-            
-            const connection = await dbPool.getConnection();
-            // console.log('✅ Database connected successfully with 127.0.0.1');
-            connection.release();
-            return;
-          }
-        } catch (altError) {
-          console.error('❌ Alternative connection also failed:', altError.message);
-        }
-      }
-      
-      console.error('💡 Database connection troubleshooting:');
-      console.error('💡 1. Check if MySQL is running on the server');
-      console.error('💡 2. Verify database credentials in cPanel');
-      console.error('💡 3. Check if the database exists');
-      console.error('💡 4. Verify user permissions');
-      // Continue without database for basic functionality
-    }
-  }
-
-  // Security middleware
-  app.use(helmet());
-  app.use(compression());
-
-  // Enhanced memory settings for 2GB RAM
-  app.use(express.json({
-    limit: '10mb',
-    verify: (req, res, buf) => {
-      try {
-        JSON.parse(buf);
-      } catch (e) {
-        throw new Error('Invalid JSON');
-      }
-    }
-  }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-  // Ensure req.body is always an object
-  app.use((req, res, next) => {
-    if (req.body === undefined) req.body = {};
-    next();
-  });
-
-  // Enhanced error handling for JSON parsing
-  app.use((err, req, res, next) => {
-    if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid JSON format in request body',
-        error: 'JSON_PARSE_ERROR'
-      });
-    }
-    next();
-  });
-
-  // Enhanced CORS configuration for frontend - MUST be before encryption middleware
-  app.use(cors({
-    origin: function(origin, callback) {
-      // Allow requests with no origin (like mobile apps, Postman, etc.)
-      if (!origin) return callback(null, true);
-      
-      // Allow all origins in development
-      if (process.env.NODE_ENV === 'development') {
-        return callback(null, true);
-      }
-      
-      // Production: Allow specific domains
-      const allowedOrigins = [
-        'https://khwanzay.school',
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'http://localhost:8081',
-        process.env.FRONTEND_URL,
-        process.env.DOMAIN_URL
-      ].filter(Boolean);
-      
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        // console.log('CORS blocked origin:', origin);
-        callback(null, true); // Allow all for now, remove this in production
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: [
-      'Content-Type', 
-      'Authorization', 
-      'X-Requested-With', 
-      'x-client-version', 
-      'x-device-type', 
-      'x-request-id', 
-      'x-request-timestamp',
-      'Accept',
-      'Origin',
-      'X-Forwarded-For'
-    ],
-    exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
-    maxAge: 86400 // 24 hours
-  }));
-
-  // Ensure CORS headers are always set, even on errors
-  app.use((req, res, next) => {
-    // Set CORS headers for all responses
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, x-client-version, x-device-type, x-request-id, x-request-timestamp, Accept, Origin, X-Forwarded-For');
-    
-    // Handle preflight requests immediately
-    if (req.method === 'OPTIONS') {
-      res.header('Access-Control-Max-Age', '86400');
-      return res.status(200).end();
-    }
-    
-    next();
-  });
-
-  // Encryption middleware for handling encrypted API requests and responses
-  app.use((req, res, next) => {
-    try {
-      // Skip encryption check for file uploads, health checks, and attendance routes
-      if (req.path.includes('/upload') || req.path.includes('/health') || req.path.includes('/attendances')) {
-        return next();
-      }
-
-      // Check if request body contains encrypted data
-      if (req.body && req.body.encryptedData) {
-        const encryptionKey = process.env.API_ENCRYPTION_KEY;
-        
-        if (!encryptionKey) {
-          console.error('❌ API_ENCRYPTION_KEY not found in environment variables');
-          return res.status(500).json({
-            success: false,
-            message: 'Server encryption configuration error',
-            error: 'ENCRYPTION_KEY_MISSING'
-          });
-        }
-
-        try {
-          // Decrypt the data
-          const bytes = CryptoJS.AES.decrypt(req.body.encryptedData, encryptionKey);
-          const decryptedData = bytes.toString(CryptoJS.enc.Utf8);
-          
-          if (!decryptedData) {
-            return res.status(400).json({
-              success: false,
-              message: 'Invalid encrypted data',
-              error: 'INVALID_ENCRYPTED_DATA'
-            });
-          }
-
-          // Parse the decrypted JSON
-          const parsedData = JSON.parse(decryptedData);
-          
-          // Replace the request body with decrypted data
-          req.body = parsedData;
-          
-          // console.log('🔓 Successfully decrypted API request');
-        } catch (decryptError) {
-          console.error('❌ Decryption failed:', decryptError.message);
-          return res.status(400).json({
-            success: false,
-            message: 'Failed to decrypt request data',
-            error: 'DECRYPTION_FAILED'
-          });
-        }
-      }
-
-      // Store original send and json methods
-      const originalSend = res.send;
-      const originalJson = res.json;
-      
-      // Override send method to encrypt responses
-      res.send = function(data) {
-        try {
-          // Skip encryption for error responses or non-JSON data
-          if (res.statusCode >= 400 || typeof data !== 'string' || !data.startsWith('{')) {
-            return originalSend.call(this, data);
-          }
-
-          const encryptionKey = process.env.API_ENCRYPTION_KEY;
-          if (!encryptionKey) {
-            return originalSend.call(this, data);
-          }
-
-          // Preserve CORS headers before encryption
-          const corsHeaders = {
-            'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
-            'Access-Control-Allow-Credentials': res.getHeader('Access-Control-Allow-Credentials'),
-            'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
-            'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
-          };
-
-          // Parse the response data
-          let responseData;
-          try {
-            responseData = JSON.parse(data);
-          } catch (e) {
-            return originalSend.call(this, data);
-          }
-
-          // Encrypt the response
-          const encryptedResponse = CryptoJS.AES.encrypt(
-            JSON.stringify(responseData), 
-            encryptionKey
-          ).toString();
-
-          // Send encrypted response
-          const encryptedData = {
-            encryptedData: encryptedResponse
-          };
-
-          // Restore CORS headers after encryption
-          Object.entries(corsHeaders).forEach(([key, value]) => {
-            if (value) res.setHeader(key, value);
-          });
-
-          return originalSend.call(this, JSON.stringify(encryptedData));
-        } catch (error) {
-          console.error('❌ Response encryption failed:', error);
-          return originalSend.call(this, data);
-        }
-      };
-
-      // Override json method to encrypt responses
-      res.json = function(data) {
-        try {
-          // Skip encryption for error responses
-          if (res.statusCode >= 400) {
-            return originalJson.call(this, data);
-          }
-
-          const encryptionKey = process.env.API_ENCRYPTION_KEY;
-          if (!encryptionKey) {
-            return originalJson.call(this, data);
-          }
-
-          // Preserve CORS headers before encryption
-          const corsHeaders = {
-            'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
-            'Access-Control-Allow-Credentials': res.getHeader('Access-Control-Allow-Credentials'),
-            'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
-            'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
-          };
-
-          // Encrypt the response
-          const encryptedResponse = CryptoJS.AES.encrypt(
-            JSON.stringify(data), 
-            encryptionKey
-          ).toString();
-
-          // Send encrypted response
-          const encryptedData = {
-            encryptedData: encryptedResponse
-          };
-
-          // Restore CORS headers after encryption
-          Object.entries(corsHeaders).forEach(([key, value]) => {
-            if (value) res.setHeader(key, value);
-          });
-
-          return originalJson.call(this, encryptedData);
-        } catch (error) {
-          console.error('❌ Response encryption failed:', error);
-          return originalJson.call(this, data);
-        }
-      };
-      
-      next();
-    } catch (error) {
-      console.error('❌ Encryption middleware error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Internal server error in encryption middleware',
-        error: 'ENCRYPTION_MIDDLEWARE_ERROR'
-      });
-    }
-  });
-
-  // BigInt serializer for JSON responses
-  const bigIntReplacer = (key, value) => {
-    if (typeof value === 'bigint') {
-      return value.toString();
-    }
-    return value;
-  };
-
-  // Override res.json to encrypt responses
-  app.use((req, res, next) => {
-    try {
-      const originalJson = res.json;
-      
-      res.json = function(data) {
-        try {
-          // Check if encryption is enabled for this route
-          const shouldEncrypt = req.headers['x-encrypt-response'] === 'true' || 
-                               req.path.startsWith('/api/') && 
-                               !req.path.includes('/public/') &&
-                               !req.path.includes('/health') &&
-                               !req.path.includes('/status');
-
-          if (!shouldEncrypt) {
-            return originalJson.call(this, data);
-          }
-
-          // Store CORS headers before encryption
-          const corsHeaders = {
-            'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
-            'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
-            'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
-          };
-
-          // Encrypt the response with BigInt handling
-          const encryptedResponse = CryptoJS.AES.encrypt(
-            JSON.stringify(data, bigIntReplacer), 
-            encryptionKey
-          ).toString();
-
-          // Send encrypted response
-          const encryptedData = {
-            encryptedData: encryptedResponse
-          };
-
-          // Restore CORS headers after encryption
-          Object.entries(corsHeaders).forEach(([key, value]) => {
-            if (value) res.setHeader(key, value);
-          });
-
-          return originalJson.call(this, encryptedData);
-        } catch (error) {
-          console.error('❌ Response encryption failed:', error);
-          return originalJson.call(this, data);
-        }
-      };
-      
-      next();
-    } catch (error) {
-      console.error('❌ Encryption middleware error:', error);
-      return res.status(500).json({
-        success: false,
-        message: 'Internal server error in encryption middleware',
-        error: 'ENCRYPTION_MIDDLEWARE_ERROR'
-      });
-    }
-  });
-
-
-
-  // File upload configuration
-  const storage = multer.memoryStorage();
-  const upload = multer({ 
-    storage: storage,
-    limits: {
-      fileSize: 5 * 1024 * 1024 // 5MB limit
-    }
-  });
-
-  // Database helper functions
-  async function query(sql, params = []) {
-    if (!dbPool) {
-      throw new Error('Database not connected');
-    }
-    
-    // Validate and sanitize parameters
-    const sanitizedParams = params.map(param => {
-      if (param === undefined || param === null) {
-        return null;
-      }
-      if (typeof param === 'number' && isNaN(param)) {
-        return null;
-      }
-      if (typeof param === 'string' && param.trim() === '') {
-        return null;
-      }
-      return param;
-    });
-    
-    // Log the query for debugging (remove in production)
-            // console.log('🔍 SQL Query:', sql);
-        // console.log('🔍 Parameters:', sanitizedParams);
-    
-    // Add timeout to database queries
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Database query timeout')), 30000); // 30 seconds
-    });
-    
-    const queryPromise = dbPool.execute(sql, sanitizedParams);
-    
-    try {
-      const [rows] = await Promise.race([queryPromise, timeoutPromise]);
-      return rows;
-    } catch (error) {
-      console.error('❌ Database query failed:', error.message);
-      console.error('🔍 SQL:', sql);
-      console.error('🔍 Parameters:', sanitizedParams);
-      console.error('🔍 Error details:', {
-        code: error.code,
-        errno: error.errno,
-        sqlState: error.sqlState,
-        sqlMessage: error.sqlMessage
-      });
-      throw error;
-    }
-  }
-
-  // Basic routes
-  app.get('/', (req, res) => {
-    res.json({ 
-      message: 'School Management API is running',
-      version: '2.0 MySQL2',
-      memory: process.memoryUsage(),
-      uptime: process.uptime(),
-      database: dbPool ? 'Connected' : 'Not connected'
-    });
-  });
-
-  // Database cleanup endpoint (temporary)
-  app.get('/api/fix-datetime', async (req, res) => {
-    try {
-      if (!dbPool) {
-        return res.status(500).json({ error: 'Database not connected' });
-      }
-      
-      // Fix invalid datetime values in customers table
-      const result = await query(`
-        UPDATE customers 
-        SET updatedAt = NOW(), createdAt = NOW() 
-        WHERE updatedAt IS NULL OR updatedAt = '0000-00-00 00:00:00' 
-           OR createdAt IS NULL OR createdAt = '0000-00-00 00:00:00'
-      `);
-      
-      res.json({
-        success: true,
-        message: 'Database datetime values fixed',
-        affectedRows: result.affectedRows
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fix datetime values',
-        error: error.message
-      });
-    }
-  });
-
-  // Analytics endpoint (for frontend compatibility)
-  app.get('/analytics', authenticateToken, async (req, res) => {
-    try {
-      // This endpoint provides general analytics data for the frontend
-      const schoolId = req.user.schoolId;
-      
-      // Basic analytics data
-      res.json({
-        success: true,
-        message: 'Analytics data retrieved successfully',
-        data: {
-          dashboard: {
-            totalStudents: 0,
-            totalTeachers: 0,
-            totalCustomers: 0,
-            conversionRate: 0
-          },
-          charts: {
-            studentGrowth: [],
-            conversionTrend: [],
-            attendanceRate: []
-          }
-        }
-      });
-    } catch (error) {
-      console.error('Analytics error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve analytics',
-        error: error.message
-      });
-    }
-  });
-
-  // Health check endpoint
-  app.get('/health', (req, res) => {
-    const memUsage = process.memoryUsage();
-    res.json({ 
-      status: 'ok', 
-      timestamp: new Date().toISOString(),
-      memory: {
-        rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
-        heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
-        heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
-        external: `${Math.round(memUsage.external / 1024 / 1024)}MB`
-      },
-      uptime: `${Math.round(process.uptime())}s`,
-      database: dbPool ? 'Connected' : 'Not connected',
-      encryption: process.env.API_ENCRYPTION_KEY ? 'Enabled' : 'Disabled',
-      cors: 'Enabled'
-    });
-  });
-
-  // Simple test endpoint
-  app.get('/test', (req, res) => {
-    res.json({ 
-      message: 'API is working!',
-      timestamp: new Date().toISOString(),
-      cors: 'Enabled'
-    });
-  });
-
-  // Authentication routes
-  app.post('/api/auth/login', async (req, res) => {
-    try {
-      const { email, username, password } = req.body;
-      
-      // Use either email or username
-      const loginIdentifier = email || username;
-      
-      if (!loginIdentifier || !password) {
-        return res.status(400).json({
-          success: false,
-          message: 'Email/username and password are required'
-        });
-      }
-      
-      if (!dbPool) {
-        // Mock authentication if database not available
-        if (loginIdentifier === 'admin@school.com' && password === 'password') {
-          const token = jwt.sign(
-            { userId: 1, email: loginIdentifier, role: 'admin' },
-            process.env.JWT_SECRET || 'your-secret-key',
-            { expiresIn: '24h' }
-          );
-          
-          return res.json({
-            success: true,
-            message: 'Login successful',
-            token,
-            user: { id: 1, email: loginIdentifier, role: 'admin' }
-          });
-        }
-      } else {
-        // Database authentication - check both email and username fields
-        const users = await query(
-          'SELECT * FROM users WHERE (email = ? OR username = ?) AND status = "ACTIVE"',
-          [loginIdentifier, loginIdentifier]
-        );
-        
-        if (users.length > 0) {
-          const user = users[0];
-          const isValidPassword = await bcryptjs.compare(password, user.password);
-          
-          if (isValidPassword) {
-            const token = jwt.sign(
-              { userId: user.id, email: user.email, role: user.role },
-              process.env.JWT_SECRET || 'your-secret-key',
-              { expiresIn: '24h' }
-            );
-            
-            return res.json({
-              success: true,
-              message: 'Login successful',
-              token,
-              user: { id: user.id, email: user.email, role: user.role }
-            });
-          }
-        }
-      }
-      
-      res.status(401).json({
-        success: false,
-        message: 'Invalid credentials'
-      });
-    } catch (error) {
-      console.error('Login error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Login failed',
-        error: error.message
-      });
-    }
-  });
-
-// ============================================================================
-// API ROUTES - Using route modules from ./routes/ folder
-// ============================================================================
-
-// Mount all route modules
-app.use('/api/users', usersRoutes);
-app.use('/api/students', studentsRoutes);
-app.use('/api/customers', customersRoutes);
-app.use('/api/classes', classesRoutes);
-app.use('/api/teachers', teachersRoutes);
-app.use('/api/parents', parentsRoutes);
-app.use('/api/schools', schoolsRoutes);
-app.use('/api/staff', staffRoutes);
-app.use('/api/subjects', subjectsRoutes);
-app.use('/api/grades', gradesRoutes);
-app.use('/api/attendances', attendancesRoutes);
-app.use('/api/payments', paymentsRoutes);
-app.use('/api/fees', feesRoutes);
-
-// Fee-structures endpoint compatibility - direct call to fee controller
-app.get('/api/fee-structures', authenticateToken, async (req, res) => {
-  try {
-          // console.log('🔍 Fee-structures endpoint called for user:', req.user?.email);
-    // Call the fee controller's getFeeStructures method directly
-    await feeController.getFeeStructures(req, res);
-  } catch (error) {
-    console.error('❌ Fee-structures endpoint error:', error);
-    // Only send response if not already sent by the controller
-    if (!res.headersSent) {
-      res.status(500).json({ 
-        success: false, 
-        message: 'Failed to fetch fee structures',
-        error: error.message 
-      });
-    }
-  }
-});
-app.use('/api/expenses', expensesRoutes);
-app.use('/api/incomes', incomesRoutes);
-app.use('/api/budgets', budgetsRoutes);
-app.use('/api/payrolls', payrollsRoutes);
-app.use('/api/finance', financeRoutes);
-app.use('/api/notices', noticesRoutes);
-app.use('/api/messages', messagesRoutes);
-app.use('/api/events', eventsRoutes);
-app.use('/api/assignments', assignmentsRoutes);
-app.use('/api/library', libraryRoutes);
-// app.use('/api/inventory', inventoryRoutes);
-// app.use('/api/transport', transportRoutes);
-// app.use('/api/hostel', hostelRoutes);
-// app.use('/api/equipment', equipmentRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/notifications', notificationsRoutes);
-app.use('/api/documents', documentsRoutes);
-app.use('/api/files', filesRoutes);
-
-// ============================================================================
-// LEGACY INLINE ROUTES (TO BE REMOVED - KEEPING FOR BACKUP)
-// ============================================================================
-
-  // User management routes
-  app.get('/api/users-legacy', async (req, res) => {
-    try {
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Users endpoint available (database not connected)',
-          data: []
-        });
-      }
-      
-      const users = await query('SELECT id, username, email, role, status, createdAt FROM users WHERE deletedAt IS NULL');
-      
-      res.json({
-        success: true,
-        message: 'Users retrieved successfully',
-        data: users
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve users',
-        error: error.message
-      });
-    }
-  });
-
-  app.post('/api/users', async (req, res) => {
-    try {
-      const { username, email, password, role } = req.body;
-      
-      if (!dbPool) {
-        // Mock user creation
-        const hashedPassword = await bcryptjs.hash(password, 10);
-        return res.json({
-          success: true,
-          message: 'User created successfully (mock)',
-          data: { username, email, role, hashedPassword }
-        });
-      }
-      
-      // Check if user exists
-      const existingUsers = await query('SELECT id FROM users WHERE email = ? OR username = ?', [email, username]);
-      if (existingUsers.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'User with this email or username already exists'
-        });
-      }
-      
-      // Hash password
-      const hashedPassword = await bcryptjs.hash(password, 10);
-      
-      // Insert user
-      const result = await query(
-        'INSERT INTO users (username, email, password, role, status) VALUES (?, ?, ?, ?, "ACTIVE")',
-        [username, email, hashedPassword, role]
-      );
-      
-      res.json({
-        success: true,
-        message: 'User created successfully',
-        data: { id: result.insertId, username, email, role }
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'User creation failed',
-        error: error.message
-      });
-    }
-  });
-
-  // Student routes
-  app.get('/api/students-legacy', async (req, res) => {
-    try {
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Students endpoint available (database not connected)',
-          data: []
-        });
-      }
-      
-      const students = await query(`
-        SELECT s.*, u.name as parentName, u.email as parentEmail 
-        FROM students s 
-        LEFT JOIN users u ON s.parentId = u.id 
-        WHERE s.deletedAt IS NULL
-      `);
-      
-      res.json({
-        success: true,
-        message: 'Students retrieved successfully',
-        data: students
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve students',
-        error: error.message
-      });
-    }
-  });
-
-  app.post('/api/students', async (req, res) => {
-    try {
-      const { name, email, grade, parentId, address, phone } = req.body;
-      
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Student created successfully (mock)',
-          data: { name, email, grade, parentId, address, phone }
-        });
-      }
-      
-      const result = await query(
-        'INSERT INTO students (name, email, grade, parentId, address, phone, status) VALUES (?, ?, ?, ?, ?, ?, "ACTIVE")',
-        [name, email, grade, parentId, address, phone]
-      );
-      
-      res.json({
-        success: true,
-        message: 'Student created successfully',
-        data: { id: result.insertId, name, email, grade }
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Student creation failed',
-        error: error.message
-      });
-    }
-  });
-
-  // Teacher routes
-  app.get('/api/teachers-legacy', async (req, res) => {
-    try {
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Teachers endpoint available (database not connected)',
-          data: []
-        });
-      }
-      
-      const teachers = await query(`
-        SELECT t.*, u.name, u.email 
-        FROM teachers t 
-        LEFT JOIN users u ON t.userId = u.id 
-        WHERE t.deletedAt IS NULL
-      `);
-      
-      res.json({
-        success: true,
-        message: 'Teachers retrieved successfully',
-        data: teachers
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve teachers',
-        error: error.message
-      });
-    }
-  });
-
-  // Class routes
-  app.get('/api/classes-legacy', async (req, res) => {
-    try {
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Classes endpoint available (database not connected)',
-          data: []
-        });
-      }
-      
-      const classes = await query(`
-        SELECT c.*, t.name as teacherName, s.name as subjectName
-        FROM classes c 
-        LEFT JOIN teachers t ON c.teacherId = t.id
-        LEFT JOIN subjects s ON c.subjectId = s.id
-        WHERE c.deletedAt IS NULL
-      `);
-      
-      res.json({
-        success: true,
-        message: 'Classes retrieved successfully',
-        data: classes
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve classes',
-        error: error.message
-      });
-    }
-  });
-
-  // Payment routes
-  app.get('/api/payments-legacy', async (req, res) => {
-    try {
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Payments endpoint available (database not connected)',
-          data: []
-        });
-      }
-      
-      const payments = await query(`
-        SELECT p.*, s.name as studentName, u.name as payerName
-        FROM payments p 
-        LEFT JOIN students s ON p.studentId = s.id
-        LEFT JOIN users u ON p.payerId = u.id
-        WHERE p.deletedAt IS NULL
-        ORDER BY p.createdAt DESC
-      `);
-      
-      res.json({
-        success: true,
-        message: 'Payments retrieved successfully',
-        data: payments
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve payments',
-        error: error.message
-      });
-    }
-  });
-
-  // File upload route
-  app.post('/api/upload', upload.single('file'), (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'No file uploaded'
-      });
-    }
-    
-    res.json({
-      success: true,
-      message: 'File uploaded successfully',
-      data: {
-        filename: req.file.originalname,
-        size: req.file.size,
-        mimetype: req.file.mimetype
-      }
-    });
-  });
-
-  // Customer routes
-  app.get('/api/customers-legacy', async (req, res) => {
-    try {
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Customers endpoint available (database not connected)',
-          data: []
-        });
-      }
-      
-      const customers = await query(`
-        SELECT * FROM customers 
-        WHERE deletedAt IS NULL 
-        ORDER BY createdAt DESC
-      `);
-      
-      res.json({
-        success: true,
-        message: 'Customers retrieved successfully',
-        data: customers
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve customers',
-        error: error.message
-      });
-    }
-  });
-
-  app.post('/api/customers', async (req, res) => {
-    try {
-      const { 
-        name, 
-        email, 
-        phone, 
-        gender = 'Male',
-        source = '',
-        purpose = '',
-        department = 'Academic',
-        serialNumber = null,
-        uuid = null,
-        referredTo = null,
-        referredById = null,
-        metadata = '',
-        status = 'ACTIVE'
-      } = req.body;
-      
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Customer created successfully (mock)',
-          data: { name, email, phone, gender, source, purpose, department }
-        });
-      }
-      
-      // Set default values for required fields to avoid undefined
-      const customerData = {
-        name: name || '',
-        email: email || null,
-        phone: phone || '',
-        gender: gender || 'Male',
-        source: source || '',
-        purpose: purpose || '',
-        department: department || 'Academic',
-        serialNumber: serialNumber || null,
-        uuid: uuid || null,
-        referredTo: referredTo || null,
-        referredById: referredById || null,
-        metadata: metadata || '',
-        ownerId: 1,
-        schoolId: 1,
-        createdBy: 1
-      };
-      
-      const result = await query(
-        `INSERT INTO customers (
-          name, email, phone, gender, source, purpose, department, 
-          serialNumber, uuid, referredTo, referredById, metadata,
-          ownerId, schoolId, createdBy
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          customerData.name,
-          customerData.email,
-          customerData.phone,
-          customerData.gender,
-          customerData.source,
-          customerData.purpose,
-          customerData.department,
-          customerData.serialNumber,
-          customerData.uuid,
-          customerData.referredTo,
-          customerData.referredById,
-          customerData.metadata,
-          customerData.ownerId,
-          customerData.schoolId,
-          customerData.createdBy
-        ]
-      );
-      
-      res.json({
-        success: true,
-        message: 'Customer created successfully',
-        data: { 
-          id: result.insertId, 
-          name: customerData.name, 
-          email: customerData.email, 
-          phone: customerData.phone,
-          gender: customerData.gender,
-          source: customerData.source,
-          purpose: customerData.purpose,
-          department: customerData.department
-        }
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Customer creation failed',
-        error: error.message
-      });
-    }
-  });
-
-  // Customer Analytics Endpoints (matching routes/customers.js structure)
-  app.get('/api/customers-legacy/conversion-analytics', async (req, res) => {
-    try {
-      const { period = '30d' } = req.query;
-      
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Conversion analytics available (mock data)',
-          data: {
-            period,
-            totalCustomers: 150,
-            convertedCustomers: 45,
-            conversionRate: 30,
-            trend: [
-              { date: '2024-01-01', conversions: 5 },
-              { date: '2024-01-02', conversions: 8 },
-              { date: '2024-01-03', conversions: 12 }
-            ]
-          }
-        });
-      }
-      
-      // Mock analytics data for now
-      res.json({
-        success: true,
-        message: 'Conversion analytics retrieved successfully',
-        data: {
-          period,
-          totalCustomers: 150,
-          convertedCustomers: 45,
-          conversionRate: 30,
-          trend: [
-            { date: '2024-01-01', conversions: 5 },
-            { date: '2024-01-02', conversions: 8 },
-            { date: '2024-01-03', conversions: 12 }
-          ]
-        }
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve conversion analytics',
-        error: error.message
-      });
-    }
-  });
-
-  app.get('/api/customers-legacy/conversion-rates', async (req, res) => {
-    try {
-      const { period = 'monthly' } = req.query;
-      
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Conversion rates available (mock data)',
-          data: {
-            period,
-            rates: [
-              { month: 'January', rate: 25 },
-              { month: 'February', rate: 30 },
-              { month: 'March', rate: 35 }
-            ],
-            averageRate: 30
-          }
-        });
-      }
-      
-      res.json({
-        success: true,
-        message: 'Conversion rates retrieved successfully',
-        data: {
-          period,
-          rates: [
-            { month: 'January', rate: 25 },
-            { month: 'February', rate: 30 },
-            { month: 'March', rate: 35 }
-          ],
-          averageRate: 30
-        }
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve conversion rates',
-        error: error.message
-      });
-    }
-  });
-
-  app.get('/api/customers-legacy/analytics/reports', async (req, res) => {
-    try {
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Analytics reports available (mock data)',
-          data: {
-            totalCustomers: 150,
-            activeCustomers: 120,
-            newCustomers: 25,
-            revenue: 45000,
-            reports: [
-              {
-                id: 1,
-                name: 'Monthly Conversion Report',
-                type: 'conversion',
-                date: '2024-01-15'
-              },
-              {
-                id: 2,
-                name: 'Customer Growth Report',
-                type: 'growth',
-                date: '2024-01-10'
-              }
-            ]
-          }
-        });
-      }
-      
-      res.json({
-        success: true,
-        message: 'Analytics reports retrieved successfully',
-        data: {
-          totalCustomers: 150,
-          activeCustomers: 120,
-          newCustomers: 25,
-          revenue: 45000,
-          reports: [
-            {
-              id: 1,
-              name: 'Monthly Conversion Report',
-              type: 'conversion',
-              date: '2024-01-15'
-            },
-            {
-              id: 2,
-              name: 'Customer Growth Report',
-              type: 'growth',
-              date: '2024-01-10'
-            }
-          ]
-        }
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve analytics reports',
-        error: error.message
-      });
-    }
-  });
-
-  // Additional customer endpoints from routes/customers.js
-  app.get('/api/customers-legacy/analytics/dashboard', async (req, res) => {
-    try {
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Analytics dashboard available (mock data)',
-          data: {
-            totalCustomers: 150,
-            activeCustomers: 120,
-            conversionRate: 30,
-            revenue: 45000,
-            recentActivity: [
-              { type: 'new_customer', customer: 'John Doe', time: '2 hours ago' },
-              { type: 'conversion', customer: 'Jane Smith', time: '4 hours ago' }
-            ]
-          }
-        });
-      }
-      
-      res.json({
-        success: true,
-        message: 'Analytics dashboard retrieved successfully',
-        data: {
-          totalCustomers: 150,
-          activeCustomers: 120,
-          conversionRate: 30,
-          revenue: 45000,
-          recentActivity: [
-            { type: 'new_customer', customer: 'John Doe', time: '2 hours ago' },
-            { type: 'conversion', customer: 'Jane Smith', time: '4 hours ago' }
-          ]
-        }
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve analytics dashboard',
-        error: error.message
-      });
-    }
-  });
-
-  app.get('/api/customers-legacy/unconverted', async (req, res) => {
-    try {
-      const { page = 1, limit = 50 } = req.query;
-      const offset = (page - 1) * limit;
-      
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Unconverted customers available (mock data)',
-          data: {
-            customers: [
-              { id: 1, name: 'John Doe', email: 'john@example.com', status: 'LEAD' },
-              { id: 2, name: 'Jane Smith', email: 'jane@example.com', status: 'PROSPECT' }
-            ],
-            pagination: {
-              page: parseInt(page),
-              limit: parseInt(limit),
-              total: 25,
-              totalPages: 1
-            }
-          }
-        });
-      }
-      
-      // Ensure parameters are valid numbers
-      const limitNum = parseInt(limit) || 10;
-      const offsetNum = parseInt(offset) || 0;
-      
-      const customers = await query(`
-        SELECT * FROM customers 
-        WHERE status IN ('LEAD', 'PROSPECT') AND deletedAt IS NULL
-        ORDER BY createdAt DESC
-        LIMIT ? OFFSET ?
-      `, [limitNum, offsetNum]);
-      
-      const totalResult = await query(`
-        SELECT COUNT(*) as total FROM customers 
-        WHERE status IN ('LEAD', 'PROSPECT') AND deletedAt IS NULL
-      `);
-      
-      const total = totalResult[0].total;
-      
-      res.json({
-        success: true,
-        message: 'Unconverted customers retrieved successfully',
-        data: {
-          customers,
-          pagination: {
-            page: parseInt(page),
-            limit: parseInt(limit),
-            total,
-            totalPages: Math.ceil(total / limit)
-          }
-        }
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve unconverted customers',
-        error: error.message
-      });
-    }
-  });
-
-  app.get('/api/customers-legacy/:id', async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Customer endpoint available (database not connected)',
-          data: null
-        });
-      }
-      
-      const customers = await query(
-        'SELECT * FROM customers WHERE id = ? AND deletedAt IS NULL',
-        [id]
-      );
-      
-      if (customers.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'Customer not found'
-        });
-      }
-      
-      res.json({
-        success: true,
-        message: 'Customer retrieved successfully',
-        data: customers[0]
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve customer',
-        error: error.message
-      });
-    }
-  });
-
-  app.put('/api/customers/:id', async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { name, email, phone, address, status, notes } = req.body;
-      
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Customer updated successfully (mock)',
-          data: { id, name, email, phone, address, status, notes }
-        });
-      }
-      
-      const result = await query(
-        'UPDATE customers SET name = ?, email = ?, phone = ?, address = ?, status = ?, notes = ?, updatedAt = NOW() WHERE id = ?',
-        [name, email, phone, address, status, notes, id]
-      );
-      
-      if (result.affectedRows === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'Customer not found'
-        });
-      }
-      
-      res.json({
-        success: true,
-        message: 'Customer updated successfully',
-        data: { id, name, email, phone, address, status }
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Customer update failed',
-        error: error.message
-      });
-    }
-  });
-
-  app.delete('/api/customers/:id', async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Customer deleted successfully (mock)',
-          data: { id }
-        });
-      }
-      
-      const result = await query(
-        'UPDATE customers SET deletedAt = NOW() WHERE id = ?',
-        [id]
-      );
-      
-      if (result.affectedRows === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'Customer not found'
-        });
-      }
-      
-      res.json({
-        success: true,
-        message: 'Customer deleted successfully',
-        data: { id }
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Customer deletion failed',
-        error: error.message
-      });
-    }
-  });
-
-  // Student Analytics Endpoints
-  app.get('/api/students-legacy/converted', async (req, res) => {
-    try {
-      const { page = 1, limit = 50 } = req.query;
-      const offset = (page - 1) * limit;
-      
-      if (!dbPool) {
-        return res.json({
-          success: true,
-          message: 'Converted students available (mock data)',
-          data: {
-            students: [
-              {
-                id: 1,
-                name: 'John Doe',
-                email: 'john@example.com',
-                convertedAt: '2024-01-15',
-                conversionSource: 'Website'
-              },
-              {
-                id: 2,
-                name: 'Jane Smith',
-                email: 'jane@example.com',
-                convertedAt: '2024-01-14',
-                conversionSource: 'Referral'
-              }
-            ],
-            pagination: {
-              page: parseInt(page),
-              limit: parseInt(limit),
-              total: 25,
-              totalPages: 1
-            }
-          }
-        });
-      }
-      
-      try {
-        // Get converted students (students who became customers)
-        const students = await query(`
-          SELECT s.*, c.convertedAt, c.conversionSource
-          FROM students s
-          LEFT JOIN customers c ON s.email = c.email
-          WHERE c.convertedAt IS NOT NULL
-          ORDER BY c.convertedAt DESC
-          LIMIT ? OFFSET ?
-        `, [parseInt(limit), offset]);
-        
-        // Get total count
-        const totalResult = await query(`
-          SELECT COUNT(*) as total
-          FROM students s
-          LEFT JOIN customers c ON s.email = c.email
-          WHERE c.convertedAt IS NOT NULL
-        `);
-        
-        const total = totalResult[0].total;
-        
-        res.json({
-          success: true,
-          message: 'Converted students retrieved successfully',
-          data: {
-            students,
-            pagination: {
-              page: parseInt(page),
-              limit: parseInt(limit),
-              total,
-              totalPages: Math.ceil(total / limit)
-            }
-          }
-        });
-      } catch (dbError) {
-        // If database query fails, return mock data
-        console.error('Database query failed:', dbError.message);
-        return res.json({
-          success: true,
-          message: 'Converted students available (mock data due to database issue)',
-          data: {
-            students: [
-              {
-                id: 1,
-                name: 'John Doe',
-                email: 'john@example.com',
-                convertedAt: '2024-01-15',
-                conversionSource: 'Website'
-              },
-              {
-                id: 2,
-                name: 'Jane Smith',
-                email: 'jane@example.com',
-                convertedAt: '2024-01-14',
-                conversionSource: 'Referral'
-              }
-            ],
-            pagination: {
-              page: parseInt(page),
-              limit: parseInt(limit),
-              total: 25,
-              totalPages: 1
-            }
-          }
-        });
-      }
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve converted students',
-        error: error.message
-      });
-    }
-  });
-
-  // Database status endpoint
-  app.get('/api/database/status', async (req, res) => {
-    try {
-      if (!dbPool) {
-        return res.json({
-          success: false,
-          connected: false,
-          message: 'Database not connected',
-          error: 'No database pool available'
-        });
-      }
-      
-      // Test a simple query
-      const result = await query('SELECT 1 as test');
-      
-      res.json({
-        success: true,
-        connected: true,
-        message: 'Database connected and responding',
-        test: result[0]
-      });
-    } catch (error) {
-      res.json({
-        success: false,
-        connected: false,
-        message: 'Database connection failed',
-        error: error.message
-      });
-    }
-  });
-
-  // API Status endpoint
-  app.get('/api/status', (req, res) => {
-    res.json({
-      success: true,
-      message: 'API endpoints are available',
-      database: dbPool ? 'Connected' : 'Not connected',
-      endpoints: [
-        '/api/auth/login',
-        '/api/users',
-        '/api/students',
-        '/api/teachers',
-        '/api/classes',
-        '/api/payments',
-        '/api/customers',
-        '/api/upload',
-        '/api/database/status'
-      ]
-    });
-  });
-
-  // Initialize WebSocket service
+// WebSocket service reference (will be set by the main app)
 let websocketService = null;
-try {
-  websocketService = new WebSocketService();
-  websocketService.initialize(server);
-  
-  // Set WebSocket service reference in notification service
-  setWebSocketService(websocketService);
-  
-  console.log('✅ WebSocket service initialized successfully');
-} catch (error) {
-  console.error('❌ Failed to initialize WebSocket service:', error);
-  websocketService = null;
-}
 
-  // Global error handler
-  app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Something went wrong!',
-      error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+/**
+ * Set WebSocket service reference
+ */
+export const setWebSocketService = (wsService) => {
+  websocketService = wsService;
+};
+
+// ======================
+// NOTIFICATION TYPES & PRIORITIES
+// ======================
+
+export const NOTIFICATION_TYPES = {
+  // System notifications
+  SYSTEM_UPDATE: 'SYSTEM_UPDATE',
+  MAINTENANCE: 'MAINTENANCE',
+  SECURITY_ALERT: 'SECURITY_ALERT',
+  
+  // User management
+  USER_CREATED: 'USER_CREATED',
+  USER_UPDATED: 'USER_UPDATED',
+  USER_DELETED: 'USER_DELETED',
+  USER_LOGIN: 'USER_LOGIN',
+  USER_LOGOUT: 'USER_LOGOUT',
+  PASSWORD_CHANGED: 'PASSWORD_CHANGED',
+  
+  // Student operations
+  STUDENT_CREATED: 'STUDENT_CREATED',
+  STUDENT_UPDATED: 'STUDENT_UPDATED',
+  STUDENT_DELETED: 'STUDENT_DELETED',
+  STUDENT_ENROLLED: 'STUDENT_ENROLLED',
+  STUDENT_GRADUATED: 'STUDENT_GRADUATED',
+  STUDENT_TRANSFERRED: 'STUDENT_TRANSFERRED',
+  
+  // Attendance
+  ATTENDANCE_MARKED: 'ATTENDANCE_MARKED',
+  ATTENDANCE_UPDATED: 'ATTENDANCE_UPDATED',
+  ABSENT_NOTIFICATION: 'ABSENT_NOTIFICATION',
+  LATE_ARRIVAL: 'LATE_ARRIVAL',
+  
+  // Academic
+  GRADE_POSTED: 'GRADE_POSTED',
+  ASSIGNMENT_CREATED: 'ASSIGNMENT_CREATED',
+  ASSIGNMENT_SUBMITTED: 'ASSIGNMENT_SUBMITTED',
+  EXAM_SCHEDULED: 'EXAM_SCHEDULED',
+  EXAM_RESULT: 'EXAM_RESULT',
+  
+  // Financial
+  PAYMENT_RECEIVED: 'PAYMENT_RECEIVED',
+  PAYMENT_DUE: 'PAYMENT_DUE',
+  PAYMENT_OVERDUE: 'PAYMENT_OVERDUE',
+  FEE_STRUCTURE_UPDATED: 'FEE_STRUCTURE_UPDATED',
+  
+  // Communication
+  MESSAGE_RECEIVED: 'MESSAGE_RECEIVED',
+  NOTICE_POSTED: 'NOTICE_POSTED',
+  EVENT_CREATED: 'EVENT_CREATED',
+  EVENT_REMINDER: 'EVENT_REMINDER',
+  
+  // Inventory
+  LOW_STOCK: 'LOW_STOCK',
+  OUT_OF_STOCK: 'OUT_OF_STOCK',
+  INVENTORY_UPDATED: 'INVENTORY_UPDATED',
+  
+  // Customer operations
+  CUSTOMER_CREATED: 'CUSTOMER_CREATED',
+  CUSTOMER_UPDATED: 'CUSTOMER_UPDATED',
+  CUSTOMER_DELETED: 'CUSTOMER_DELETED',
+  LEAD_CREATED: 'LEAD_CREATED',
+  LEAD_CONVERTED: 'LEAD_CONVERTED',
+  
+  // General
+  INFO: 'INFO',
+  SUCCESS: 'SUCCESS',
+  WARNING: 'WARNING',
+  ERROR: 'ERROR'
+};
+
+export const NOTIFICATION_PRIORITIES = {
+  LOW: 'LOW',
+  NORMAL: 'NORMAL',
+  HIGH: 'HIGH',
+  URGENT: 'URGENT'
+};
+
+export const NOTIFICATION_CHANNELS = {
+  IN_APP: 'IN_APP',
+  EMAIL: 'EMAIL',
+  SMS: 'SMS',
+  PUSH: 'PUSH'
+};
+
+// ======================
+// AUDIT LOG SERVICE
+// ======================
+
+/**
+ * Create audit log entry
+ */
+export const createAuditLog = async (auditData) => {
+  try {
+    const {
+      action,
+      entity,
+      entityId,
+      userId,
+      schoolId,
+      ownerId,
+      oldData,
+      newData,
+      details = {},
+      ipAddress,
+      userAgent
+    } = auditData;
+
+    const auditLog = await prisma.auditLog.create({
+      data: {
+        action,
+        entityType: entity,
+        entityId: BigInt(entityId),
+        userId: userId ? BigInt(userId) : null,
+        schoolId: schoolId ? BigInt(schoolId) : null,
+        ownerId: ownerId ? BigInt(ownerId) : null,
+        oldData,
+        newData,
+        ipAddress: ipAddress || 'unknown',
+        userAgent: userAgent || 'unknown'
+      }
     });
-  });
 
-  // Initialize database and start server
-  async function startServer() {
-    try {
-      // console.log('🚀 Starting School Management API...');
-      // console.log(`🔧 Port: ${PORT}`);
-      // console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Audit log created: ${action} on ${entity} ${entityId} by user ${userId}`);
+    return auditLog;
+  } catch (error) {
+    console.error('Error creating audit log:', error);
+    // Don't throw error to avoid breaking the main operation
+    return null;
+  }
+};
+
+/**
+ * Get audit logs with filters
+ */
+export const getAuditLogs = async (filters = {}) => {
+  try {
+    const {
+      entityType,
+      entityId,
+      userId,
+      schoolId,
+      action,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 50
+    } = filters;
+
+    const where = {};
+
+    if (entityType) where.entityType = entityType;
+    if (entityId) where.entityId = BigInt(entityId);
+    if (userId) where.userId = BigInt(userId);
+    if (schoolId) where.schoolId = BigInt(schoolId);
+    if (action) where.action = action;
+
+    if (startDate || endDate) {
+      where.timestamp = {};
+      if (startDate) where.timestamp.gte = new Date(startDate);
+      if (endDate) where.timestamp.lte = new Date(endDate);
+    }
+
+    const totalCount = await prisma.auditLog.count({ where });
+
+    const auditLogs = await prisma.auditLog.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            role: true
+          }
+        },
+        school: {
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
+        }
+      },
+      orderBy: { timestamp: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit
+    });
+
+    return {
+      data: auditLogs,
+      pagination: {
+        total: totalCount,
+        page,
+        limit,
+        pages: Math.ceil(totalCount / limit)
+      }
+    };
+  } catch (error) {
+    console.error('Error getting audit logs:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get audit log by ID
+ */
+export const getAuditLogById = async (auditLogId) => {
+  try {
+    const auditLog = await prisma.auditLog.findUnique({
+      where: { id: BigInt(auditLogId) },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            role: true
+          }
+        },
+        school: {
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
+        }
+      }
+    });
+
+    return auditLog;
+  } catch (error) {
+    console.error('Error getting audit log by ID:', error);
+    throw error;
+  }
+};
+
+// ======================
+// CORE NOTIFICATION FUNCTIONS
+// ======================
+
+/**
+ * Create a new notification with WebSocket broadcast
+ */
+export const createNotification = async (notificationData) => {
+  try {
+    let {
+      type = 'INFO',
+      title,
+      message,
+      summary,
+      priority = 'NORMAL',
+      status = 'PENDING',
+      metadata = {},
+      expiresAt,
+      scheduledAt,
+      entityType,
+      entityId,
+      entityAction,
+      senderId,
+      schoolId,
+      ownerId,
+      templateKey,
+      templateData = {},
+      recipients = [],
+      channels = ['IN_APP'],
+      attachments = []
+    } = notificationData;
+
+    // Validate required fields
+    if (!title || !message) {
+      throw new Error('Title and message are required');
+    }
+
+    // Convert metadata object to JSON string if it's an object
+    if (metadata && typeof metadata === 'object') {
+      // Convert BigInt values to strings before JSON serialization
+      const convertBigInts = (obj) => {
+        if (Array.isArray(obj)) {
+          return obj.map(convertBigInts);
+        } else if (obj && typeof obj === 'object') {
+          const newObj = {};
+          for (const key in obj) {
+            if (typeof obj[key] === 'bigint') {
+              newObj[key] = obj[key].toString();
+            } else {
+              newObj[key] = convertBigInts(obj[key]);
+            }
+          }
+          return newObj;
+        }
+        return obj;
+      };
       
-      await initializeDatabase();
+      metadata = JSON.stringify(convertBigInts(metadata));
+    }
+
+    // Convert templateData object to JSON string if it's an object
+    if (templateData && typeof templateData === 'object') {
+      // Convert BigInt values to strings before JSON serialization
+      const convertBigInts = (obj) => {
+        if (Array.isArray(obj)) {
+          return obj.map(convertBigInts);
+        } else if (obj && typeof obj === 'object') {
+          const newObj = {};
+          for (const key in obj) {
+            if (typeof obj[key] === 'bigint') {
+              newObj[key] = obj[key].toString();
+            } else {
+              newObj[key] = convertBigInts(obj[key]);
+            }
+          }
+          return newObj;
+        }
+        return obj;
+      };
       
-      // Set server timeout to 30 seconds
-server.timeout = 30000; // 30 seconds
-server.keepAliveTimeout = 30000; // 30 seconds
-      
-      server.listen(PORT, () => {
-        const memUsage = process.memoryUsage();
-        // console.log(`🚀 School Management API is running on port ${PORT}`);
-        // console.log(`📊 Memory Usage:`);
-        // console.log(`   RSS: ${Math.round(memUsage.rss / 1024 / 1024)}MB`);
-        // console.log(`   Heap Total: ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`);
-        // console.log(`   Heap Used: ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`);
-        // console.log(`   External: ${Math.round(memUsage.external / 1024 / 1024)}MB`);
-        // console.log(`⏰ Uptime: ${Math.round(process.uptime())}s`);
-        // console.log(`🔧 Features: MySQL2 Database, Authentication, File Upload, Encryption`);
-        // console.log(`💾 Database: ${dbPool ? 'Connected' : 'Not connected'}`);
-        // console.log(`🔐 Encryption: ${process.env.API_ENCRYPTION_KEY ? 'Enabled' : 'Disabled'}`);
+      templateData = JSON.stringify(convertBigInts(templateData));
+    }
+
+    // Create the notification
+    const notification = await prisma.notification.create({
+      data: {
+        type,
+        title,
+        message,
+        summary,
+        priority,
+        status,
+        metadata,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+        entityType,
+        entityId: entityId ? BigInt(entityId) : null,
+        entityAction,
+        senderId: senderId ? BigInt(senderId) : null,
+        schoolId: BigInt(schoolId),
+        ownerId: ownerId ? BigInt(ownerId) : null,
+        templateKey,
+        templateData
+      }
+    });
+
+    // Create recipients if provided
+    if (recipients.length > 0) {
+      const recipientData = recipients.map(recipientId => ({
+        notificationId: notification.id,
+        userId: BigInt(recipientId),
+        channel: 'IN_APP',
+        status: 'PENDING'
+      }));
+
+      await prisma.notificationRecipient.createMany({
+        data: recipientData
       });
-      
-      // Handle server errors
-      server.on('error', (error) => {
-        console.error('❌ Server error:', error);
-        if (error.code === 'EADDRINUSE') {
-          console.error(`❌ Port ${PORT} is already in use`);
+    }
+
+    // Create attachments if provided
+    if (attachments.length > 0) {
+      const attachmentData = attachments.map(attachment => ({
+        notificationId: notification.id,
+        name: attachment.name,
+        url: attachment.url,
+        type: attachment.type,
+        size: attachment.size,
+        mimeType: attachment.mimeType,
+        description: attachment.description
+      }));
+
+      await prisma.notificationAttachment.createMany({
+        data: attachmentData
+      });
+    }
+
+    // Broadcast via WebSocket if available
+    if (websocketService && websocketService.isServiceInitialized()) {
+      try {
+        const io = websocketService.manager.getServer();
+        
+        // Broadcast to specific recipients
+        if (recipients.length > 0) {
+          recipients.forEach(recipientId => {
+            io.to(`user_${recipientId}`).emit('notification:new', {
+              id: notification.id.toString(),
+              type: notification.type,
+              title: notification.title,
+              message: notification.message,
+              priority: notification.priority,
+              entityType: notification.entityType,
+              entityId: notification.entityId ? notification.entityId.toString() : null,
+              createdAt: notification.createdAt,
+              isRead: false
+            });
+          });
+        }fix
+        
+        // Broadcast to school users if school-wide notification
+        if (schoolId && !recipients.length) {
+          io.to(`school_${schoolId}`).emit('notification:new', {
+            id: notification.id.toString(),
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            priority: notification.priority,
+            entityType: notification.entityType,
+            entityId: notification.entityId ? notification.entityId.toString() : null,
+            createdAt: notification.createdAt,
+            isRead: false
+          });
+        }
+        
+        // Broadcast to owner users if owner-wide notification
+        if (ownerId && !schoolId && !recipients.length) {
+          io.to(`owner_${ownerId}`).emit('notification:new', {
+            id: notification.id.toString(),
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            priority: notification.priority,
+            entityType: notification.entityType,
+            entityId: notification.entityId ? notification.entityId.toString() : null,
+            createdAt: notification.createdAt,
+            isRead: false
+          });
+        }
+        
+        console.log('✅ Notification broadcasted via WebSocket');
+      } catch (wsError) {
+        console.error('❌ WebSocket broadcast failed:', wsError.message);
+      }
+    }
+
+    // Send via other channels if specified
+    if (channels.includes('EMAIL')) {
+      try {
+        await sendEmailNotification(notification, recipients);
+      } catch (emailError) {
+        console.error('❌ Email notification failed:', emailError.message);
+      }
+    }
+
+    if (channels.includes('SMS')) {
+      try {
+        await sendSMSNotification(notification, recipients);
+      } catch (smsError) {
+        console.error('❌ SMS notification failed:', smsError.message);
+      }
+    }
+
+    if (channels.includes('PUSH')) {
+      try {
+        await sendPushNotification(notification, recipients);
+      } catch (pushError) {
+        console.error('❌ Push notification failed:', pushError.message);
+      }
+    }
+
+    console.log(`✅ Notification created: ${type} - ${title}`);
+    return notification;
+  } catch (error) {
+    console.error('❌ Error creating notification:', error);
+    throw error;
+  }
+};
+
+/**
+ * Process notification delivery through multiple channels
+ */
+export const processNotificationDelivery = async (notification, channels = ['IN_APP']) => {
+  try {
+    const deliveryPromises = channels.map(channel => 
+      deliverNotification(notification, channel)
+    );
+
+    const results = await Promise.allSettled(deliveryPromises);
+    
+    // Log delivery results
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        console.log(`Notification delivered via ${channels[index]}: ${result.value}`);
+      } else {
+        console.error(`Failed to deliver notification via ${channels[index]}:`, result.reason);
+      }
+    });
+
+    return results;
+  } catch (error) {
+    console.error('Error processing notification delivery:', error);
+    throw error;
+  }
+};
+
+/**
+ * Deliver notification through a specific channel
+ */
+export const deliverNotification = async (notification, channel) => {
+  try {
+    let deliveryResult;
+
+    switch (channel) {
+      case 'EMAIL':
+        deliveryResult = await sendEmailNotification({
+          to: notification.recipients?.map(r => r.user?.email).filter(Boolean),
+          subject: notification.title,
+          body: notification.message,
+          notificationId: notification.id
+        });
+        break;
+
+      case 'SMS':
+        deliveryResult = await sendSMSNotification({
+          to: notification.recipients?.map(r => r.user?.phone).filter(Boolean),
+          message: notification.message,
+          notificationId: notification.id
+        });
+        break;
+
+      case 'PUSH':
+        deliveryResult = await sendPushNotification({
+          to: notification.recipients?.map(r => r.user?.id).filter(Boolean),
+          title: notification.title,
+          body: notification.message,
+          notificationId: notification.id
+        });
+        break;
+
+      case 'IN_APP':
+      default:
+        deliveryResult = { success: true, message: 'In-app notification created' };
+        break;
+    }
+
+    return deliveryResult;
+  } catch (error) {
+    console.error(`Error delivering notification via ${channel}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Get notifications for a user with filters
+ */
+export const getUserNotifications = async (userId, filters = {}) => {
+  try {
+    const {
+      status,
+      type,
+      priority,
+      page = 1,
+      limit = 20,
+      include
+    } = filters;
+
+    const where = {
+      recipients: {
+        some: {
+          userId: BigInt(userId)
+        }
+      }
+    };
+
+    if (status) where.status = status;
+    if (type) where.type = type;
+    if (priority) where.priority = priority;
+
+    const totalCount = await prisma.notification.count({ where });
+
+    const notifications = await prisma.notification.findMany({
+      where,
+      include: {
+        recipients: {
+          where: { userId: BigInt(userId) },
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                role: true
+              }
+            }
+          }
+        },
+        sender: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            role: true
+          }
+        },
+        attachments: true
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit
+    });
+
+    return {
+      data: notifications,
+      pagination: {
+        total: totalCount,
+        page,
+        limit,
+        pages: Math.ceil(totalCount / limit)
+      }
+    };
+  } catch (error) {
+    console.error('Error getting user notifications:', error);
+    throw error;
+  }
+};
+
+/**
+ * Mark notification as read
+ */
+export const markNotificationAsRead = async (notificationIds, userId) => {
+  try {
+    const ids = Array.isArray(notificationIds) ? notificationIds : [notificationIds];
+
+    const updated = await prisma.notificationRecipient.updateMany({
+      where: {
+        notificationId: { in: ids.map(id => BigInt(id)) },
+        userId: BigInt(userId)
+      },
+      data: {
+        status: 'READ',
+        readAt: new Date()
+      }
+    });
+
+    // Also update the main notification if all recipients have read it
+    for (const notificationId of ids) {
+      const unreadRecipients = await prisma.notificationRecipient.count({
+        where: {
+          notificationId: BigInt(notificationId),
+          status: { not: 'READ' }
         }
       });
-      
-      // Start automatic attendance service after server is running
+
+      if (unreadRecipients === 0) {
+        await prisma.notification.update({
+          where: { id: BigInt(notificationId) },
+          data: {
+            status: 'READ'
+          }
+        });
+      }
+    }
+
+    return {
+      success: true,
+      updatedCount: updated.count,
+      message: 'Notifications marked as read'
+    };
+  } catch (error) {
+    console.error('Error marking notifications as read:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete notification
+ */
+export const deleteNotification = async (notificationId, userId) => {
+  try {
+    // Check if user has permission to delete this notification
+    const notification = await prisma.notification.findFirst({
+      where: {
+        id: BigInt(notificationId),
+        OR: [
+          { senderId: BigInt(userId) },
+          { createdBy: BigInt(userId) }
+        ]
+      }
+    });
+
+    if (!notification) {
+      throw new Error('Notification not found or permission denied');
+    }
+
+    await prisma.notification.delete({
+      where: { id: BigInt(notificationId) }
+    });
+
+    return {
+      success: true,
+      message: 'Notification deleted successfully'
+    };
+  } catch (error) {
+    console.error('Error deleting notification:', error);
+    throw error;
+  }
+};
+
+// ======================
+// EMAIL NOTIFICATION SERVICE
+// ======================
+
+/**
+ * Send email notification
+ */
+export const sendEmailNotification = async (emailData) => {
+  try {
+    const {
+      to,
+      subject,
+      body,
+      html,
+      from,
+      replyTo,
+      cc,
+      bcc,
+      attachments,
+      notificationId
+    } = emailData;
+
+    // Validate email data
+    if (!to || !subject || !body) {
+      throw new Error('Missing required email fields: to, subject, body');
+    }
+
+    // For now, we'll just log the email notification
+    // In a real implementation, this would integrate with an email service like SendGrid, AWS SES, etc.
+    console.log('Email notification:', {
+      to,
+      subject,
+      body,
+      html,
+      from,
+      replyTo,
+      cc,
+      bcc,
+      attachments,
+      notificationId,
+      timestamp: new Date().toISOString()
+    });
+
+    // Simulate email sending delay
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    return {
+      success: true,
+      message: 'Email notification sent successfully',
+      data: {
+        messageId: `email_${Date.now()}`,
+        timestamp: new Date().toISOString()
+      }
+    };
+  } catch (error) {
+    console.error('Error sending email notification:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Send bulk email notifications
+ */
+export const sendBulkEmailNotifications = async (emails) => {
+  try {
+    const results = [];
+
+    for (const emailData of emails) {
       try {
-        const attendanceService = await import('./services/attendanceService.js');
-        const schoolId = process.env.SCHOOL_ID || 1;
-        attendanceService.startAttendanceService(schoolId);
-        console.log('✅ Automatic Attendance Service started successfully');
-      } catch (attendanceError) {
-        console.error('❌ Failed to start Automatic Attendance Service:', attendanceError.message);
-        console.log('⚠️ Attendance service will not run automatically');
+        const result = await sendEmailNotification(emailData);
+        results.push(result);
+      } catch (error) {
+        results.push({
+          success: false,
+          error: error.message,
+          emailData
+        });
+      }
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    const failureCount = results.length - successCount;
+
+    return {
+      success: true,
+      message: `Bulk email notifications sent: ${successCount} successful, ${failureCount} failed`,
+      data: {
+        total: results.length,
+        successful: successCount,
+        failed: failureCount,
+        results
+      }
+    };
+  } catch (error) {
+    console.error('Error sending bulk email notifications:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// ======================
+// PUSH NOTIFICATION SERVICE
+// ======================
+
+/**
+ * Send push notification
+ */
+export const sendPushNotification = async (pushData) => {
+  try {
+    const {
+      to,
+      title,
+      body,
+      data,
+      badge,
+      sound,
+      priority,
+      notificationId
+    } = pushData;
+
+    // Validate push notification data
+    if (!to || !title || !body) {
+      throw new Error('Missing required push notification fields: to, title, body');
+    }
+
+    // For now, we'll just log the push notification
+    // In a real implementation, this would integrate with Firebase Cloud Messaging, OneSignal, etc.
+    console.log('Push notification:', {
+      to,
+      title,
+      body,
+      data,
+      badge,
+      sound,
+      priority,
+      notificationId,
+      timestamp: new Date().toISOString()
+    });
+
+    // Simulate push notification sending delay
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    return {
+      success: true,
+      message: 'Push notification sent successfully',
+      data: {
+        messageId: `push_${Date.now()}`,
+        timestamp: new Date().toISOString()
+      }
+    };
+  } catch (error) {
+    console.error('Error sending push notification:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// ======================
+// SMS NOTIFICATION SERVICE
+// ======================
+
+/**
+ * Send SMS notification
+ */
+export const sendSMSNotification = async (smsData) => {
+  try {
+    const {
+      to,
+      message,
+      from,
+      notificationId
+    } = smsData;
+
+    // Validate SMS data
+    if (!to || !message) {
+      throw new Error('Missing required SMS fields: to, message');
+    }
+
+    // For now, we'll just log the SMS notification
+    // In a real implementation, this would integrate with Twilio, AWS SNS, etc.
+    console.log('SMS notification:', {
+      to,
+      message,
+      from,
+      notificationId,
+      timestamp: new Date().toISOString()
+    });
+
+    // Simulate SMS sending delay
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    return {
+      success: true,
+      message: 'SMS notification sent successfully',
+      data: {
+        messageId: `sms_${Date.now()}`,
+        timestamp: new Date().toISOString()
+      }
+    };
+  } catch (error) {
+    console.error('Error sending SMS notification:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// ======================
+// NOTIFICATION TEMPLATES
+// ======================
+
+/**
+ * Get notification templates
+ */
+export const getNotificationTemplates = async () => {
+  try {
+    const templates = await prisma.notificationTemplate.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' }
+    });
+
+    return templates;
+  } catch (error) {
+    console.error('Error getting notification templates:', error);
+    throw error;
+  }
+};
+
+/**
+ * Process notification template with data
+ */
+export const processNotificationTemplate = async (templateKey, data) => {
+  try {
+    const template = await prisma.notificationTemplate.findUnique({
+      where: { key: templateKey }
+    });
+
+    if (!template) {
+      throw new Error(`Template not found: ${templateKey}`);
+    }
+
+    // Process template variables
+    const processedTitle = processTemplateString(template.title, data);
+    const processedMessage = processTemplateString(template.message, data);
+    const processedEmailSubject = template.emailSubject ? processTemplateString(template.emailSubject, data) : null;
+    const processedEmailBody = template.emailBody ? processTemplateString(template.emailBody, data) : null;
+    const processedSmsBody = template.smsBody ? processTemplateString(template.smsBody, data) : null;
+    const processedPushTitle = template.pushTitle ? processTemplateString(template.pushTitle, data) : null;
+    const processedPushBody = template.pushBody ? processTemplateString(template.pushBody, data) : null;
+
+    return {
+      title: processedTitle,
+      message: processedMessage,
+      email: {
+        subject: processedEmailSubject,
+        body: processedEmailBody
+      },
+      sms: {
+        body: processedSmsBody
+      },
+      push: {
+        title: processedPushTitle,
+        body: processedPushBody
+      }
+    };
+  } catch (error) {
+    console.error('Error processing notification template:', error);
+    throw error;
+  }
+};
+
+/**
+ * Process template string with variables
+ */
+export const processTemplateString = (template, data) => {
+  if (!template) return '';
+  
+  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    return data[key] || match;
+  });
+};
+
+// ======================
+// NOTIFICATION UTILITIES
+// ======================
+
+/**
+ * Get notification statistics
+ */
+export const getNotificationStats = async (schoolId, userId, period = '30d') => {
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - parseInt(period));
+
+    const where = {
+      createdAt: { gte: startDate }
+    };
+
+    if (schoolId) where.schoolId = BigInt(schoolId);
+    if (userId) {
+      where.recipients = {
+        some: { userId: BigInt(userId) }
+      };
+    }
+
+    const notifications = await prisma.notification.findMany({
+      where,
+      include: {
+        recipients: true,
+        deliveryStatus: true
+      }
+    });
+
+    const stats = {
+      total: notifications.length,
+      byType: {},
+      byStatus: {},
+      byPriority: {},
+      byChannel: {},
+      readRate: 0,
+      deliveryRate: 0
+    };
+
+    let totalRead = 0;
+    let totalDelivered = 0;
+
+    notifications.forEach(notification => {
+      // Count by type
+      stats.byType[notification.type] = (stats.byType[notification.type] || 0) + 1;
+
+      // Count by status
+      stats.byStatus[notification.status] = (stats.byStatus[notification.status] || 0) + 1;
+
+      // Count by priority
+      if (notification.priority) {
+        stats.byPriority[notification.priority] = (stats.byPriority[notification.priority] || 0) + 1;
+      }
+
+      // Count by channel and delivery status
+      notification.deliveryStatus.forEach(status => {
+        stats.byChannel[status.channel] = (stats.byChannel[status.channel] || 0) + 1;
+        if (status.status === 'DELIVERED') totalDelivered++;
+      });
+
+      // Count read notifications
+      notification.recipients.forEach(recipient => {
+        if (recipient.status === 'READ') totalRead++;
+      });
+    });
+
+    if (notifications.length > 0) {
+      stats.readRate = Math.round((totalRead / notifications.length) * 100);
+      stats.deliveryRate = Math.round((totalDelivered / notifications.length) * 100);
+    }
+
+    return stats;
+  } catch (error) {
+    console.error('Error getting notification stats:', error);
+    throw error;
+  }
+};
+
+// ======================
+// AUTOMATIC NOTIFICATION TRIGGERS
+// ======================
+
+/**
+ * Trigger automatic notifications for entity creation
+ */
+export const triggerEntityCreatedNotification = async (entityType, entityId, entityData, userId, schoolId, ownerId) => {
+  try {
+    // Get notification rules for this entity type
+    const rules = await prisma.notificationRule.findMany({
+      where: {
+        eventType: 'entity_created',
+        entityType,
+        isActive: true,
+        schoolId: schoolId ? BigInt(schoolId) : null
+      }
+    });
+
+    for (const rule of rules) {
+      // Check if conditions are met
+      if (await checkRuleConditions(rule, entityData)) {
+                // Process template
+        let template;
+        try {
+          template = await processNotificationTemplate(rule.templateKey, {
+            ...entityData,
+            entityType,
+            entityId,
+            userId
+          });
+        } catch (templateError) {
+          console.error('Error processing notification template:', templateError);
+          // Use fallback template
+          template = {
+            title: 'Student Information Updated',
+            message: 'Student information has been updated successfully'
+          };
+        }
+
+        // Get recipients based on rule configuration
+        const recipients = await getRuleRecipients(rule, entityData);
+
+                // Create notification
+        await createNotification({
+          type: 'SYSTEM', // Default type since NotificationRule doesn't have a type field
+          title: template.title,
+          message: template.message,
+          priority: 'NORMAL', // Default priority since NotificationRule doesn't have a priority field
+          channels: rule.channels ? (() => {
+            try {
+              return JSON.parse(rule.channels);
+            } catch (parseError) {
+              console.error('Error parsing rule channels:', parseError);
+              return ['IN_APP'];
+            }
+          })() : ['IN_APP'],
+          entityType,
+          entityId,
+          entityAction: 'created',
+          senderId: userId,
+          schoolId,
+          ownerId,
+          templateKey: rule.templateKey,
+          templateData: entityData,
+          recipients
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error triggering entity created notification:', error);
+    // Don't throw error to avoid breaking the main operation
+  }
+};
+
+/**
+ * Trigger automatic notifications for entity updates
+ */
+export const triggerEntityUpdatedNotification = async (entityType, entityId, entityData, oldData, userId, schoolId, ownerId) => {
+  try {
+    // Get notification rules for this entity type
+    const rules = await prisma.notificationRule.findMany({
+      where: {
+        eventType: 'entity_updated',
+        entityType,
+        isActive: true,
+        schoolId: schoolId ? BigInt(schoolId) : null
+      }
+    });
+
+    for (const rule of rules) {
+      // Check if conditions are met
+      if (await checkRuleConditions(rule, entityData, oldData)) {
+                // Process template
+        let template;
+        try {
+          template = await processNotificationTemplate(rule.templateKey, {
+            ...entityData,
+            oldData,
+            entityType,
+            entityId,
+            userId
+          });
+        } catch (templateError) {
+          console.error('Error processing notification template:', templateError);
+          // Use fallback template
+          template = {
+            title: 'Student Information Updated',
+            message: 'Student information has been updated successfully'
+          };
+        }
+
+        // Get recipients based on rule configuration
+        const recipients = await getRuleRecipients(rule, entityData);
+
+                // Create notification
+        await createNotification({
+          type: 'SYSTEM', // Default type since NotificationRule doesn't have a type field
+          title: template.title,
+          message: template.message,
+          priority: 'NORMAL', // Default priority since NotificationRule doesn't have a priority field
+          channels: rule.channels ? (() => {
+            try {
+              return JSON.parse(rule.channels);
+            } catch (parseError) {
+              console.error('Error parsing rule channels:', parseError);
+              return ['IN_APP'];
+            }
+          })() : ['IN_APP'],
+          entityType,
+          entityId,
+          entityAction: 'updated',
+          senderId: userId,
+          schoolId,
+          ownerId,
+          templateKey: rule.templateKey,
+          templateData: { ...entityData, oldData },
+          recipients
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error triggering entity updated notification:', error);
+    // Don't throw error to avoid breaking the main operation
+  }
+};
+
+/**
+ * Check if rule conditions are met
+ */
+export const checkRuleConditions = async (rule, entityData, oldData = null) => {
+  try {
+    if (!rule.conditions) return true;
+
+    // Parse conditions from JSON string
+    let conditions;
+    try {
+      conditions = JSON.parse(rule.conditions);
+    } catch (parseError) {
+      console.error('Error parsing rule conditions:', parseError);
+      return false;
+    }
+    
+    for (const [field, condition] of Object.entries(conditions)) {
+      const value = entityData[field];
+      
+      switch (condition.operator) {
+        case 'equals':
+          if (value !== condition.value) return false;
+          break;
+        case 'not_equals':
+          if (value === condition.value) return false;
+          break;
+        case 'contains':
+          if (!value || !value.includes(condition.value)) return false;
+          break;
+        case 'greater_than':
+          if (!value || value <= condition.value) return false;
+          break;
+        case 'less_than':
+          if (!value || value >= condition.value) return false;
+          break;
+        case 'changed':
+          if (!oldData || value === oldData[field]) return false;
+          break;
+        case 'not_changed':
+          if (oldData && value !== oldData[field]) return false;
+          break;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error checking rule conditions:', error);
+    return false;
+  }
+};
+
+/**
+ * Get recipients for a notification rule
+ */
+export const getRuleRecipients = async (rule, entityData) => {
+  try {
+    if (!rule.recipients) return [];
+
+    // Parse recipients from JSON string
+    let recipientConfig;
+    try {
+      recipientConfig = JSON.parse(rule.recipients);
+    } catch (parseError) {
+      console.error('Error parsing rule recipients:', parseError);
+      return [];
+    }
+
+    const recipients = [];
+
+    // Get users by role
+    if (recipientConfig.roles) {
+      const roleUsers = await prisma.user.findMany({
+        where: {
+          role: { in: recipientConfig.roles },
+          schoolId: entityData.schoolId ? BigInt(entityData.schoolId) : undefined
+        },
+        select: { id: true }
+      });
+      recipients.push(...roleUsers.map(u => u.id));
+    }
+
+    // Get specific users
+    if (recipientConfig.userIds) {
+      recipients.push(...recipientConfig.userIds);
+    }
+
+    // Get entity-related users
+    if (recipientConfig.entityUsers) {
+      const entityUserIds = await getEntityUserIds(entityData);
+      recipients.push(...entityUserIds);
+    }
+
+    // Remove duplicates
+    return [...new Set(recipients)];
+  } catch (error) {
+    console.error('Error getting rule recipients:', error);
+    return [];
+  }
+};
+
+/**
+ * Get user IDs related to an entity
+ */
+export const getEntityUserIds = async (entityData) => {
+  try {
+    const userIds = [];
+
+    // Add entity owner/creator
+    if (entityData.createdBy) {
+      userIds.push(entityData.createdBy);
+    }
+
+    // Add entity-specific users based on entity type
+    switch (entityData.entityType) {
+      case 'student':
+        if (entityData.parentId) {
+          const parent = await prisma.parent.findUnique({
+            where: { id: BigInt(entityData.parentId) },
+            select: { userId: true }
+          });
+          if (parent) userIds.push(parent.userId);
+        }
+        break;
+      case 'payment':
+        if (entityData.studentId) {
+          const student = await prisma.student.findUnique({
+            where: { id: BigInt(entityData.studentId) },
+            select: { userId: true, parentId: true }
+          });
+          if (student) {
+            userIds.push(student.userId);
+            if (student.parentId) {
+              const parent = await prisma.parent.findUnique({
+                where: { id: student.parentId },
+                select: { userId: true }
+              });
+              if (parent) userIds.push(parent.userId);
+            }
+          }
+        }
+        break;
+      case 'assignment':
+        if (entityData.classId) {
+          const students = await prisma.student.findMany({
+            where: { classId: BigInt(entityData.classId) },
+            select: { userId: true }
+          });
+          userIds.push(...students.map(s => s.userId));
+        }
+        break;
+    }
+
+    return userIds;
+  } catch (error) {
+    console.error('Error getting entity user IDs:', error);
+    return [];
+  }
+};
+
+// ======================
+// SYSTEM OPERATION NOTIFICATIONS
+// ======================
+
+/**
+ * Create student operation notifications
+ */
+export const createStudentNotification = async (operation, studentData, userId, schoolId, ownerId, additionalData = {}) => {
+  try {
+    const notificationData = {
+      type: NOTIFICATION_TYPES[`STUDENT_${operation.toUpperCase()}`] || NOTIFICATION_TYPES.INFO,
+      title: `Student ${operation.charAt(0).toUpperCase() + operation.slice(1)}`,
+      message: `Student ${studentData.user?.firstName || 'Unknown'} ${studentData.user?.lastName || 'Student'} has been ${operation}`,
+      priority: NOTIFICATION_PRIORITIES.NORMAL,
+      entityType: 'student',
+      entityId: studentData.id,
+      entityAction: operation,
+      senderId: userId,
+      schoolId,
+      ownerId,
+      channels: ['IN_APP'],
+      metadata: {
+        studentId: studentData.id,
+        studentName: `${studentData.user?.firstName || 'Unknown'} ${studentData.user?.lastName || 'Student'}`,
+        operation,
+        ...additionalData
+      }
+    };
+
+    // Determine recipients based on operation
+    let recipients = [];
+    
+    if (operation === 'created' || operation === 'updated') {
+      // Notify teachers in the same class
+      if (studentData.classId) {
+        const teachers = await prisma.user.findMany({
+          where: {
+            role: 'TEACHER',
+            schoolId: BigInt(schoolId),
+            classes: {
+              some: { id: BigInt(studentData.classId) }
+            }
+          },
+          select: { id: true }
+        });
+        recipients.push(...teachers.map(t => t.id));
       }
       
-    } catch (error) {
-      console.error('❌ Failed to start server:', error);
-      process.exit(1);
+      // Notify school admin
+      const schoolAdmins = await prisma.user.findMany({
+        where: {
+          role: 'SCHOOL_ADMIN',
+          schoolId: BigInt(schoolId)
+        },
+        select: { id: true }
+      });
+      recipients.push(...schoolAdmins.map(a => a.id));
     }
+
+    if (recipients.length > 0) {
+      notificationData.recipients = recipients;
+    }
+
+    return await createNotification(notificationData);
+  } catch (error) {
+    console.error('Error creating student notification:', error);
+    return null;
   }
+};
 
-  startServer().catch((error) => {
-    console.error('❌ Critical error during startup:', error);
-    process.exit(1);
-  });
+/**
+ * Create attendance operation notifications
+ */
+export const createAttendanceNotification = async (operation, attendanceData, userId, schoolId, ownerId) => {
+  try {
+    const notificationData = {
+      type: NOTIFICATION_TYPES[`ATTENDANCE_${operation.toUpperCase()}`] || NOTIFICATION_TYPES.INFO,
+      title: `Attendance ${operation.charAt(0).toUpperCase() + operation.slice(1)}`,
+      message: `Attendance has been ${operation} for ${attendanceData.student?.user?.firstName || 'Unknown'} ${attendanceData.student?.user?.lastName || 'Student'}`,
+      priority: NOTIFICATION_PRIORITIES.NORMAL,
+      entityType: 'attendance',
+      entityId: attendanceData.id,
+      entityAction: operation,
+      senderId: userId,
+      schoolId,
+      ownerId,
+      channels: ['IN_APP'],
+      metadata: {
+        attendanceId: attendanceData.id,
+        studentId: attendanceData.studentId,
+        studentName: `${attendanceData.student?.user?.firstName || 'Unknown'} ${attendanceData.student?.user?.lastName || 'Student'}`,
+        status: attendanceData.status,
+        date: attendanceData.date,
+        operation
+      }
+    };
 
-  // Export for testing
-  export { app, server }; 
+    // Determine recipients
+    let recipients = [];
+    
+    // Notify the student's parent
+    if (attendanceData.student?.parentId) {
+      const parent = await prisma.parent.findUnique({
+        where: { id: BigInt(attendanceData.student.parentId) },
+        select: { userId: true }
+      });
+      if (parent) {
+        recipients.push(parent.userId);
+      }
+    }
+    
+    // Notify class teacher
+    if (attendanceData.classId) {
+      const classTeacher = await prisma.user.findFirst({
+        where: {
+          role: 'TEACHER',
+          schoolId: BigInt(schoolId),
+          classes: {
+            some: { id: BigInt(attendanceData.classId) }
+          }
+        },
+        select: { id: true }
+      });
+      if (classTeacher) {
+        recipients.push(classTeacher.id);
+      }
+    }
+
+    if (recipients.length > 0) {
+      notificationData.recipients = recipients;
+    }
+
+    return await createNotification(notificationData);
+  } catch (error) {
+    console.error('Error creating attendance notification:', error);
+    return null;
+  }
+};
+
+/**
+ * Create payment operation notifications
+ */
+export const createPaymentNotification = async (operation, paymentData, userId, schoolId, ownerId) => {
+  try {
+    const notificationData = {
+      type: NOTIFICATION_TYPES[`PAYMENT_${operation.toUpperCase()}`] || NOTIFICATION_TYPES.INFO,
+      title: `Payment ${operation.charAt(0).toUpperCase() + operation.slice(1)}`,
+      message: `Payment of ${paymentData.amount} has been ${operation}`,
+      priority: NOTIFICATION_PRIORITIES.HIGH,
+      entityType: 'payment',
+      entityId: paymentData.id,
+      entityAction: operation,
+      senderId: userId,
+      schoolId,
+      ownerId,
+      channels: ['IN_APP', 'EMAIL'],
+      metadata: {
+        paymentId: paymentData.id,
+        amount: paymentData.amount,
+        studentId: paymentData.studentId,
+        studentName: paymentData.student?.user?.firstName + ' ' + paymentData.student?.user?.lastName,
+        operation,
+        dueDate: paymentData.dueDate
+      }
+    };
+
+    // Determine recipients
+    let recipients = [];
+    
+    // Notify the student's parent
+    if (paymentData.student?.parentId) {
+      const parent = await prisma.parent.findUnique({
+        where: { id: BigInt(paymentData.student.parentId) },
+        select: { userId: true }
+      });
+      if (parent) {
+        recipients.push(parent.userId);
+      }
+    }
+    
+    // Notify finance staff
+    const financeStaff = await prisma.user.findMany({
+      where: {
+        role: { in: ['FINANCE_OFFICER', 'SCHOOL_ADMIN'] },
+        schoolId: BigInt(schoolId)
+      },
+      select: { id: true }
+    });
+    recipients.push(...financeStaff.map(s => s.id));
+
+    if (recipients.length > 0) {
+      notificationData.recipients = recipients;
+    }
+
+    return await createNotification(notificationData);
+  } catch (error) {
+    console.error('Error creating payment notification:', error);
+    return null;
+  }
+};
+
+/**
+ * Create user operation notifications
+ */
+export const createUserNotification = async (operation, userData, userId, schoolId, ownerId) => {
+  try {
+    const notificationData = {
+      type: NOTIFICATION_TYPES[`USER_${operation.toUpperCase()}`] || NOTIFICATION_TYPES.INFO,
+      title: `User ${operation.charAt(0).toUpperCase() + operation.slice(1)}`,
+      message: `User ${userData.firstName} ${userData.lastName} has been ${operation}`,
+      priority: NOTIFICATION_PRIORITIES.NORMAL,
+      entityType: 'user',
+      entityId: userData.id,
+      entityAction: operation,
+      senderId: userId,
+      schoolId,
+      ownerId,
+      channels: ['IN_APP'],
+      metadata: {
+        userId: userData.id,
+        userName: `${userData.firstName} ${userData.lastName}`,
+        userRole: userData.role,
+        operation
+      }
+    };
+
+    // Determine recipients
+    let recipients = [];
+    
+    // Notify school admin
+    if (schoolId) {
+      const schoolAdmins = await prisma.user.findMany({
+        where: {
+          role: 'SCHOOL_ADMIN',
+          schoolId: BigInt(schoolId)
+        },
+        select: { id: true }
+      });
+      recipients.push(...schoolAdmins.map(a => a.id));
+    }
+    
+    // Notify owner
+    if (ownerId) {
+      recipients.push(ownerId);
+    }
+
+    if (recipients.length > 0) {
+      notificationData.recipients = recipients;
+    }
+
+    return await createNotification(notificationData);
+  } catch (error) {
+    console.error('Error creating user notification:', error);
+    return null;
+  }
+};
+
+/**
+ * Create system-wide notifications
+ */
+export const createSystemNotification = async (type, title, message, priority = 'NORMAL', schoolId = null, ownerId = null, recipients = []) => {
+  try {
+    const notificationData = {
+      type: NOTIFICATION_TYPES[type] || NOTIFICATION_TYPES.INFO,
+      title,
+      message,
+      priority: NOTIFICATION_PRIORITIES[priority] || NOTIFICATION_PRIORITIES.NORMAL,
+      entityType: 'system',
+      entityAction: type.toLowerCase(),
+      schoolId: schoolId || 1,
+      ownerId,
+      channels: ['IN_APP'],
+      metadata: {
+        systemEvent: type,
+        timestamp: new Date().toISOString()
+      }
+    };
+
+    if (recipients.length > 0) {
+      notificationData.recipients = recipients;
+    }
+
+    return await createNotification(notificationData);
+  } catch (error) {
+    console.error('Error creating system notification:', error);
+    return null;
+  }
+};
+
+/**
+ * Create customer operation notifications
+ */
+export const createCustomerNotification = async (operation, customerData, userId, schoolId, ownerId) => {
+  try {
+    const notificationData = {
+      type: NOTIFICATION_TYPES[`CUSTOMER_${operation.toUpperCase()}`] || NOTIFICATION_TYPES.INFO,
+      title: `Customer ${operation.charAt(0).toUpperCase() + operation.slice(1)}`,
+      message: `Customer ${customerData.name} has been ${operation}`,
+      priority: NOTIFICATION_PRIORITIES.NORMAL,
+      entityType: 'customer',
+      entityId: customerData.id,
+      entityAction: operation,
+      senderId: userId,
+      schoolId,
+      ownerId,
+      channels: ['IN_APP'],
+      metadata: {
+        customerId: customerData.id,
+        customerName: customerData.name,
+        customerEmail: customerData.email,
+        operation
+      }
+    };
+
+    // Determine recipients
+    let recipients = [];
+    
+    // Notify sales staff
+    const salesStaff = await prisma.user.findMany({
+      where: {
+        role: { in: ['SALES_OFFICER', 'SCHOOL_ADMIN'] },
+        schoolId: BigInt(schoolId)
+      },
+      select: { id: true }
+    });
+    recipients.push(...salesStaff.map(s => s.id));
+
+    if (recipients.length > 0) {
+      notificationData.recipients = recipients;
+    }
+
+    return await createNotification(notificationData);
+  } catch (error) {
+    console.error('Error creating customer notification:', error);
+    return null;
+  }
+};
+
+/**
+ * Create inventory operation notifications
+ */
+export const createInventoryNotification = async (operation, inventoryData, userId, schoolId, ownerId) => {
+  try {
+    const notificationData = {
+      type: NOTIFICATION_TYPES[`INVENTORY_${operation.toUpperCase()}`] || NOTIFICATION_TYPES.INFO,
+      title: `Inventory ${operation.charAt(0).toUpperCase() + operation.slice(1)}`,
+      message: `Inventory item ${inventoryData.name} has been ${operation}`,
+      priority: operation === 'low_stock' ? NOTIFICATION_PRIORITIES.HIGH : NOTIFICATION_PRIORITIES.NORMAL,
+      entityType: 'inventory',
+      entityId: inventoryData.id,
+      entityAction: operation,
+      senderId: userId,
+      schoolId,
+      ownerId,
+      channels: ['IN_APP'],
+      metadata: {
+        inventoryId: inventoryData.id,
+        itemName: inventoryData.name,
+        currentQuantity: inventoryData.quantity,
+        minQuantity: inventoryData.minQuantity,
+        operation
+      }
+    };
+
+    // Determine recipients
+    let recipients = [];
+    
+    // Notify inventory staff
+    const inventoryStaff = await prisma.user.findMany({
+      where: {
+        role: { in: ['INVENTORY_OFFICER', 'SCHOOL_ADMIN'] },
+        schoolId: BigInt(schoolId)
+      },
+      select: { id: true }
+    });
+    recipients.push(...inventoryStaff.map(s => s.id));
+
+    if (recipients.length > 0) {
+      notificationData.recipients = recipients;
+    }
+
+    return await createNotification(notificationData);
+  } catch (error) {
+    console.error('Error creating inventory notification:', error);
+    return null;
+  }
+};
+
+/**
+ * Get unread notification count for a user
+ */
+export const getUnreadNotificationCount = async (userId) => {
+  try {
+    const count = await prisma.notificationRecipient.count({
+      where: {
+        userId: BigInt(userId),
+        status: { not: 'READ' }
+      }
+    });
+    
+    return count;
+  } catch (error) {
+    console.error('Error getting unread notification count:', error);
+    return 0;
+  }
+};
+
+
+
+
+
+// ======================
+// EXPORTS
+// ======================
+
+// All functions are already exported as named exports above
+// No need for duplicate exports here 
