@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import logger from '../config/logger.js';
 
 const prisma = new PrismaClient();
@@ -16,7 +16,12 @@ class StudentEvent {
       const event = await this.prisma.studentEvent.create({
         data: {
           ...eventData,
-          metadata: eventData.metadata ? JSON.stringify(eventData.metadata) : null,
+          metadata: eventData.metadata ? JSON.stringify(eventData.metadata, (key, value) => {
+            if (typeof value === 'bigint') {
+              return value.toString();
+            }
+            return value;
+          }) : null,
           createdAt: new Date(),
           updatedAt: new Date()
         }
