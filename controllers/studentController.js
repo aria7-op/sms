@@ -125,8 +125,8 @@ class StudentController {
       // Validate student constraints
       await validateStudentConstraints(schoolId, studentCode, classId);
 
-      // Remove classId and schoolId from studentData to avoid Prisma validation error
-      const { classId: _, schoolId: __, ...studentDataWithoutRelations } = studentData;
+      // Remove relation fields from studentData to avoid Prisma validation error
+      const { classId: _, schoolId: __, parentId: ___, sectionId: ____, ...studentDataWithoutRelations } = studentData;
       
       // Remove dateOfBirth from user data and map to birthDate
       const { dateOfBirth, ...userDataWithoutDateOfBirth } = studentData.user;
@@ -148,10 +148,33 @@ class StudentController {
       // Convert metadata object to JSON string since the database expects a string
       const userMetadataString = JSON.stringify(userMetadata);
 
+      // Filter out invalid fields and only use valid Student model fields
+      const validStudentFields = [
+        'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality',
+        'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode',
+        'previousSchool', 'conversionDate', 'convertedFromCustomerId'
+      ];
+
+      const filteredStudentData = {};
+      for (const key of Object.keys(studentDataWithoutRelations)) {
+        if (validStudentFields.includes(key)) {
+          // Handle special field type conversions
+          if (key === 'admissionDate' && studentDataWithoutRelations[key] === '') {
+            // Skip empty date strings
+            continue;
+          } else if (key === 'admissionDate' && studentDataWithoutRelations[key]) {
+            // Convert valid date strings to Date objects
+            filteredStudentData[key] = new Date(studentDataWithoutRelations[key]);
+          } else {
+            filteredStudentData[key] = studentDataWithoutRelations[key];
+          }
+        }
+      }
+
       // Create student with user FIRST
       const student = await prisma.student.create({
         data: {
-          ...studentDataWithoutRelations,
+          ...filteredStudentData,
           admissionNo: studentCode,
           createdBy: req.user.id,
           school: {
@@ -161,6 +184,18 @@ class StudentController {
           ...(classId && {
             class: {
               connect: { id: BigInt(classId) }
+            }
+          }),
+          // Handle section relation if sectionId is provided
+          ...(studentData.sectionId && {
+            section: {
+              connect: { id: BigInt(studentData.sectionId) }
+            }
+          }),
+          // Handle parent relation if parentId is provided
+          ...(studentData.parentId && {
+            parent: {
+              connect: { id: BigInt(studentData.parentId) }
             }
           }),
           user: {
