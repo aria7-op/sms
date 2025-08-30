@@ -680,11 +680,11 @@ export const markSingleNotificationAsRead = async (req, res) => {
 export const getRealtimeNotifications = async (req, res) => {
   try {
     const userId = req.user?.id;
-    const { limit = 10 } = req.query;
+    const limit = parseInt(req.query.limit) || 10;
 
     const result = await getUserNotifications(userId, {
       page: 1,
-      limit: parseInt(limit),
+      limit: limit,
       include: 'minimal'
     });
 
