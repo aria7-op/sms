@@ -285,7 +285,7 @@ export const getAllCustomers = async (req, res) => {
         orderCount: true,
         type: true,
         pipelineStageId: true,
-        remark: true,
+        rermark: true,
         priority: true
         // Exclude createdAt and updatedAt to avoid datetime issues
       },
@@ -383,7 +383,7 @@ export const getAllCustomers = async (req, res) => {
           COALESCE(orderCount, 0) as orderCount, 
           COALESCE(type, '') as type, 
           COALESCE(pipelineStageId, 0) as pipelineStageId, 
-          COALESCE(remark, '') as remark, 
+          COALESCE(rermark, '') as rermark, 
           COALESCE(priority, 0) as priority,
           CASE 
             WHEN createdAt IS NULL OR createdAt = '0000-00-00 00:00:00' OR createdAt = 0 THEN NULL 
