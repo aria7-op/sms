@@ -247,6 +247,7 @@ export const authorizePermissions = (requiredPermissions) => {
       }
 
       // Super admins (owners) have all permissions
+      if (req.user.role === 'SUPER_ADMIN') {
         console.log('=== authorizePermissions END: SUPER_ADMIN access granted ===');
         return next();
       }
