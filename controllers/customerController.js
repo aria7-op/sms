@@ -277,25 +277,26 @@ export const getAllCustomers = async (req, res) => {
       if (search) {
         searchConditions = `AND (
           phone LIKE ? OR 
-          mobile LIKE ? OR
           name LIKE ? OR 
           email LIKE ?
         )`;
         const searchPattern = `%${search}%`;
-        searchParams = [searchPattern, searchPattern, searchPattern, searchPattern];
+        searchParams = [searchPattern, searchPattern, searchPattern];
       }
       
       const sqlQuery = `
-        SELECT id, uuid, name, serialNumber, email, phone, mobile, gender, source, purpose, 
+        SELECT id, uuid, name, serialNumber, email, phone, gender, source, purpose, 
                department, referredTo, referredById, metadata, ownerId, schoolId, 
                createdBy, updatedBy, userId, totalSpent, orderCount, type, 
                pipelineStageId, rermark, priority
         FROM customers 
         WHERE schoolId = ? AND deletedAt IS NULL ${searchConditions}
         ORDER BY 
-          CASE WHEN phone LIKE ? THEN 1 
-               WHEN mobile LIKE ? THEN 1 
-               ELSE 2 END,
+          ${search ? `
+          CASE 
+            WHEN phone LIKE ? THEN 1 
+            ELSE 2 
+          END,` : ''}
           id DESC
         ${isPaginationRequested ? 'LIMIT ? OFFSET ?' : ''}
       `;
@@ -303,7 +304,8 @@ export const getAllCustomers = async (req, res) => {
       // Prepare parameters in correct order with proper types
       const sqlParams = [schoolIdStr, ...searchParams];
       if (search) {
-        sqlParams.push(`%${search}%`, `%${search}%`); // For phone and mobile priority ordering
+        // Add search parameter for the CASE WHEN ordering
+        sqlParams.push(`%${search}%`);
       }
       if (isPaginationRequested) {
         sqlParams.push(parseInt(limit), parseInt(offset));
@@ -312,6 +314,9 @@ export const getAllCustomers = async (req, res) => {
       console.log('SQL Query:', sqlQuery);
       console.log('SQL Params:', sqlParams);
       console.log('SQL Param types:', sqlParams.map(p => typeof p));
+      console.log('Search conditions:', searchConditions);
+      console.log('Search params:', searchParams);
+      console.log('Has search:', !!search);
       
       customers = await fallbackQuery(sqlQuery, sqlParams);
       const countResult = await fallbackQuery(
