@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import { createSuccessResponse, createErrorResponse } from '../utils/responseUtils.js';
 import smsService from '../services/smsService.js';
 
