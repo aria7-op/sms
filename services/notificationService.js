@@ -407,7 +407,7 @@ export const createNotification = async (notificationData) => {
               isRead: false
             });
           });
-        }fix
+        }
         
         // Broadcast to school users if school-wide notification
         if (schoolId && !recipients.length) {
