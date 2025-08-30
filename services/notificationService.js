@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 
 const prisma = new PrismaClient();
 
@@ -971,7 +971,7 @@ export const triggerEntityUpdatedNotification = async (entityType, entityId, ent
     // Get notification rules for this entity type
     const rules = await prisma.notificationRule.findMany({
       where: {
-        trigger: 'entity_updated',
+        eventType: 'entity_updated',
         entityType,
         isActive: true,
         schoolId: schoolId ? BigInt(schoolId) : null,
