@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '../generated/prisma/client.js';
 import { createSuccessResponse, createErrorResponse } from '../utils/responseUtils.js';
 import smsService from '../services/smsService.js';
 
@@ -727,7 +727,7 @@ export const markOutTime = async (req, res) => {
           {
             outTime: currentTime,
             date: attendanceDate,
-            className: student.class.name,
+            className: student.class?.name || 'Unknown Class',
             status: 'DEPARTED'
           },
           'outTime' // Use campaign ID 404 for out-time
@@ -1393,19 +1393,25 @@ export const getAttendanceAnalytics = async (req, res) => {
 
     if (chartType === 'all' || chartType === 'daily') {
       // Daily attendance trends
-    const dailyTrends = {};
-    attendances.forEach(record => {
-      const date = record.date.toISOString().split('T')[0];
-      if (!dailyTrends[date]) {
+      const dailyTrends = {};
+      attendances.forEach(record => {
+        // Skip records without valid date
+        if (!record.date) {
+          console.warn('Skipping attendance record without valid date:', record.id);
+          return;
+        }
+        
+        const date = record.date.toISOString().split('T')[0];
+        if (!dailyTrends[date]) {
           dailyTrends[date] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
-      }
-      
+        }
+        
         dailyTrends[date].total++;
-      if (record.status === 'PRESENT') dailyTrends[date].present++;
-      else if (record.status === 'ABSENT') dailyTrends[date].absent++;
-      else if (record.status === 'LATE') dailyTrends[date].late++;
-      else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
-    });
+        if (record.status === 'PRESENT') dailyTrends[date].present++;
+        else if (record.status === 'ABSENT') dailyTrends[date].absent++;
+        else if (record.status === 'LATE') dailyTrends[date].late++;
+        else if (record.status === 'EXCUSED') dailyTrends[date].excused++;
+      });
 
       chartData.daily = Object.entries(dailyTrends).map(([date, data]) => ({
       date,
@@ -1418,6 +1424,12 @@ export const getAttendanceAnalytics = async (req, res) => {
       // Weekly patterns
       const weeklyPatterns = {};
       attendances.forEach(record => {
+        // Skip records without valid date
+        if (!record.date) {
+          console.warn('Skipping attendance record without valid date for weekly analysis:', record.id);
+          return;
+        }
+        
         const date = new Date(record.date);
         const weekStart = new Date(date);
         weekStart.setDate(date.getDate() - date.getDay());
@@ -1470,6 +1482,12 @@ export const getAttendanceAnalytics = async (req, res) => {
       // Student performance ranking
       const studentStats = {};
       attendances.forEach(record => {
+        // Skip records without complete student/user data
+        if (!record.student || !record.student.user) {
+          console.warn('Skipping attendance record with incomplete student data:', record.id);
+          return;
+        }
+        
         const studentId = record.studentId.toString();
         if (!studentStats[studentId]) {
           studentStats[studentId] = {
@@ -1514,23 +1532,31 @@ export const getAttendanceAnalytics = async (req, res) => {
 
       attendances.forEach(record => {
         if (record.inTime) {
-          const hour = new Date(record.inTime).getHours();
-          const minutes = new Date(record.inTime).getMinutes();
-          const timeInMinutes = hour * 60 + minutes;
-          
-          if (timeInMinutes < 480) timeAnalysis.earlyArrivals++;
-          else if (timeInMinutes <= 510) timeAnalysis.onTime++;
-          else timeAnalysis.lateArrivals++;
+          try {
+            const hour = new Date(record.inTime).getHours();
+            const minutes = new Date(record.inTime).getMinutes();
+            const timeInMinutes = hour * 60 + minutes;
+            
+            if (timeInMinutes < 480) timeAnalysis.earlyArrivals++;
+            else if (timeInMinutes <= 510) timeAnalysis.onTime++;
+            else timeAnalysis.lateArrivals++;
+          } catch (timeError) {
+            console.warn('Skipping record with invalid inTime:', record.id, record.inTime);
+          }
         }
         
         if (record.outTime) {
-          const hour = new Date(record.outTime).getHours();
-          const minutes = new Date(record.outTime).getMinutes();
-          const timeInMinutes = hour * 60 + minutes;
-          
-          if (timeInMinutes < 900) timeAnalysis.earlyDepartures++;
-          else if (timeInMinutes <= 930) timeAnalysis.onTimeDepartures++;
-          else timeAnalysis.lateDepartures++;
+          try {
+            const hour = new Date(record.outTime).getHours();
+            const minutes = new Date(record.outTime).getMinutes();
+            const timeInMinutes = hour * 60 + minutes;
+            
+            if (timeInMinutes < 900) timeAnalysis.earlyDepartures++;
+            else if (timeInMinutes <= 930) timeAnalysis.onTimeDepartures++;
+            else timeAnalysis.lateDepartures++;
+          } catch (timeError) {
+            console.warn('Skipping record with invalid outTime:', record.id, record.outTime);
+          }
         }
       });
 
@@ -1541,6 +1567,12 @@ export const getAttendanceAnalytics = async (req, res) => {
       // Class comparison (if multiple classes)
       const classStats = {};
       attendances.forEach(record => {
+        // Skip records without complete class data
+        if (!record.class) {
+          console.warn('Skipping attendance record with incomplete class data:', record.id);
+          return;
+        }
+        
         const className = record.class.name;
         if (!classStats[className]) {
           classStats[className] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
@@ -1839,17 +1871,37 @@ export const exportAttendanceData = async (req, res) => {
 
     console.log('🔍 Found attendance records for export:', attendances.length);
 
+    // Filter out incomplete records and log any issues
+    const filteredAttendances = attendances.filter(attendance => {
+      if (!attendance.student) {
+        console.warn('Skipping attendance record without student data:', attendance.id);
+        return false;
+      }
+      if (!attendance.student.user) {
+        console.warn('Skipping attendance record without user data:', attendance.id, 'studentId:', attendance.studentId);
+        return false;
+      }
+      if (!attendance.class) {
+        console.warn('Skipping attendance record without class data:', attendance.id, 'classId:', attendance.classId);
+        return false;
+      }
+      return true;
+    });
+
+    console.log('🔍 Filtered attendance records for export:', filteredAttendances.length);
+
     // Prepare data for export
-    const exportData = attendances.map(attendance => ({
-      date: attendance.date.toISOString().split('T')[0],
-      studentName: `${attendance.student.user.firstName} ${attendance.student.user.lastName}`,
-      rollNo: attendance.student.rollNo,
-      className: attendance.class.name,
-      status: attendance.status,
-      inTime: attendance.inTime ? attendance.inTime.toISOString().split('T')[1].substring(0, 5) : '--',
-      outTime: attendance.outTime ? attendance.outTime.toISOString().split('T')[1].substring(0, 5) : '--',
-      remarks: attendance.remarks || ''
-    }));
+    const exportData = filteredAttendances
+      .map(attendance => ({
+        date: attendance.date.toISOString().split('T')[0],
+        studentName: `${attendance.student.user.firstName} ${attendance.student.user.lastName}`,
+        rollNo: attendance.student.rollNo || 'N/A',
+        className: attendance.class.name,
+        status: attendance.status,
+        inTime: attendance.inTime ? attendance.inTime.toISOString().split('T')[1].substring(0, 5) : '--',
+        outTime: attendance.outTime ? attendance.outTime.toISOString().split('T')[1].substring(0, 5) : '--',
+        remarks: attendance.remarks || ''
+      }));
 
     // Generate export based on format
     let exportContent, contentType, filename;
