@@ -2,7 +2,24 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '../generated/prisma/index.js';
 import { default as ownersStore } from '../store/ownersStore.js';
 
-const prisma = new PrismaClient();
+// Initialize Prisma client with error handling
+let prisma;
+try {
+  prisma = new PrismaClient();
+  console.log('✅ Prisma client initialized successfully in auth middleware');
+  
+  // Test the connection
+  prisma.$connect()
+    .then(() => {
+      console.log('✅ Prisma client connected to database successfully');
+    })
+    .catch((error) => {
+      console.error('❌ Prisma client failed to connect to database:', error);
+    });
+} catch (error) {
+  console.error('❌ Failed to initialize Prisma client in auth middleware:', error);
+  prisma = null;
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
@@ -939,34 +956,67 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
         });
       }
 
+      // Debug: Check if prisma client is available
+      if (!prisma) {
+        console.error('❌ Prisma client is undefined in authorizeStudentAccess');
+        return res.status(500).json({
+          success: false,
+          error: 'Database connection error',
+          message: 'Database client not available.',
+          meta: {
+            timestamp: new Date().toISOString(),
+            statusCode: 500
+          }
+        });
+      }
+
       // Super admins can access any student
       if (req.user.role === 'SUPER_ADMIN') {
         return next();
       }
 
       // Check if student exists and belongs to user's school
-      const student = await prisma.student.findFirst({
-        where: {
-          id: parseInt(studentId),
-          schoolId: req.user.schoolId,
-          deletedAt: null
-        },
-        select: {
-          id: true,
-          schoolId: true,
-          classId: true,
-          userId: true
+      console.log('🔍 Checking student access for ID:', studentId, 'School ID:', req.user.schoolId);
+      
+      let student;
+      try {
+        student = await prisma.student.findFirst({
+          where: {
+            id: parseInt(studentId),
+            schoolId: req.user.schoolId,
+            deletedAt: null
+          },
+          select: {
+            id: true,
+            schoolId: true,
+            classId: true,
+            userId: true
+          }
+        });
+        
+        console.log('🔍 Student query result:', student);
+        
+        if (!student) {
+          return res.status(404).json({
+            success: false,
+            error: 'Student not found',
+            message: 'Student not found or you do not have access to this student.',
+            meta: {
+              timestamp: new Date().toISOString(),
+              statusCode: 404
+            }
+          });
         }
-      });
-
-      if (!student) {
-        return res.status(404).json({
+      } catch (dbError) {
+        console.error('❌ Database error in authorizeStudentAccess:', dbError);
+        return res.status(500).json({
           success: false,
-          error: 'Student not found',
-          message: 'Student not found or you do not have access to this student.',
+          error: 'Database error',
+          message: 'Failed to verify student access due to database error.',
           meta: {
             timestamp: new Date().toISOString(),
-            statusCode: 404
+            statusCode: 500,
+            error: dbError.message
           }
         });
       }
