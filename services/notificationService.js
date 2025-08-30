@@ -365,6 +365,8 @@ export const createNotification = async (notificationData) => {
       const recipientData = recipients.map(recipientId => ({
         notificationId: notification.id,
         userId: BigInt(recipientId),
+        channel: 'IN_APP',
+        status: 'PENDING',
         isRead: false,
         readAt: null
       }));
