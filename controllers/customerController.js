@@ -1,7 +1,7 @@
 console.log('customerController.js loaded');
 
 import express from 'express';
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import logger from '../config/logger.js';
 import { validateCustomerData } from '../utils/customerUtils.js';
 import { upload } from '../middleware/upload.js';
@@ -211,31 +211,89 @@ export const getAllCustomers = async (req, res) => {
     }
     if (dateFrom || dateTo) {
       whereClause.createdAt = {};
-      if (dateFrom) whereClause.createdAt.gte = new Date(dateFrom);
-      if (dateTo) whereClause.createdAt.lte = new Date(dateTo);
+      if (dateFrom) {
+        const fromDate = new Date(dateFrom);
+        if (!isNaN(fromDate.getTime())) {
+          whereClause.createdAt.gte = fromDate;
+        } else {
+          console.warn('Invalid dateFrom value:', dateFrom);
+        }
+      }
+      if (dateTo) {
+        const toDate = new Date(dateTo);
+        if (!isNaN(toDate.getTime())) {
+          whereClause.createdAt.lte = toDate;
+        } else {
+          console.warn('Invalid dateTo value:', dateTo);
+        }
+      }
     }
 
-    // Build include clause
+    // Build include clause - be more selective to avoid datetime issues
     const includeClause = {};
     if (include) {
       const includes = include.split(',');
-      if (includes.includes('user')) includeClause.user = true;
-      if (includes.includes('school')) includeClause.school = true;
+      // Only include safe fields that don't have datetime issues
+      if (includes.includes('user')) {
+        includeClause.user = {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            status: true
+            // Avoid including createdAt, updatedAt, lastLoginAt, etc.
+          }
+        };
+      }
+      if (includes.includes('school')) {
+        includeClause.school = {
+          select: {
+            id: true,
+            name: true,
+            code: true
+            // Avoid including createdAt, updatedAt, etc.
+          }
+        };
+      }
     }
 
-    // Build query options - avoid datetime fields in orderBy
+    // Build query options - avoid datetime fields in orderBy and select only safe fields
     const queryOptions = {
       where: whereClause,
+      select: {
+        id: true,
+        uuid: true,
+        name: true,
+        serialNumber: true,
+        email: true,
+        phone: true,
+        gender: true,
+        source: true,
+        purpose: true,
+        department: true,
+        referredTo: true,
+        referredById: true,
+        metadata: true,
+        ownerId: true,
+        schoolId: true,
+        createdBy: true,
+        updatedBy: true,
+        userId: true,
+        totalSpent: true,
+        orderCount: true,
+        type: true,
+        pipelineStageId: true,
+        remark: true,
+        priority: true
+        // Exclude createdAt and updatedAt to avoid datetime issues
+      },
       include: includeClause
     };
     
-    // Only add orderBy if it's not a datetime field
-    if (sortBy !== 'createdAt' && sortBy !== 'updatedAt') {
-      queryOptions.orderBy = { [sortBy]: sortOrder.toLowerCase() };
-    } else {
-      // Default to id ordering to avoid datetime issues
-      queryOptions.orderBy = { id: 'desc' };
-    }
+    // Always use id ordering to avoid datetime issues
+    queryOptions.orderBy = { id: 'desc' };
     
     // Only apply pagination if requested
     if (isPaginationRequested) {
@@ -260,12 +318,15 @@ export const getAllCustomers = async (req, res) => {
     
     try {
       // Try Prisma first
+      console.log('Attempting Prisma query with options:', JSON.stringify(queryOptions, null, 2));
       [customers, total] = await Promise.all([
         prisma.customer.findMany(queryOptions),
         prisma.customer.count({ where: whereClause })
       ]);
+      console.log('✅ Prisma query successful, found customers:', customers?.length || 0);
     } catch (prismaError) {
-      console.error('Prisma error, using raw SQL fallback:', prismaError.message);
+      console.log('Prisma error, using raw SQL fallback:', prismaError.message);
+      // Don't log the full error details to avoid cluttering logs
       
       // Fallback to raw SQL to avoid datetime issues
       const offset = isPaginationRequested ? (pageNum - 1) * limitNum : 0;
@@ -284,20 +345,57 @@ export const getAllCustomers = async (req, res) => {
         searchParams = [searchPattern, searchPattern, searchPattern];
       }
       
-      const sqlQuery = `
-        SELECT id, uuid, name, serialNumber, email, phone, gender, source, purpose, 
-               department, referredTo, referredById, metadata, ownerId, schoolId, 
-               createdBy, updatedBy, userId, totalSpent, orderCount, type, 
-               pipelineStageId, rermark, priority
-        FROM customers 
-        WHERE schoolId = ? AND deletedAt IS NULL ${searchConditions}
-        ORDER BY 
-          ${search ? `
+      // Build ORDER BY clause properly
+      let orderByClause = 'ORDER BY ';
+      if (search) {
+        orderByClause += `
           CASE 
             WHEN phone LIKE ? THEN 1 
             ELSE 2 
-          END,` : ''}
-          id DESC
+          END,
+          id DESC`;
+      } else {
+        orderByClause += 'id DESC';
+      }
+      
+      // Use a safer SQL query that handles potential schema issues
+      const sqlQuery = `
+        SELECT 
+          id, 
+          COALESCE(uuid, '') as uuid, 
+          COALESCE(name, '') as name, 
+          COALESCE(serialNumber, '') as serialNumber, 
+          COALESCE(email, '') as email, 
+          COALESCE(phone, '') as phone, 
+          COALESCE(gender, '') as gender, 
+          COALESCE(source, '') as source, 
+          COALESCE(purpose, '') as purpose, 
+          COALESCE(department, '') as department, 
+          COALESCE(referredTo, '') as referredTo, 
+          COALESCE(referredById, '') as referredById, 
+          COALESCE(metadata, '{}') as metadata, 
+          COALESCE(ownerId, 0) as ownerId, 
+          COALESCE(schoolId, 0) as schoolId, 
+          COALESCE(createdBy, 0) as createdBy, 
+          COALESCE(updatedBy, 0) as updatedBy, 
+          COALESCE(userId, 0) as userId, 
+          COALESCE(totalSpent, 0) as totalSpent, 
+          COALESCE(orderCount, 0) as orderCount, 
+          COALESCE(type, '') as type, 
+          COALESCE(pipelineStageId, 0) as pipelineStageId, 
+          COALESCE(remark, '') as remark, 
+          COALESCE(priority, 0) as priority,
+          CASE 
+            WHEN createdAt IS NULL OR createdAt = '0000-00-00 00:00:00' OR createdAt = 0 THEN NULL 
+            ELSE createdAt 
+          END as createdAt,
+          CASE 
+            WHEN updatedAt IS NULL OR updatedAt = '0000-00-00 00:00:00' OR updatedAt = 0 THEN NULL 
+            ELSE updatedAt 
+          END as updatedAt
+        FROM customers 
+        WHERE schoolId = ? AND deletedAt IS NULL ${searchConditions}
+        ${orderByClause}
         ${isPaginationRequested ? 'LIMIT ? OFFSET ?' : ''}
       `;
       
@@ -317,25 +415,44 @@ export const getAllCustomers = async (req, res) => {
       console.log('Search conditions:', searchConditions);
       console.log('Search params:', searchParams);
       console.log('Has search:', !!search);
+      console.log('Order by clause:', orderByClause);
+      console.log('Is pagination requested:', isPaginationRequested);
       
-      customers = await fallbackQuery(sqlQuery, sqlParams);
-      const countResult = await fallbackQuery(
-        `SELECT COUNT(*) as total FROM customers WHERE schoolId = ? AND deletedAt IS NULL ${searchConditions}`,
-        [schoolIdStr, ...searchParams]
-      );
-      total = parseInt(countResult[0]?.total) || 0;
-      
-      // Clean up any invalid dates
-      cleanedCustomers = cleanInvalidDates(customers);
-      
-      console.log('Raw SQL fallback successful, found customers:', cleanedCustomers.length);
+      try {
+        customers = await fallbackQuery(sqlQuery, sqlParams);
+        const countResult = await fallbackQuery(
+          `SELECT COUNT(*) as total FROM customers WHERE schoolId = ? AND deletedAt IS NULL ${searchConditions}`,
+          [schoolIdStr, ...searchParams]
+        );
+        total = parseInt(countResult[0]?.total) || 0;
+        
+        // Clean up any invalid dates
+        cleanedCustomers = cleanInvalidDates(customers);
+        
+        console.log('Raw SQL fallback successful, found customers:', cleanedCustomers.length);
+      } catch (sqlError) {
+        console.error('Raw SQL fallback also failed:', sqlError.message);
+        console.error('SQL error details:', {
+          message: sqlError.message,
+          code: sqlError.code,
+          errno: sqlError.errno,
+          sqlState: sqlError.sqlState,
+          sqlMessage: sqlError.sqlMessage
+        });
+        // Return empty results if both Prisma and SQL fail
+        customers = [];
+        total = 0;
+        cleanedCustomers = [];
+      }
     }
     
     // Ensure we have valid data
-    if (!customers) {
+    if (!customers || !Array.isArray(customers)) {
+      console.warn('Invalid customers data, setting to empty array');
       customers = [];
     }
-    if (!total) {
+    if (!total || isNaN(total)) {
+      console.warn('Invalid total count, setting to 0');
       total = 0;
     }
     
@@ -347,17 +464,23 @@ export const getAllCustomers = async (req, res) => {
       uuid: c.uuid === null ? '' : c.uuid
     }));
 
+    // Ensure we have safe data for the response
+    const safeData = convertBigInts(cleanedCustomers || customers || []);
+    const safeTotal = Math.max(0, parseInt(total) || 0);
+    const safePage = Math.max(1, parseInt(pageNum) || 1);
+    const safeLimit = Math.max(1, parseInt(limitNum) || 10);
+    
     const result = {
       success: true,
       message: status ? 
         'Customers retrieved successfully (status filter ignored - not available in Customer model)' : 
         'Customers retrieved successfully',
-      data: convertBigInts(cleanedCustomers || customers),
+      data: safeData,
       meta: {
-        total,
-        page: pageNum,
-        limit: limitNum,
-        totalPages: Math.ceil(total / limitNum),
+        total: safeTotal,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(safeTotal / safeLimit),
         filters: {
           search,
           status: status ? 'not_available' : undefined, // Status field doesn't exist in Customer model
@@ -382,13 +505,25 @@ export const getAllCustomers = async (req, res) => {
     
     // Only include pagination info if pagination was requested
     if (isPaginationRequested) {
-      result.meta.page = pageNum;
-      result.meta.limit = limitNum;
-      result.meta.totalPages = Math.ceil(total / limitNum);
+      result.meta.hasPagination = true;
+      result.meta.currentPage = safePage;
+      result.meta.itemsPerPage = safeLimit;
+      result.meta.hasNextPage = safePage < result.meta.totalPages;
+      result.meta.hasPrevPage = safePage > 1;
+    } else {
+      result.meta.hasPagination = false;
     }
 
-    logger.info(`Retrieved ${customers.length} customers`);
-    res.json(result);
+    console.log('=== getAllCustomers END ===');
+    console.log('Response summary:', {
+      success: result.success,
+      customerCount: result.data.length,
+      total: result.meta.total,
+      totalPages: result.meta.totalPages
+    });
+
+    logger.info(`Retrieved ${result.data.length} customers`);
+    return res.json(result);
   } catch (error) {
     console.error('=== getAllCustomers ERROR ===');
     console.error('Error details:', {
@@ -3381,18 +3516,50 @@ export const getConversionRates = async (req, res) => {
 
 // Function to clean up invalid datetime values
 function cleanInvalidDates(customers) {
+  if (!Array.isArray(customers)) {
+    console.warn('cleanInvalidDates: customers is not an array:', typeof customers);
+    return [];
+  }
+  
   return customers.map(customer => {
+    if (!customer || typeof customer !== 'object') {
+      console.warn('cleanInvalidDates: invalid customer object:', customer);
+      return customer;
+    }
+    
     const cleaned = { ...customer };
     
-    // Clean up invalid dates
-    if (cleaned.createdAt && (cleaned.createdAt.getTime() === 0 || isNaN(cleaned.createdAt.getTime()))) {
-      cleaned.createdAt = new Date();
-    }
-    if (cleaned.updatedAt && (cleaned.updatedAt.getTime() === 0 || isNaN(cleaned.updatedAt.getTime()))) {
-      cleaned.updatedAt = new Date();
-    }
-    if (cleaned.deletedAt && (cleaned.deletedAt.getTime() === 0 || isNaN(cleaned.deletedAt.getTime()))) {
-      cleaned.deletedAt = null;
+    // Clean up invalid dates with better validation
+    try {
+      if (cleaned.createdAt) {
+        if (cleaned.createdAt === '0000-00-00 00:00:00' || 
+            cleaned.createdAt === 0 || 
+            (cleaned.createdAt instanceof Date && (cleaned.createdAt.getTime() === 0 || isNaN(cleaned.createdAt.getTime())))) {
+          cleaned.createdAt = new Date();
+        }
+      }
+      
+      if (cleaned.updatedAt) {
+        if (cleaned.updatedAt === '0000-00-00 00:00:00' || 
+            cleaned.updatedAt === 0 || 
+            (cleaned.updatedAt instanceof Date && (cleaned.updatedAt.getTime() === 0 || isNaN(cleaned.updatedAt.getTime())))) {
+          cleaned.updatedAt = new Date();
+        }
+      }
+      
+      if (cleaned.deletedAt) {
+        if (cleaned.deletedAt === '0000-00-00 00:00:00' || 
+            cleaned.deletedAt === 0 || 
+            (cleaned.deletedAt instanceof Date && (cleaned.deletedAt.getTime() === 0 || isNaN(cleaned.deletedAt.getTime())))) {
+          cleaned.deletedAt = null;
+        }
+      }
+    } catch (dateError) {
+      console.error('Error cleaning dates for customer:', customer.id, dateError.message);
+      // Set safe defaults
+      cleaned.createdAt = cleaned.createdAt || new Date();
+      cleaned.updatedAt = cleaned.updatedAt || new Date();
+      cleaned.deletedAt = cleaned.deletedAt || null;
     }
     
     return cleaned;
