@@ -550,7 +550,7 @@ class StudentController {
       const cleanedUpdateData = { ...updateData };
       
       // Remove relation fields that should be handled separately
-      const { classId, sectionId, parentId, ...cleanedUpdateDataWithoutRelations } = cleanedUpdateData;
+      const { classId, sectionId, parentId, user, ...cleanedUpdateDataWithoutRelations } = cleanedUpdateData;
       
       // Handle empty date strings - convert to null or valid dates
       if (cleanedUpdateDataWithoutRelations.admissionDate === '' || cleanedUpdateDataWithoutRelations.admissionDate === null || cleanedUpdateDataWithoutRelations.admissionDate === undefined) {
@@ -584,12 +584,12 @@ class StudentController {
 
       // Handle user data separately - don't include it in student update
       let userUpdateData = null;
-      if (cleanedUpdateData.user) {
-        userUpdateData = cleanedUpdateData.user;
-        delete cleanedUpdateData.user; // Remove user data from student update
+      if (cleanedUpdateDataWithoutRelations.user) {
+        userUpdateData = cleanedUpdateDataWithoutRelations.user;
+        delete cleanedUpdateDataWithoutRelations.user; // Remove user data from student update
       }
 
-      console.log('Cleaned update data:', cleanedUpdateData);
+      console.log('Cleaned update data:', cleanedUpdateDataWithoutRelations);
       console.log('User update data:', userUpdateData);
       console.log('Original update data:', updateData);
 
