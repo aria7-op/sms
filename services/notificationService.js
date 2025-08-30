@@ -279,8 +279,7 @@ export const createNotification = async (notificationData) => {
       templateData = {},
       recipients = [],
       channels = ['IN_APP'],
-      attachments = [],
-      isSystem = false
+      attachments = []
     } = notificationData;
 
     // Validate required fields
@@ -353,8 +352,7 @@ export const createNotification = async (notificationData) => {
         schoolId: BigInt(schoolId),
         ownerId: ownerId ? BigInt(ownerId) : null,
         templateKey,
-        templateData,
-        isSystem
+        templateData
       }
     });
 
@@ -1660,7 +1658,6 @@ export const createSystemNotification = async (type, title, message, priority = 
       schoolId: schoolId || 1,
       ownerId,
       channels: ['IN_APP'],
-      isSystem: true,
       metadata: {
         systemEvent: type,
         timestamp: new Date().toISOString()
