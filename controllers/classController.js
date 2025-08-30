@@ -4096,27 +4096,27 @@
 
     console.log(`Found ${existingClasses.length} existing classes with name "${cleanClassName}" in school ${schoolId}`);
 
-    if (existingClasses.length === 0) {
-      // No existing classes with this name, start with 'a'
-      return `${cleanClassName}a`;
-    }
+          if (existingClasses.length === 0) {
+        // No existing classes with this name, start with 'A'
+        return `${cleanClassName}A`;
+      }
 
-    // Extract the suffix letters from existing codes
-    const existingSuffixes = existingClasses.map(cls => {
-      const match = cls.code.match(new RegExp(`^${cleanClassName}([a-z])$`, 'i'));
-      return match ? match[1].toLowerCase() : null;
-    }).filter(Boolean);
+          // Extract the suffix letters from existing codes
+      const existingSuffixes = existingClasses.map(cls => {
+        const match = cls.code.match(new RegExp(`^${cleanClassName}([A-Z])$`, 'i'));
+        return match ? match[1].toUpperCase() : null;
+      }).filter(Boolean);
 
     console.log('Existing suffixes:', existingSuffixes);
 
-    if (existingSuffixes.length === 0) {
-      // No valid suffixes found, start with 'a'
-      return `${cleanClassName}a`;
-    }
+          if (existingSuffixes.length === 0) {
+        // No valid suffixes found, start with 'A'
+        return `${cleanClassName}A`;
+      }
 
-    // Find the next available letter
-    const alphabet = 'abcdefghijklmnopqrstuvwxyz';
-    let nextSuffix = 'a';
+          // Find the next available letter
+      const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      let nextSuffix = 'A';
 
     for (let i = 0; i < alphabet.length; i++) {
       const letter = alphabet[i];
@@ -4133,7 +4133,7 @@
   } catch (error) {
     console.error('Error generating class code:', error);
     // Fallback: return a timestamp-based code
-    return `${cleanClassName}_${Date.now().toString(36)}`;
+    return `${cleanClassName}_${Date.now().toString(36).toUpperCase()}`;
   }
 };
     
