@@ -1697,6 +1697,17 @@ server.keepAliveTimeout = 30000; // 30 seconds
         }
       });
       
+      // Start automatic attendance service after server is running
+      try {
+        const attendanceService = await import('./services/attendanceService.js');
+        const schoolId = process.env.SCHOOL_ID || 1;
+        attendanceService.startAttendanceService(schoolId);
+        console.log('✅ Automatic Attendance Service started successfully');
+      } catch (attendanceError) {
+        console.error('❌ Failed to start Automatic Attendance Service:', attendanceError.message);
+        console.log('⚠️ Attendance service will not run automatically');
+      }
+      
     } catch (error) {
       console.error('❌ Failed to start server:', error);
       process.exit(1);
