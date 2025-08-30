@@ -275,6 +275,13 @@ class StudentController {
         entityId: student.id,
         userId: req.user.id,
         schoolId,
+        oldData: null,
+        newData: JSON.stringify(student, (key, value) => {
+          if (typeof value === 'bigint') {
+            return value.toString();
+          }
+          return value;
+        }),
         details: {
           studentId: student.id,
           admissionNo: student.admissionNo,
@@ -726,6 +733,18 @@ class StudentController {
         entityId: updatedStudent.id,
         userId: req.user.id,
         schoolId: req.user.schoolId,
+        oldData: JSON.stringify(existingStudent, (key, value) => {
+          if (typeof value === 'bigint') {
+            return value.toString();
+          }
+          return value;
+        }),
+        newData: JSON.stringify(updatedStudent, (key, value) => {
+          if (typeof value === 'bigint') {
+            return value.toString();
+          }
+          return value;
+        }),
         details: {
           studentId: updatedStudent.id,
           updatedFields: Object.keys(cleanedUpdateData)
@@ -825,6 +844,13 @@ class StudentController {
         entityId: existingStudent.id,
         userId: req.user.id,
         schoolId: req.user.schoolId,
+        oldData: JSON.stringify(existingStudent, (key, value) => {
+          if (typeof value === 'bigint') {
+            return value.toString();
+          }
+          return value;
+        }),
+        newData: null,
         details: {
           studentId: existingStudent.id,
           admissionNo: existingStudent.admissionNo
@@ -878,6 +904,13 @@ class StudentController {
         entityId: restoredStudent.id,
         userId: req.user.id,
         schoolId: req.user.schoolId,
+        oldData: null,
+        newData: JSON.stringify(restoredStudent, (key, value) => {
+          if (typeof value === 'bigint') {
+            return value.toString();
+          }
+          return value;
+        }),
         details: {
           studentId: restoredStudent.id,
           admissionNo: restoredStudent.admissionNo
