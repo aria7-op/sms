@@ -184,10 +184,11 @@ export const getAllCustomers = async (req, res) => {
     
     if (search) {
       whereClause.OR = [
+        { phone: { contains: search, mode: 'insensitive' } },
+        { mobile: { contains: search, mode: 'insensitive' } },
         { firstName: { contains: search, mode: 'insensitive' } },
         { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search, mode: 'insensitive' } }
+        { email: { contains: search, mode: 'insensitive' } }
       ];
     }
     
@@ -270,19 +271,40 @@ export const getAllCustomers = async (req, res) => {
       const offset = isPaginationRequested ? (pageNum - 1) * limitNum : 0;
       const limit = isPaginationRequested ? limitNum : 1000;
       
+      // Build search conditions for SQL fallback
+      let searchConditions = '';
+      let searchParams = [];
+      if (search) {
+        searchConditions = `AND (
+          phone LIKE ? OR 
+          mobile LIKE ? OR
+          name LIKE ? OR 
+          email LIKE ?
+        )`;
+        const searchPattern = `%${search}%`;
+        searchParams = [searchPattern, searchPattern, searchPattern, searchPattern];
+      }
+      
       const sqlQuery = `
-        SELECT id, uuid, name, serialNumber, email, phone, gender, source, purpose, 
+        SELECT id, uuid, name, serialNumber, email, phone, mobile, gender, source, purpose, 
                department, referredTo, referredById, metadata, ownerId, schoolId, 
                createdBy, updatedBy, userId, totalSpent, orderCount, type, 
                pipelineStageId, rermark, priority
         FROM customers 
-        WHERE schoolId = ? AND deletedAt IS NULL
-        ORDER BY id DESC
+        WHERE schoolId = ? AND deletedAt IS NULL ${searchConditions}
+        ORDER BY 
+          CASE WHEN phone LIKE ? THEN 1 
+               WHEN mobile LIKE ? THEN 1 
+               ELSE 2 END,
+          id DESC
         ${isPaginationRequested ? 'LIMIT ? OFFSET ?' : ''}
       `;
       
       // Prepare parameters in correct order with proper types
-      const sqlParams = [schoolIdStr];
+      const sqlParams = [schoolIdStr, ...searchParams];
+      if (search) {
+        sqlParams.push(`%${search}%`, `%${search}%`); // For phone and mobile priority ordering
+      }
       if (isPaginationRequested) {
         sqlParams.push(parseInt(limit), parseInt(offset));
       }
@@ -293,8 +315,8 @@ export const getAllCustomers = async (req, res) => {
       
       customers = await fallbackQuery(sqlQuery, sqlParams);
       const countResult = await fallbackQuery(
-        'SELECT COUNT(*) as total FROM customers WHERE schoolId = ? AND deletedAt IS NULL',
-        [schoolIdStr]
+        `SELECT COUNT(*) as total FROM customers WHERE schoolId = ? AND deletedAt IS NULL ${searchConditions}`,
+        [schoolIdStr, ...searchParams]
       );
       total = parseInt(countResult[0]?.total) || 0;
       
