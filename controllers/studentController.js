@@ -508,7 +508,7 @@ class StudentController {
       const cleanedUpdateData = { ...updateData };
       
       // Handle empty date strings - convert to null or valid dates
-      if (cleanedUpdateData.admissionDate === '') {
+      if (cleanedUpdateData.admissionDate === '' || cleanedUpdateData.admissionDate === null || cleanedUpdateData.admissionDate === undefined) {
         cleanedUpdateData.admissionDate = null;
       } else if (cleanedUpdateData.admissionDate && typeof cleanedUpdateData.admissionDate === 'string') {
         try {
@@ -537,7 +537,16 @@ class StudentController {
         cleanedUpdateData.updatedBy = cleanedUpdateData.updatedBy.toString();
       }
 
+      // Handle user data separately - don't include it in student update
+      let userUpdateData = null;
+      if (cleanedUpdateData.user) {
+        userUpdateData = cleanedUpdateData.user;
+        delete cleanedUpdateData.user; // Remove user data from student update
+      }
+
       console.log('Cleaned update data:', cleanedUpdateData);
+      console.log('User update data:', userUpdateData);
+      console.log('Original update data:', updateData);
 
       // EVENT-FIRST WORKFLOW: Log event before updating student
       let event = null;
@@ -572,11 +581,16 @@ class StudentController {
               title: 'Student Information Updated',
               description: 'Student information has been updated',
               metadata: JSON.stringify({
-                updatedFields: Object.keys(updateData),
+                updatedFields: Object.keys(cleanedUpdateData),
                 previousData: existingStudent,
                 updatedBy: req.user.id,
                 schoolId: req.user.schoolId,
                 updateTimestamp: new Date().toISOString()
+              }, (key, value) => {
+                if (typeof value === 'bigint') {
+                  return value.toString();
+                }
+                return value;
               }),
               createdBy: req.user.id,
               schoolId: req.user.schoolId,
@@ -595,11 +609,16 @@ class StudentController {
               title: 'Student Information Updated',
               description: 'Student information has been updated',
               metadata: JSON.stringify({
-                updatedFields: Object.keys(updateData),
+                updatedFields: Object.keys(cleanedUpdateData),
                 previousData: existingStudent,
                 updatedBy: req.user.id,
                 schoolId: req.user.schoolId,
                 updateTimestamp: new Date().toISOString()
+              }, (key, value) => {
+                if (typeof value === 'bigint') {
+                  return value.toString();
+                }
+                return value;
               }),
               createdBy: req.user.id,
               schoolId: req.user.schoolId,
@@ -659,6 +678,20 @@ class StudentController {
         }
       });
 
+      // Update user data if provided
+      if (userUpdateData && updatedStudent.userId) {
+        try {
+          await prisma.user.update({
+            where: { id: updatedStudent.userId },
+            data: userUpdateData
+          });
+          console.log('User data updated successfully');
+        } catch (userUpdateError) {
+          console.error('Failed to update user data:', userUpdateError);
+          // Continue without user update if it fails
+        }
+      }
+
       // Update the event with the final student data
       if (event && event.id) {
         try {
@@ -668,7 +701,12 @@ class StudentController {
               metadata: JSON.stringify({
                 ...JSON.parse(event.metadata || '{}'),
                 updatedStudentData: updatedStudent,
-                updatedFields: Object.keys(updateData)
+                updatedFields: Object.keys(cleanedUpdateData)
+              }, (key, value) => {
+                if (typeof value === 'bigint') {
+                  return value.toString();
+                }
+                return value;
               })
             }
           });
@@ -690,7 +728,7 @@ class StudentController {
         schoolId: req.user.schoolId,
         details: {
           studentId: updatedStudent.id,
-          updatedFields: Object.keys(updateData)
+          updatedFields: Object.keys(cleanedUpdateData)
         }
       });
 
