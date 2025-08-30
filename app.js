@@ -444,6 +444,73 @@ import { setWebSocketService } from './services/notificationService.js';
     }
   });
 
+  // BigInt serializer for JSON responses
+  const bigIntReplacer = (key, value) => {
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+    return value;
+  };
+
+  // Override res.json to encrypt responses
+  app.use((req, res, next) => {
+    try {
+      const originalJson = res.json;
+      
+      res.json = function(data) {
+        try {
+          // Check if encryption is enabled for this route
+          const shouldEncrypt = req.headers['x-encrypt-response'] === 'true' || 
+                               req.path.startsWith('/api/') && 
+                               !req.path.includes('/public/') &&
+                               !req.path.includes('/health') &&
+                               !req.path.includes('/status');
+
+          if (!shouldEncrypt) {
+            return originalJson.call(this, data);
+          }
+
+          // Store CORS headers before encryption
+          const corsHeaders = {
+            'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+            'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+            'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
+          };
+
+          // Encrypt the response with BigInt handling
+          const encryptedResponse = CryptoJS.AES.encrypt(
+            JSON.stringify(data, bigIntReplacer), 
+            encryptionKey
+          ).toString();
+
+          // Send encrypted response
+          const encryptedData = {
+            encryptedData: encryptedResponse
+          };
+
+          // Restore CORS headers after encryption
+          Object.entries(corsHeaders).forEach(([key, value]) => {
+            if (value) res.setHeader(key, value);
+          });
+
+          return originalJson.call(this, encryptedData);
+        } catch (error) {
+          console.error('❌ Response encryption failed:', error);
+          return originalJson.call(this, data);
+        }
+      };
+      
+      next();
+    } catch (error) {
+      console.error('❌ Encryption middleware error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error in encryption middleware',
+        error: 'ENCRYPTION_MIDDLEWARE_ERROR'
+      });
+    }
+  });
+
 
 
   // File upload configuration
