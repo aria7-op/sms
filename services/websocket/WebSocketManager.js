@@ -41,7 +41,13 @@ class WebSocketManager {
     initialize(server) {
         this.io = new Server(server, {
             cors: {
-                origin: process.env.FRONTEND_URL || "*",
+                origin: [
+                    "https://khwanzay.school",
+                    "http://localhost:3000",
+                    "http://localhost:3001",
+                    "http://localhost:8081",
+                    process.env.FRONTEND_URL
+                ].filter(Boolean),
                 methods: ["GET", "POST"],
                 credentials: true
             },
