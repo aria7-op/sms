@@ -1118,10 +1118,21 @@ export const sanitizeObject = (obj) => {
   const sanitized = {};
   for (const [key, value] of Object.entries(obj)) {
     console.log(`🔍 SANITIZE: Processing key: ${key}, value type: ${typeof value}`);
+    if (key === 'parent') {
+      console.log(`🔍 SANITIZE: About to sanitize parent key with value:`, JSON.stringify(value, null, 2));
+    }
     sanitized[key] = sanitizeObject(value);
+    if (key === 'parent') {
+      console.log(`🔍 SANITIZE: After sanitizing parent key, result:`, JSON.stringify(sanitized[key], null, 2));
+    }
   }
   
   console.log('🔍 SANITIZE: Final sanitized object keys:', Object.keys(sanitized));
+  if (sanitized.parent) {
+    console.log('🔍 SANITIZE: Final sanitized object has parent:', JSON.stringify(sanitized.parent, null, 2));
+  } else {
+    console.log('🔍 SANITIZE: Final sanitized object MISSING parent!');
+  }
   return sanitized;
 };
 
