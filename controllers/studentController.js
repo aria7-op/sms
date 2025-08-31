@@ -1,12 +1,10 @@
 import { PrismaClient } from '../generated/prisma/index.js';
-import { createSuccessResponse, createErrorResponse } from '../utils/responseUtils.js';
-import { handlePrismaError } from '../utils/errorUtils.js';
-import { validateSchoolAccess, validateClassAccess } from '../middleware/accessControl.js';
-import { generateStudentCode } from '../utils/studentUtils.js';
-import { validateStudentConstraints } from '../utils/studentUtils.js';
+import { createSuccessResponse, createErrorResponse, handlePrismaError } from '../utils/responseUtils.js';
+import { validateSchoolAccess, validateClassAccess } from '../middleware/validation.js';
+import { generateStudentCode, validateStudentConstraints } from '../utils/studentUtils.js';
 import { invalidateStudentCacheOnCreate } from '../cache/studentCache.js';
 import { createAuditLog } from '../middleware/audit.js';
-import { triggerEntityCreatedNotifications } from '../services/notificationService.js';
+import { triggerEntityCreatedNotifications } from '../utils/notificationTriggers.js';
 import { StudentEventService } from '../services/studentEventService.js';
 import parentService from '../services/parentService.js';
 
