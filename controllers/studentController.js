@@ -4,6 +4,7 @@ import {
   createSuccessResponse, 
   createErrorResponse 
 } from '../utils/responseUtils.js';
+import { hashPassword, generateSecureRandom } from '../utils/encryption.js';
 import { 
   generateStudentCode, 
   validateStudentConstraints, 
@@ -286,6 +287,10 @@ class StudentController {
         studentOwnerId = req.user.createdByOwnerId;
       }
       
+      // Generate salt and hash password for student user
+      const studentSalt = generateSecureRandom(16);
+      const studentPasswordHash = hashPassword('temp_password_123', studentSalt);
+      
       // Create student with user and parent connection
       const student = await prisma.student.create({
         data: {
@@ -320,7 +325,8 @@ class StudentController {
               schoolId,
               createdBy: req.user.id,
               createdByOwnerId: studentOwnerId, // Use the correct owner ID
-              password: 'temp_password_123' // Temporary password for student users
+              salt: studentSalt,
+              password: studentPasswordHash.hash // Hashed password for student users
             }
           }
         },
