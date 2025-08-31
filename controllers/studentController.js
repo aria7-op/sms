@@ -1,2342 +1,511 @@
+import { 
+  triggerEntityCreatedNotification,
+  triggerEntityUpdatedNotification,
+  createNotification,
+  createAuditLog
+} from '../services/notificationService.js';
 import { PrismaClient } from '../generated/prisma/index.js';
-import { createSuccessResponse, createErrorResponse, handlePrismaError } from '../utils/responseUtils.js';
-import { validateSchoolAccess, validateClassAccess } from '../middleware/validation.js';
-import { generateStudentCode, validateStudentConstraints } from '../utils/studentUtils.js';
-import { invalidateStudentCacheOnCreate } from '../cache/studentCache.js';
-import { createAuditLog } from '../middleware/audit.js';
-import { triggerEntityCreatedNotifications } from '../utils/notificationTriggers.js';
-import { StudentEventService } from '../services/studentEventService.js';
-import parentService from '../services/parentService.js';
 
 const prisma = new PrismaClient();
 
-// Utility function to convert BigInt values to strings for JSON serialization
-function convertBigInts(obj) {
-  if (obj === null || obj === undefined) {
-    return obj;
+/**
+ * Get user IDs by roles for notifications
+ */
+export const getUserIdsByRoles = async (roles, schoolId) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: {
+        role: { in: roles },
+        schoolId: BigInt(schoolId)
+      },
+      select: { id: true }
+    });
+    return users.map(user => user.id.toString());
+  } catch (error) {
+    console.error('Error getting user IDs by roles:', error);
+    return [];
   }
-  if (typeof obj === 'bigint') {
-    return obj.toString();
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(convertBigInts);
-  }
-  if (typeof obj === 'object') {
-    const newObj = {};
-    for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
-        newObj[key] = convertBigInts(obj[key]);
+};
+
+/**
+ * Map entity type to valid notification type
+ */
+const getNotificationType = (entityType) => {
+  const typeMap = {
+    'student': 'ACADEMIC',
+    'teacher': 'ACADEMIC',
+    'class': 'ACADEMIC',
+    'section': 'ACADEMIC',
+    'exam': 'EXAM',
+    'assignment': 'ASSIGNMENT',
+    'payment': 'PAYMENT',
+    'customer': 'CUSTOMER',
+    'book': 'LIBRARY',
+    'inventory': 'INVENTORY',
+    'transport': 'TRANSPORT',
+    'event': 'EVENT',
+    'notice': 'NOTICE'
+  };
+  return typeMap[entityType.toLowerCase()] || 'CREATION';
+};
+
+/**
+ * Automatic notification trigger utilities for entity operations
+ * This file provides helper functions to automatically trigger notifications
+ * when entities are created, updated, or deleted across the application.
+ */
+
+/**
+ * Trigger notifications for entity creation
+ * @param {string} entityType - Type of entity (student, customer, teacher, etc.)
+ * @param {string|number} entityId - ID of the created entity
+ * @param {Object} entityData - Full entity data
+ * @param {Object} user - Current user performing the action
+ * @param {Object} options - Additional options
+ */
+export const triggerEntityCreatedNotifications = async (
+  entityType,
+  entityId,
+  entityData,
+  user,
+  options = {}
+) => {
+  try {
+    // Create audit log
+    await createAuditLog({
+      action: 'CREATE',
+      entity: entityType.charAt(0).toUpperCase() + entityType.slice(1),
+      entityId: entityId.toString(),
+      userId: user.id,
+      schoolId: user.schoolId,
+      details: {
+        [`${entityType}Id`]: entityId.toString(),
+        ...options.auditDetails
       }
-    }
-    return newObj;
+    });
+
+    // Trigger automatic notification
+    await triggerEntityCreatedNotification(
+      entityType,
+      entityId.toString(),
+      {
+        ...entityData,
+        entityType,
+        entityId: entityId.toString(),
+        schoolId: user.schoolId,
+        createdBy: user.id
+      },
+      user.id,
+      user.schoolId,
+      user.createdByOwnerId
+    );
+
+    // Get recipient user IDs
+    const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'TEACHER'], user.schoolId);
+
+    // Create fallback notification if no rules are configured
+    await createNotification({
+      type: getNotificationType(entityType),
+      title: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)} Created`,
+      message: `A new ${entityType} has been created successfully`,
+      priority: 'NORMAL',
+      status: 'PENDING',
+      entityType,
+      entityId: entityId.toString(),
+      entityAction: 'created',
+      senderId: user.id,
+      schoolId: user.schoolId,
+      metadata: {
+        entityType,
+        entityId: entityId.toString(),
+        createdBy: user.id,
+        ...options.auditDetails
+      },
+      recipients: recipientUserIds
+    });
+
+    console.log(`✅ Automatic notifications triggered for ${entityType} creation: ${entityId}`);
+  } catch (error) {
+    console.error(`❌ Error triggering notifications for ${entityType} creation:`, error);
+    // Don't throw error to avoid breaking the main operation
   }
-  return obj;
-}
+};
 
-class StudentController {
-  // ======================
-  // CRUD OPERATIONS
-  // ======================
-
-  /**
-   * Create a new student
-   */
-  async createStudent(req, res) {
-    try {
-      const studentData = req.body;
-      let { schoolId, classId } = studentData;
-
-      // If schoolId is not provided in request body, get it from user context
-      if (!schoolId) {
-        if (req.user.type === 'owner' || req.user.role === 'SUPER_ADMIN') {
-          // For owners, use the first school or require schoolId in request
-          schoolId = req.user.schoolId || req.user.schoolIds?.[0];
-          if (!schoolId) {
-            return createErrorResponse(res, 400, 'School ID is required for student creation');
-          }
-        } else {
-          // For regular users, use their school
-          schoolId = req.user.schoolId;
-          if (!schoolId) {
-            return createErrorResponse(res, 400, 'User does not have an associated school');
-          }
-        }
+/**
+ * Trigger notifications for entity updates
+ * @param {string} entityType - Type of entity
+ * @param {string|number} entityId - ID of the updated entity
+ * @param {Object} entityData - Updated entity data
+ * @param {Object} previousData - Previous entity data
+ * @param {Object} user - Current user performing the action
+ * @param {Object} options - Additional options
+ */
+export const triggerEntityUpdatedNotifications = async (
+  entityType,
+  entityId,
+  entityData,
+  previousData,
+  user,
+  options = {}
+) => {
+  try {
+    // Create audit log
+    await createAuditLog({
+      action: 'UPDATE',
+      entity: entityType.charAt(0).toUpperCase() + entityType.slice(1),
+      entityId: entityId.toString(),
+      userId: user.id,
+      schoolId: user.schoolId,
+      details: {
+        [`${entityType}Id`]: entityId.toString(),
+        updatedFields: Object.keys(entityData).filter(key => 
+          entityData[key] !== previousData[key]
+        ),
+        ...options.auditDetails
       }
+    });
 
-      // Validate school access
-      await validateSchoolAccess(req.user, schoolId);
+    // Trigger automatic notification
+    await triggerEntityUpdatedNotification(
+      entityType,
+      entityId.toString(),
+      {
+        ...entityData,
+        entityType,
+        entityId: entityId.toString(),
+        schoolId: user.schoolId,
+        updatedBy: user.id,
+        previousData
+      },
+      previousData,
+      user.id,
+      user.schoolId,
+      user.createdByOwnerId
+    );
 
-      // Validate class access if provided
-      if (classId) {
-        await validateClassAccess(req.user, classId, schoolId);
+    // Get recipient user IDs
+    const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'TEACHER'], user.schoolId);
+
+    // Create fallback notification if no rules are configured
+    await createNotification({
+      type: getNotificationType(entityType),
+      title: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)} Updated`,
+      message: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)} has been updated successfully`,
+      priority: 'NORMAL',
+      status: 'PENDING',
+      entityType,
+      entityId: entityId.toString(),
+      entityAction: 'updated',
+      senderId: user.id,
+      schoolId: user.schoolId,
+      metadata: {
+        entityType,
+        entityId: entityId.toString(),
+        updatedBy: user.id,
+        updatedFields: Object.keys(entityData).filter(key => 
+          entityData[key] !== previousData[key]
+        ),
+        ...options.auditDetails
+      },
+      recipients: recipientUserIds
+    });
+
+    console.log(`✅ Automatic notifications triggered for ${entityType} update: ${entityId}`);
+  } catch (error) {
+    console.error(`❌ Error triggering notifications for ${entityType} update:`, error);
+    // Don't throw error to avoid breaking the main operation
+  }
+};
+
+/**
+ * Trigger notifications for entity deletion
+ * @param {string} entityType - Type of entity
+ * @param {string|number} entityId - ID of the deleted entity
+ * @param {Object} entityData - Deleted entity data
+ * @param {Object} user - Current user performing the action
+ * @param {Object} options - Additional options
+ */
+export const triggerEntityDeletedNotifications = async (
+  entityType,
+  entityId,
+  entityData,
+  user,
+  options = {}
+) => {
+  try {
+    // Create audit log
+    await createAuditLog({
+      action: 'DELETE',
+      entity: entityType.charAt(0).toUpperCase() + entityType.slice(1),
+      entityId: entityId.toString(),
+      userId: user.id,
+      schoolId: user.schoolId,
+      details: {
+        [`${entityType}Id`]: entityId.toString(),
+        ...options.auditDetails
       }
+    });
 
-      // Generate student code
-      const studentCode = await generateStudentCode(
-        studentData.admissionNo || studentData.user?.firstName,
-        schoolId
-      );
+    // Trigger automatic notification (direct call to createNotification)
+    const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'TEACHER'], user.schoolId);
 
-      // Validate student constraints
-      await validateStudentConstraints(schoolId, studentCode, classId);
-
-      // Remove relation fields from studentData to avoid Prisma validation error
-      const { classId: _, schoolId: __, parentId: ___, sectionId: ____, ...studentDataWithoutRelations } = studentData;
-      
-      // Remove dateOfBirth from user data and map to birthDate
-      const { dateOfBirth, ...userDataWithoutDateOfBirth } = studentData.user;
-      
-      // Extract address fields and move to metadata
-      const { address, city, state, country, postalCode, ...userDataWithoutAddress } = userDataWithoutDateOfBirth;
-      
-      // Create metadata object with address information and convert to JSON string
-      const userMetadata = {
-        address: {
-          street: address,
-          city,
-          state,
-          country,
-          postalCode
-        }
-      };
-      
-      // Convert metadata object to JSON string since the database expects a string
-      const userMetadataString = JSON.stringify(userMetadata);
-
-      // Filter out invalid fields and only use valid Student model fields
-      const validStudentFields = [
-        'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality',
-        'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode',
-        'previousSchool', 'conversionDate', 'convertedFromCustomerId'
-      ];
-
-      const filteredStudentData = {};
-      for (const key of Object.keys(studentDataWithoutRelations)) {
-        if (validStudentFields.includes(key)) {
-          // Handle special field type conversions
-          if (key === 'admissionDate' && studentDataWithoutRelations[key] === '') {
-            // Skip empty date strings
-            continue;
-          } else if (key === 'admissionDate' && studentDataWithoutRelations[key]) {
-            // Convert valid date strings to Date objects
-            filteredStudentData[key] = new Date(studentDataWithoutRelations[key]);
-          } else {
-            filteredStudentData[key] = studentDataWithoutRelations[key];
-          }
-        }
+    await createNotification({
+      type: getNotificationType(entityType),
+      title: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)} Deleted`,
+      message: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)} has been deleted`,
+      recipients: recipientUserIds,
+      schoolId: user.schoolId,
+      senderId: user.id,
+      metadata: {
+        entityType,
+        entityId: entityId.toString(),
+        deletedBy: user.id
       }
+    });
 
-      // Use transaction to create parent (if provided) and student together
-      const result = await prisma.$transaction(async (tx) => {
-        let parentId = null;
+    console.log(`✅ Automatic notifications triggered for ${entityType} deletion: ${entityId}`);
+  } catch (error) {
+    console.error(`❌ Error triggering notifications for ${entityType} deletion:`, error);
+    // Don't throw error to avoid breaking the main operation
+  }
+};
 
-        // If parent data is provided, create parent with user first
-        if (studentData.parent && studentData.parent.user) {
-          const parentUserData = studentData.parent.user;
-          const parentSpecificData = studentData.parent;
-
-          // Generate username for parent
-          const parentUsername = parentUserData.email.split('@')[0] || 
-                                `${parentUserData.firstName.toLowerCase()}${Date.now()}`;
-
-          // Create parent user
-          const parentUser = await tx.user.create({
-            data: {
-              ...parentUserData,
-              username: parentUsername,
-              role: 'PARENT',
-              schoolId: BigInt(schoolId),
-              createdBy: req.user.id,
-              createdByOwnerId: req.user.id,
-              // Handle address fields for parent
-              metadata: JSON.stringify({
-                address: {
-                  street: parentUserData.address || '',
-                  city: parentUserData.city || '',
-                  state: parentUserData.state || '',
-                  country: parentUserData.country || '',
-                  postalCode: parentUserData.postalCode || ''
-                }
-              })
-            }
-          });
-
-          // Create parent record
-          const parent = await tx.parent.create({
-            data: {
-              userId: parentUser.id,
-              occupation: parentSpecificData.occupation || null,
-              annualIncome: parentSpecificData.annualIncome ? parseFloat(parentSpecificData.annualIncome) : null,
-              education: parentSpecificData.education || null,
-              schoolId: BigInt(schoolId),
-              createdBy: BigInt(req.user.id)
-            }
-          });
-
-          parentId = parent.id;
-        }
-
-        // Log the final data being sent to Prisma
-        const finalStudentData = {
-          ...filteredStudentData,
-          admissionNo: studentCode,
-          createdBy: req.user.id,
-          school: {
-            connect: { id: BigInt(schoolId) }
-          },
-          // Handle class relation if classId is provided
-          ...(classId && {
-            class: {
-              connect: { id: BigInt(classId) }
-            }
-          }),
-          // Handle section relation if sectionId is provided
-          ...(studentData.sectionId && {
-            section: {
-              connect: { id: BigInt(studentData.sectionId) }
-            }
-          }),
-          // Handle parent relation if parent was created or parentId was provided
-          ...(parentId && {
-            parent: {
-              connect: { id: parentId }
-            }
-          }),
-          ...(studentData.parentId && !parentId && {
-            parent: {
-              connect: { id: BigInt(studentData.parentId) }
-            }
-          }),
-        };
-
-        console.log('Final student data for Prisma:', JSON.stringify(finalStudentData, (key, value) => {
-          if (typeof value === 'bigint') {
-            return value.toString();
-          }
-          return value;
-        }, 2));
-
-        // Create student with user
-        const student = await tx.student.create({
-          data: {
-            ...finalStudentData,
-            user: {
-              create: {
-                ...userDataWithoutAddress,
-                // Generate username from email or firstName
-                username: studentData.user.email.split('@')[0] || 
-                         `${studentData.user.firstName.toLowerCase()}${Date.now()}`,
-                // Map dateOfBirth to birthDate for User model
-                birthDate: dateOfBirth,
-                // Store address in metadata as JSON string
-                metadata: userMetadataString,
-                role: 'STUDENT',
-                schoolId,
-                createdBy: req.user.id,
-                createdByOwnerId: req.user.id // For owner-created users
-              }
-            }
-          },
-          include: {
-            user: {
-              select: {
-                id: true,
-                uuid: true,
-                username: true,
-                email: true,
-                emailVerified: true,
-                phone: true,
-                phoneVerified: true,
-                // password: false, // Never include password for security
-                // salt: false, // Never include salt for security
-                firstName: true,
-                middleName: true,
-                lastName: true,
-                displayName: true,
-                gender: true,
-                birthDate: true,
-                avatar: true,
-                coverImage: true,
-                bio: true,
-                role: true,
-                status: true,
-                lastLogin: true,
-                lastIp: true,
-                timezone: true,
-                locale: true,
-                metadata: true,
-                schoolId: true,
-                createdByOwnerId: true,
-                createdBy: true,
-                updatedBy: true,
-                createdAt: true,
-                updatedAt: true,
-                deletedAt: true
-              }
-            },
-            class: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            },
-            section: {
-              select: {
-                id: true,
-                name: true
-              }
-            },
-            parent: {
-              select: {
-                id: true,
-                user: {
-                  select: {
-                    firstName: true,
-                    lastName: true,
-                    email: true
-                  }
-                }
-              }
-            },
-            school: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            }
-          }
-        });
-
-        return { student, parentId };
-      });
-
-      const { student } = result;
-
-      // Log the student creation event AFTER student is created
-      const studentEventService = new StudentEventService();
-      try {
-        await studentEventService.createStudentEnrollmentEvent(
-          student,
-          req.user.id,
-          schoolId
-        );
-      } catch (eventError) {
-        // Log event error but don't fail the student creation
-        console.error('Failed to log student creation event:', eventError);
+/**
+ * Trigger notifications for bulk operations
+ * @param {string} entityType - Type of entity
+ * @param {Array} entityIds - Array of entity IDs
+ * @param {string} operation - Type of operation (CREATE, UPDATE, DELETE)
+ * @param {Object} user - Current user performing the action
+ * @param {Object} options - Additional options
+ */
+export const triggerBulkOperationNotifications = async (
+  entityType,
+  entityIds,
+  operation,
+  user,
+  options = {}
+) => {
+  try {
+    // Create audit log for bulk operation
+    await createAuditLog({
+      action: operation,
+      entity: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)}_BULK`,
+      entityId: entityIds.join(','),
+      userId: user.id,
+      schoolId: user.schoolId,
+      details: {
+        entityIds: entityIds,
+        count: entityIds.length,
+        operation,
+        ...options.auditDetails
       }
+    });
 
-      // Invalidate cache
-      await invalidateStudentCacheOnCreate(student);
+    // Get recipient user IDs
+    const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'TEACHER'], user.schoolId);
 
-      // Create audit log
-      await createAuditLog(
-        req,
-        'CREATE',
-        'Student',
-        {
-          data: {
-            studentId: student.id,
-            admissionNo: student.admissionNo,
-            classId: student.classId
-          }
-        }
-      );
-
-      // Trigger automatic notification for student creation
-      await triggerEntityCreatedNotifications(
-        'student',
-        student.id,
-        student,
-        req.user,
-        {
-          auditDetails: {
-            studentId: student.id.toString(),
-            admissionNo: student.admissionNo,
-            classId: student.classId
-          }
-        }
-      );
-
-      return createSuccessResponse(res, 201, 'Student created successfully', {
-        student
-      });
-    } catch (error) {
-      return handlePrismaError(res, error, 'createStudent');
-    }
-  }
-
-  /**
-   * Get students with pagination and filters
-   */
-  async getStudents(req, res) {
-    // console.log('=== getStudents START ===');
-    // console.log('Query:', req.query);
-    // console.log('User:', req.user);
-    
-    try {
-      // console.log('Step 1: Determining user type and schoolId...');
-      // Handle different user types
-      let schoolId;
-      if (req.user.type === 'owner' || req.user.role === 'SUPER_ADMIN') {
-        // Owner can access all schools or specific school
-        schoolId = req.query.schoolId || req.user.schoolId;
-        // console.log('Owner accessing students for schoolId:', schoolId);
-      } else {
-        // Regular user can only access their school
-        schoolId = req.user.schoolId;
-        // console.log('Regular user accessing students for schoolId:', schoolId);
+    // Trigger bulk notification
+    await createNotification({
+      type: 'CREATION', // Use valid notification type
+      title: `${operation} ${entityIds.length} ${entityType}s`,
+      message: `Bulk ${operation.toLowerCase()} operation completed for ${entityIds.length} ${entityType}s`,
+      recipients: recipientUserIds,
+      schoolId: user.schoolId,
+      senderId: user.id,
+      metadata: {
+        entityType,
+        entityIds,
+        operation,
+        count: entityIds.length
       }
+    });
 
-      // console.log('Step 2: Validating schoolId...');
-      if (!schoolId) {
-        // console.log('ERROR: No schoolId found');
-        return createErrorResponse(res, 400, 'School ID is required');
+    console.log(`✅ Bulk operation notifications triggered for ${entityIds.length} ${entityType}s`);
+  } catch (error) {
+    console.error(`❌ Error triggering bulk operation notifications:`, error);
+    // Don't throw error to avoid breaking the main operation
+  }
+};
+
+/**
+ * Trigger notifications for status changes
+ * @param {string} entityType - Type of entity
+ * @param {string|number} entityId - ID of the entity
+ * @param {string} oldStatus - Previous status
+ * @param {string} newStatus - New status
+ * @param {Object} entityData - Entity data
+ * @param {Object} user - Current user performing the action
+ * @param {Object} options - Additional options
+ */
+export const triggerStatusChangeNotifications = async (
+  entityType,
+  entityId,
+  oldStatus,
+  newStatus,
+  entityData,
+  user,
+  options = {}
+) => {
+  try {
+    // Create audit log
+    await createAuditLog({
+      action: 'STATUS_CHANGE',
+      entity: entityType.charAt(0).toUpperCase() + entityType.slice(1),
+      entityId: entityId.toString(),
+      userId: user.id,
+      schoolId: user.schoolId,
+      details: {
+        [`${entityType}Id`]: entityId.toString(),
+        oldStatus,
+        newStatus,
+        ...options.auditDetails
       }
-      // console.log('SchoolId validated:', schoolId);
+    });
 
-      // console.log('Step 3: Extracting query parameters...');
-      const { 
-        page = 1, 
-        limit = 10, 
-        search = '', 
-        classId, 
-        sectionId, 
-        status,
-        include = [],
-        sortBy = 'createdAt',
-        sortOrder = 'desc'
-      } = req.query;
-      
-      // Check if limit was explicitly provided in the request
-      const hasExplicitLimit = req.query.hasOwnProperty('limit');
-      const requestHost = req.get('host') || req.get('x-forwarded-host') || '';
-      
-      // Return all students if:
-      // 1. Request from specific domains AND no explicit limit provided, OR
-      // 2. Explicit limit is 'all'/'unlimited', OR  
-      // 3. Explicit limit is very large number
-      const shouldReturnAll = (!hasExplicitLimit && (requestHost.includes('khwanzay.school') || requestHost.includes('localhost:8081'))) ||
-                             limit === 'all' || 
-                             limit === 'unlimited' ||
-                             parseInt(limit) > 10000;
-      
-      // console.log('Query parameters extracted:', { page, limit, search, classId, sectionId, status, include, sortBy, sortOrder });
-      // console.log('Request analysis:', { 
-      //   requestHost, 
-      //   hasExplicitLimit, 
-      //   limitValue: limit,
-      //   shouldReturnAll 
-      // });
+    // Get recipient user IDs
+    const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'TEACHER'], user.schoolId);
 
-      // console.log('Step 4: Building include query...');
-      const includeQuery = buildStudentIncludeQuery(include);
-      // console.log('Include query built:', includeQuery);
-
-      // console.log('Step 5: Building search query...');
-      const searchQuery = buildStudentSearchQuery({
-        search,
-        classId,
-        sectionId,
-        status,
-        schoolId
-      });
-      // console.log('Search query built:', searchQuery);
-
-      // console.log('Step 6: Preparing final query...');
-      const finalQuery = {
-        where: {
-          ...searchQuery,
-          schoolId: BigInt(schoolId),
-          deletedAt: null
-        },
-        include: includeQuery,
-        orderBy: { [sortBy]: sortOrder }
-      };
-      
-      // Only add pagination if not returning all students
-      if (!shouldReturnAll) {
-        finalQuery.skip = (parseInt(page) - 1) * parseInt(limit);
-        finalQuery.take = parseInt(limit);
-      } else {
-        // console.log('Returning ALL students - pagination disabled');
+    // Trigger status change notification
+    await createNotification({
+      type: 'UPDATE', // Use valid notification type
+      title: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)} Status Updated`,
+      message: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)} status changed from ${oldStatus} to ${newStatus}`,
+      recipients: recipientUserIds,
+      schoolId: user.schoolId,
+      senderId: user.id,
+      metadata: {
+        entityType,
+        entityId: entityId.toString(),
+        oldStatus,
+        newStatus
       }
-      
-      // Convert BigInt values to strings for logging
-      const logQuery = JSON.parse(JSON.stringify(finalQuery, (key, value) => {
-        if (typeof value === 'bigint') {
-          return value.toString();
-        }
-        return value;
-      }));
-      // console.log('Final query prepared:', JSON.stringify(logQuery, null, 2));
+    });
 
-      // console.log('Step 7: Executing Prisma query...');
-      const students = await prisma.student.findMany(finalQuery);
-
-      // console.log('Step 8: Query completed. Found students:', students.length);
-      // console.log('=== getStudents END ===');
-      
-      const message = shouldReturnAll ? 
-        `All ${students.length} students fetched successfully (no pagination)` : 
-        `Students fetched successfully (page ${page}, showing ${students.length} students)`;
-        
-      return createSuccessResponse(res, 200, message, students, {
-        totalCount: students.length,
-        returnedAll: shouldReturnAll,
-        pagination: shouldReturnAll ? null : {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          returned: students.length,
-          hasExplicitLimit: hasExplicitLimit
-        }
-      });
-    } catch (error) {
-      console.error('=== getStudents ERROR ===', error);
-      return handlePrismaError(res, error, 'getStudents');
-    }
+    console.log(`✅ Status change notifications triggered for ${entityType}: ${entityId}`);
+  } catch (error) {
+    console.error(`❌ Error triggering status change notifications:`, error);
+    // Don't throw error to avoid breaking the main operation
   }
+};
 
-  /**
-   * Get student by ID
-   */
-  async getStudentById(req, res) {
-    try {
-      const { id } = req.params;
-      const { include = [] } = req.query;
-
-      // Check cache first
-      const cachedStudent = await getStudentFromCache(id);
-      if (cachedStudent) {
-        return createSuccessResponse(res, 200, 'Student fetched from cache', cachedStudent, {
-          source: 'cache'
-        });
+/**
+ * Trigger notifications for payment events
+ * @param {string} paymentType - Type of payment (fee, refund, etc.)
+ * @param {string|number} paymentId - Payment ID
+ * @param {Object} paymentData - Payment data
+ * @param {Object} user - Current user performing the action
+ * @param {Object} options - Additional options
+ */
+export const triggerPaymentNotifications = async (
+  paymentType,
+  paymentId,
+  paymentData,
+  user,
+  options = {}
+) => {
+  try {
+    // Create audit log
+    await createAuditLog({
+      action: 'PAYMENT',
+      entity: 'Payment',
+      entityId: paymentId.toString(),
+      userId: user.id,
+      schoolId: user.schoolId,
+      details: {
+        paymentId: paymentId.toString(),
+        paymentType,
+        amount: paymentData.amount,
+        ...options.auditDetails
       }
+    });
 
-      const includeQuery = buildStudentIncludeQuery(include);
+    // Get recipient user IDs
+    const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'FINANCE'], user.schoolId);
 
-      const student = await prisma.student.findFirst({
-        where: {
-          id: parseInt(id),
-          schoolId: req.user.schoolId,
-          deletedAt: null
-        },
-        include: includeQuery
-      });
-
-      if (!student) {
-        return createErrorResponse(res, 404, 'Student not found');
+    // Trigger payment notification
+    await createNotification({
+      type: 'PAYMENT', // Use valid notification type
+      title: `${paymentType.charAt(0).toUpperCase() + paymentType.slice(1)} Payment`,
+      message: `${paymentType.charAt(0).toUpperCase() + paymentType.slice(1)} payment of ${paymentData.amount} has been processed`,
+      recipients: recipientUserIds,
+      schoolId: user.schoolId,
+      senderId: user.id,
+      metadata: {
+        paymentType,
+        paymentId: paymentId.toString(),
+        amount: paymentData.amount
       }
+    });
 
-      // Cache the student
-      await setStudentInCache(student);
-
-      return createSuccessResponse(res, 200, 'Student fetched successfully', student, {
-        source: 'database'
-      });
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentById');
-    }
+    console.log(`✅ Payment notifications triggered for ${paymentType}: ${paymentId}`);
+  } catch (error) {
+    console.error(`❌ Error triggering payment notifications:`, error);
+    // Don't throw error to avoid breaking the main operation
   }
+};
 
-  /**
-   * Update student
-   */
-  async updateStudent(req, res) {
-    try {
-      const { id } = req.params;
-      const updateData = req.body;
-
-      // Get existing student
-      const existingStudent = await prisma.student.findFirst({
-        where: {
-          id: parseInt(id),
-          schoolId: req.user.schoolId,
-          deletedAt: null
-        }
-      });
-
-      if (!existingStudent) {
-        return createErrorResponse(res, 404, 'Student not found');
+/**
+ * Trigger notifications for exam events
+ * @param {string} examEvent - Type of exam event (created, updated, results)
+ * @param {string|number} examId - Exam ID
+ * @param {Object} examData - Exam data
+ * @param {Object} user - Current user performing the action
+ * @param {Object} options - Additional options
+ */
+export const triggerExamNotifications = async (
+  examEvent,
+  examId,
+  examData,
+  user,
+  options = {}
+) => {
+  try {
+    // Create audit log
+    await createAuditLog({
+      action: examEvent.toUpperCase(),
+      entity: 'Exam',
+      entityId: examId.toString(),
+      userId: user.id,
+      schoolId: user.schoolId,
+      details: {
+        examId: examId.toString(),
+        examEvent,
+        ...options.auditDetails
       }
+    });
 
-      // Validate class access if class is being updated
-      if (updateData.classId && updateData.classId !== existingStudent.classId) {
-        await validateClassAccess(req.user, updateData.classId, req.user.schoolId);
+    // Get recipient user IDs
+    const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'], user.schoolId);
+
+    // Trigger exam notification
+    await createNotification({
+      type: 'EXAM', // Use valid notification type
+      title: `Exam ${examEvent.charAt(0).toUpperCase() + examEvent.slice(1)}`,
+      message: `Exam "${examData.name}" has been ${examEvent}`,
+      recipients: recipientUserIds,
+      schoolId: user.schoolId,
+      senderId: user.id,
+      metadata: {
+        examId: examId.toString(),
+        examEvent,
+        examName: examData.name
       }
+    });
 
-      // Clean and validate update data
-      const cleanedUpdateData = { ...updateData };
-      
-      // Remove relation fields that should be handled separately
-      const { classId, sectionId, parentId, user, ...cleanedUpdateDataWithoutRelations } = cleanedUpdateData;
-      
-      // Filter to only include valid student fields
-      const validStudentFields = [
-        'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality',
-        'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode',
-        'previousSchool', 'conversionDate', 'convertedFromCustomerId'
-      ];
-
-      const filteredUpdateData = {};
-      for (const key of Object.keys(cleanedUpdateDataWithoutRelations)) {
-        if (validStudentFields.includes(key)) {
-          filteredUpdateData[key] = cleanedUpdateDataWithoutRelations[key];
-        }
-      }
-      
-      // Handle empty date strings - convert to null or valid dates
-      if (filteredUpdateData.admissionDate === '' || filteredUpdateData.admissionDate === null || filteredUpdateData.admissionDate === undefined) {
-        filteredUpdateData.admissionDate = null;
-      } else if (filteredUpdateData.admissionDate && typeof filteredUpdateData.admissionDate === 'string') {
-        try {
-          const parsedDate = new Date(filteredUpdateData.admissionDate);
-          if (isNaN(parsedDate.getTime())) {
-            filteredUpdateData.admissionDate = null;
-          } else {
-            filteredUpdateData.admissionDate = parsedDate;
-          }
-        } catch (dateError) {
-          console.warn('Invalid admissionDate, setting to null:', filteredUpdateData.admissionDate);
-          filteredUpdateData.admissionDate = null;
-        }
-      }
-
-      // Handle other empty strings that should be null
-      const fieldsToClean = ['previousSchool', 'bloodGroup', 'rollNo'];
-      fieldsToClean.forEach(field => {
-        if (filteredUpdateData[field] === '') {
-          filteredUpdateData[field] = null;
-        }
-      });
-
-      // Convert BigInt values to proper types
-      if (filteredUpdateData.updatedBy && typeof filteredUpdateData.updatedBy === 'bigint') {
-        filteredUpdateData.updatedBy = filteredUpdateData.updatedBy.toString();
-      }
-
-      // Handle user data separately - don't include it in student update
-      let userUpdateData = null;
-      if (cleanedUpdateDataWithoutRelations.user) {
-        userUpdateData = cleanedUpdateDataWithoutRelations.user;
-        delete cleanedUpdateDataWithoutRelations.user; // Remove user data from student update
-      }
-
-      console.log('Cleaned update data:', filteredUpdateData);
-      console.log('User update data:', userUpdateData);
-      console.log('Original update data:', updateData);
-
-      // EVENT-FIRST WORKFLOW: Log event before updating student
-      let event = null;
-      try {
-        const studentEventService = new StudentEventService();
-        console.log('StudentEventService instantiated:', typeof studentEventService);
-        console.log('Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(studentEventService)));
-        
-        const eventData = {
-          studentId: existingStudent.id,
-          updateData: filteredUpdateData,
-          previousData: existingStudent,
-          updatedBy: req.user.id,
-          schoolId: req.user.schoolId
-        };
-        
-        // Check if the method exists
-        if (typeof studentEventService.createStudentUpdateEvent === 'function') {
-          // Log the student update event FIRST
-          event = await studentEventService.createStudentUpdateEvent(
-            eventData,
-            req.user.id,
-            req.user.schoolId
-          );
-        } else {
-          console.error('createStudentUpdateEvent method not found on service');
-          // Create a basic event record directly
-          event = await prisma.studentEvent.create({
-            data: {
-              studentId: existingStudent.id,
-              eventType: 'STUDENT_UPDATED',
-              title: 'Student Information Updated',
-              description: 'Student information has been updated',
-              metadata: JSON.stringify({
-                updatedFields: Object.keys(filteredUpdateData),
-                previousData: existingStudent,
-                updatedBy: req.user.id,
-                schoolId: req.user.schoolId,
-                updateTimestamp: new Date().toISOString()
-              }, (key, value) => {
-                if (typeof value === 'bigint') {
-                  return value.toString();
-                }
-                return value;
-              }),
-              createdBy: req.user.id,
-              schoolId: req.user.schoolId,
-              severity: 'INFO'
-            }
-          });
-        }
-      } catch (eventError) {
-        console.error('Error creating student update event:', eventError);
-        // Create a fallback event record
-        try {
-          event = await prisma.studentEvent.create({
-            data: {
-              studentId: existingStudent.id,
-              eventType: 'STUDENT_UPDATED',
-              title: 'Student Information Updated',
-              description: 'Student information has been updated',
-              metadata: JSON.stringify({
-                updatedFields: Object.keys(filteredUpdateData),
-                previousData: existingStudent,
-                updatedBy: req.user.id,
-                schoolId: req.user.schoolId,
-                updateTimestamp: new Date().toISOString()
-              }, (key, value) => {
-                if (typeof value === 'bigint') {
-                  return value.toString();
-                }
-                return value;
-              }),
-              createdBy: req.user.id,
-              schoolId: req.user.schoolId,
-              severity: 'INFO'
-            }
-          });
-        } catch (fallbackError) {
-          console.error('Failed to create fallback event:', fallbackError);
-          // Continue without event if both fail
-        }
-      }
-
-      // Update student
-      const updatedStudent = await prisma.student.update({
-        where: { id: parseInt(id) },
-        data: {
-          ...filteredUpdateData,
-          updatedBy: req.user.id,
-          // Handle class relation if classId is provided
-          ...(classId && {
-            class: {
-              connect: { id: BigInt(classId) }
-            }
-          }),
-          // Handle section relation if sectionId is provided
-          ...(sectionId && {
-            section: {
-              connect: { id: BigInt(sectionId) }
-            }
-          }),
-          // Handle parent relation if parentId is provided
-          ...(parentId && {
-            parent: {
-              connect: { id: BigInt(parentId) }
-            }
-          })
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              uuid: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-              phone: true,
-              status: true
-            }
-          },
-          class: {
-            select: {
-              id: true,
-              name: true,
-              code: true
-            }
-          },
-          section: {
-            select: {
-              id: true,
-              name: true
-            }
-          },
-          parent: {
-            select: {
-              id: true,
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  email: true
-                }
-              }
-            }
-          }
-        }
-      });
-
-      // Update user data if provided
-      if (userUpdateData && updatedStudent.userId) {
-        try {
-          await prisma.user.update({
-            where: { id: updatedStudent.userId },
-            data: userUpdateData
-          });
-          console.log('User data updated successfully');
-        } catch (userUpdateError) {
-          console.error('Failed to update user data:', userUpdateError);
-          // Continue without user update if it fails
-        }
-      }
-
-      // Update the event with the final student data
-      if (event && event.id) {
-        try {
-          await prisma.studentEvent.update({
-            where: { id: event.id },
-            data: { 
-              metadata: JSON.stringify({
-                ...JSON.parse(event.metadata || '{}'),
-                updatedStudentData: updatedStudent,
-                updatedFields: Object.keys(filteredUpdateData)
-              }, (key, value) => {
-                if (typeof value === 'bigint') {
-                  return value.toString();
-                }
-                return value;
-              })
-            }
-          });
-        } catch (updateEventError) {
-          console.error('Failed to update event with final data:', updateEventError);
-          // Continue without updating the event
-        }
-      }
-
-      // Invalidate cache
-      await invalidateStudentCacheOnUpdate(updatedStudent, existingStudent);
-
-      // Create audit log
-      await createAuditLog(
-        req,
-        'UPDATE',
-        'Student',
-        {
-          data: {
-            studentId: updatedStudent.id,
-            updatedFields: Object.keys(filteredUpdateData)
-          }
-        }
-      );
-
-      // Trigger automatic notification for student update
-      await triggerEntityUpdatedNotifications(
-        'student',
-        updatedStudent.id,
-        updatedStudent,
-        existingStudent,
-        req.user,
-        {
-          auditDetails: {
-            studentId: updatedStudent.id.toString(),
-            updatedFields: Object.keys(filteredUpdateData)
-          }
-        }
-      );
-
-      return createSuccessResponse(res, 200, 'Student updated successfully', {
-        student: updatedStudent,
-        event
-      });
-    } catch (error) {
-      return handlePrismaError(res, error, 'updateStudent');
-    }
+    console.log(`✅ Exam notifications triggered for ${examEvent}: ${examId}`);
+  } catch (error) {
+    console.error(`❌ Error triggering exam notifications:`, error);
+    // Don't throw error to avoid breaking the main operation
   }
-
-  /**
-   * Delete student (soft delete)
-   */
-  async deleteStudent(req, res) {
-    try {
-      const { id } = req.params;
-
-      const existingStudent = await prisma.student.findFirst({
-        where: {
-          id: parseInt(id),
-          schoolId: req.user.schoolId,
-          deletedAt: null
-        }
-      });
-
-      if (!existingStudent) {
-        return createErrorResponse(res, 404, 'Student not found');
-      }
-
-      // EVENT-FIRST WORKFLOW: Log event before deleting student
-      const studentEventService = new StudentEventService();
-      const eventData = {
-        studentId: existingStudent.id,
-        studentData: existingStudent,
-        deletedBy: req.user.id,
-        schoolId: req.user.schoolId,
-        deletionReason: req.body.deletionReason || 'Manual deletion'
-      };
-      
-      // Log the student deletion event FIRST
-      const event = await studentEventService.createStudentDeletionEvent(
-        eventData,
-        req.user.id,
-        req.user.schoolId
-      );
-
-      // Soft delete student
-      const deletedStudent = await prisma.student.update({
-        where: { id: parseInt(id) },
-        data: {
-          deletedAt: new Date(),
-          updatedBy: req.user.id
-        }
-      });
-
-      // Update the event with deletion confirmation
-      await studentEventService.studentEventModel.update(event.id, {
-        metadata: { 
-          ...event.metadata, 
-          deletionConfirmed: true,
-          deletedAt: new Date()
-        }
-      });
-
-      // Invalidate cache
-      await invalidateStudentCacheOnDelete(existingStudent);
-
-      // Create audit log
-      await createAuditLog(
-        req,
-        'DELETE',
-        'Student',
-        {
-          data: {
-            studentId: existingStudent.id,
-            admissionNo: existingStudent.admissionNo
-          }
-        }
-      );
-
-      return createSuccessResponse(res, 200, 'Student deleted successfully', {
-        student: deletedStudent,
-        event
-      });
-    } catch (error) {
-      return handlePrismaError(res, error, 'deleteStudent');
-    }
-  }
-
-  /**
-   * Restore deleted student
-   */
-  async restoreStudent(req, res) {
-    try {
-      const { id } = req.params;
-
-      const existingStudent = await prisma.student.findFirst({
-        where: {
-          id: parseInt(id),
-          schoolId: req.user.schoolId,
-          deletedAt: { not: null }
-        }
-      });
-
-      if (!existingStudent) {
-        return createErrorResponse(res, 404, 'Student not found or not deleted');
-      }
-
-      // Restore student
-      const restoredStudent = await prisma.student.update({
-        where: { id: parseInt(id) },
-        data: {
-          deletedAt: null,
-          updatedBy: req.user.id
-        }
-      });
-
-      // Invalidate cache
-      await invalidateStudentCacheOnCreate(restoredStudent);
-
-      // Create audit log
-      await createAuditLog(
-        req,
-        'RESTORE',
-        'Student',
-        {
-          data: {
-            studentId: restoredStudent.id,
-            admissionNo: restoredStudent.admissionNo
-          }
-        }
-      );
-
-      return createSuccessResponse(res, 200, 'Student restored successfully');
-    } catch (error) {
-      return handlePrismaError(res, error, 'restoreStudent');
-    }
-  }
-
-  // ======================
-  // SEARCH & FILTER
-  // ======================
-
-  /**
-   * Search students with advanced filters
-   */
-  async searchStudents(req, res) {
-    try {
-      const result = await this.getStudents(req, res);
-      return result;
-    } catch (error) {
-      return handlePrismaError(res, error, 'searchStudents');
-    }
-  }
-
-  // ======================
-  // STATISTICS & ANALYTICS
-  // ======================
-
-  /**
-   * Get student statistics
-   */
-  async getStudentStats(req, res) {
-    try {
-      const { id } = req.params;
-
-      // Check cache first
-      const cachedStats = await getStudentStatsFromCache('individual', { studentId: id });
-      if (cachedStats) {
-        return createSuccessResponse(res, 200, 'Student stats fetched from cache', cachedStats, {
-          source: 'cache'
-        });
-      }
-
-      const stats = await generateStudentStats(parseInt(id));
-      
-      // Cache the stats
-      await setStudentStatsInCache('individual', { studentId: id }, stats);
-
-      return createSuccessResponse(res, 200, 'Student stats fetched successfully', stats, {
-        source: 'database'
-      });
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentStats');
-    }
-  }
-
-  /**
-   * Get student analytics
-   */
-  async getStudentAnalytics(req, res) {
-    try {
-      const { id } = req.params;
-      const { period = '30d' } = req.query;
-
-      // Check cache first
-      const cachedAnalytics = await getStudentAnalyticsFromCache('individual', { studentId: id, period });
-      if (cachedAnalytics) {
-        return createSuccessResponse(res, 200, 'Student analytics fetched from cache', cachedAnalytics, {
-          source: 'cache'
-        });
-      }
-
-      const analytics = await generateStudentAnalytics(parseInt(id), period);
-      
-      // Cache the analytics
-      await setStudentAnalyticsInCache('individual', { studentId: id, period }, analytics);
-
-      return createSuccessResponse(res, 200, 'Student analytics fetched successfully', analytics, {
-        source: 'database'
-      });
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentAnalytics');
-    }
-  }
-
-  /**
-   * Get student performance metrics
-   */
-  async getStudentPerformance(req, res) {
-    try {
-      const { id } = req.params;
-
-      // Check cache first
-      const cachedPerformance = await getStudentPerformanceFromCache(id, {});
-      if (cachedPerformance) {
-        return createSuccessResponse(res, 200, 'Student performance fetched from cache', cachedPerformance, {
-          source: 'cache'
-        });
-      }
-
-      const performance = await calculateStudentPerformance(parseInt(id));
-      
-      // Cache the performance
-      await setStudentPerformanceInCache(id, {}, performance);
-
-      return createSuccessResponse(res, 200, 'Student performance fetched successfully', performance, {
-        source: 'database'
-      });
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentPerformance');
-    }
-  }
-
-  // ======================
-  // BULK OPERATIONS
-  // ======================
-
-  /**
-   * Bulk create students
-   */
-  async bulkCreateStudents(req, res) {
-    try {
-      const { students } = req.body;
-
-      if (!Array.isArray(students) || students.length === 0) {
-        return createErrorResponse(res, 400, 'Students array is required');
-      }
-
-      const results = [];
-      const errors = [];
-
-      for (const studentData of students) {
-        try {
-          const result = await this.createStudent({ body: studentData, user: req.user }, res);
-          results.push(result);
-        } catch (error) {
-          errors.push({
-            student: studentData,
-            error: error.message
-          });
-        }
-      }
-
-      // Invalidate cache
-      await invalidateStudentCacheOnBulkOperation('CREATE', results.map(r => r.id));
-
-      return createSuccessResponse(res, 200, 'Bulk create completed', {
-        created: results.length,
-        failed: errors.length,
-        results,
-        errors
-      });
-    } catch (error) {
-      return handlePrismaError(res, error, 'bulkCreateStudents');
-    }
-  }
-
-  /**
-   * Bulk update students
-   */
-  async bulkUpdateStudents(req, res) {
-    try {
-      const { updates } = req.body;
-
-      if (!Array.isArray(updates) || updates.length === 0) {
-        return createErrorResponse(res, 400, 'Updates array is required');
-      }
-
-      const results = [];
-      const errors = [];
-
-      for (const update of updates) {
-        try {
-          const result = await this.updateStudent({ params: { id: update.id }, body: update.data, user: req.user }, res);
-          results.push(result);
-        } catch (error) {
-          errors.push({
-            studentId: update.id,
-            error: error.message
-          });
-        }
-      }
-
-      // Invalidate cache
-      await invalidateStudentCacheOnBulkOperation('UPDATE', results.map(r => r.id));
-
-      return createSuccessResponse(res, 200, 'Bulk update completed', {
-        updated: results.length,
-        failed: errors.length,
-        results,
-        errors
-      });
-    } catch (error) {
-      return handlePrismaError(res, error, 'bulkUpdateStudents');
-    }
-  }
-
-  /**
-   * Bulk delete students
-   */
-  async bulkDeleteStudents(req, res) {
-    try {
-      const { studentIds } = req.body;
-
-      if (!Array.isArray(studentIds) || studentIds.length === 0) {
-        return createErrorResponse(res, 400, 'Student IDs array is required');
-      }
-
-      const results = [];
-      const errors = [];
-
-      for (const studentId of studentIds) {
-        try {
-          const result = await this.deleteStudent({ params: { id: studentId }, user: req.user }, res);
-          results.push({ id: studentId, result });
-        } catch (error) {
-          errors.push({
-            studentId,
-            error: error.message
-          });
-        }
-      }
-
-      // Invalidate cache
-      await invalidateStudentCacheOnBulkOperation('DELETE', studentIds);
-
-      return createSuccessResponse(res, 200, 'Bulk delete completed', {
-        deleted: results.length,
-        failed: errors.length,
-        results,
-        errors
-      });
-    } catch (error) {
-      return handlePrismaError(res, error, 'bulkDeleteStudents');
-    }
-  }
-
-  // ======================
-  // EXPORT & IMPORT
-  // ======================
-
-  /**
-   * Export students
-   */
-  async exportStudents(req, res) {
-    try {
-      const { format = 'json', ...filters } = req.query;
-
-      const students = await prisma.student.findMany({
-        where: {
-          schoolId: req.user.schoolId,
-          deletedAt: null
-        },
-        include: {
-          user: true,
-          class: true,
-          section: true,
-          parent: {
-            include: {
-              user: true
-            }
-          }
-        }
-      });
-
-      const exportData = await generateStudentExportData(students, format);
-
-      res.setHeader('Content-Type', format === 'csv' ? 'text/csv' : 'application/json');
-      res.setHeader('Content-Disposition', `attachment; filename=students.${format}`);
-      
-      return res.send(exportData);
-    } catch (error) {
-      return handlePrismaError(res, error, 'exportStudents');
-    }
-  }
-
-  /**
-   * Import students
-   */
-  async importStudents(req, res) {
-    try {
-      const { students } = req.body;
-
-      if (!Array.isArray(students) || students.length === 0) {
-        return createErrorResponse(res, 400, 'Students array is required');
-      }
-
-      // Validate import data
-      const validationResult = await validateStudentImportData(students);
-      if (!validationResult.isValid) {
-        return createErrorResponse(res, 400, 'Invalid import data', validationResult.errors);
-      }
-
-      const result = await this.bulkCreateStudents(req, res);
-      return result;
-    } catch (error) {
-      return handlePrismaError(res, error, 'importStudents');
-    }
-  }
-
-  // ======================
-  // UTILITY ENDPOINTS
-  // ======================
-
-  /**
-   * Generate student code suggestions
-   */
-  async generateCodeSuggestions(req, res) {
-    try {
-      const { name, schoolId } = req.query;
-
-      const suggestions = await generateStudentCodeSuggestions(name, schoolId || req.user.schoolId);
-
-      return createSuccessResponse(res, 200, 'Code suggestions generated successfully', suggestions);
-    } catch (error) {
-      return handlePrismaError(res, error, 'generateCodeSuggestions');
-    }
-  }
-
-  /**
-   * Get student count by class
-   */
-  async getStudentCountByClass(req, res) {
-    try {
-      const counts = await getStudentCountByClass(req.user.schoolId);
-
-      return createSuccessResponse(res, 200, 'Student counts by class fetched successfully', counts);
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentCountByClass');
-    }
-  }
-
-  /**
-   * Get student count by status
-   */
-  async getStudentCountByStatus(req, res) {
-    try {
-      const counts = await getStudentCountByStatus(req.user.schoolId);
-
-      return createSuccessResponse(res, 200, 'Student counts by status fetched successfully', counts);
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentCountByStatus');
-    }
-  }
-
-  /**
-   * Get students by class
-   */
-  async getStudentsByClass(req, res) {
-    // console.log('=== getStudentsByClass START ===');
-    // console.log('Params:', req.params);
-    // console.log('Query:', req.query);
-    // console.log('User:', req.user);
-    
-    try {
-      const { classId } = req.params;
-      const { include = [] } = req.query;
-
-      // console.log('Building include query...');
-      const includeQuery = buildStudentIncludeQuery(include);
-      // console.log('Include query:', includeQuery);
-
-      console.log('Executing Prisma query...');
-      const students = await prisma.student.findMany({
-        where: {
-          classId: parseInt(classId),
-          schoolId: req.user.schoolId,
-          deletedAt: null
-        },
-        include: includeQuery
-      });
-
-      // console.log('Query completed. Found students:', students.length);
-      // console.log('=== getStudentsByClass END ===');
-      return createSuccessResponse(res, 200, 'Students by class fetched successfully', students);
-    } catch (error) {
-      console.error('=== getStudentsByClass ERROR ===', error);
-      return handlePrismaError(res, error, 'getStudentsByClass');
-    }
-  }
-
-  /**
-   * Get students by school
-   */
-  async getStudentsBySchool(req, res) {
-    try {
-      const { schoolId } = req.params;
-      const { include = [] } = req.query;
-
-      const includeQuery = buildStudentIncludeQuery(include);
-
-      const students = await prisma.student.findMany({
-        where: {
-          schoolId: parseInt(schoolId),
-          deletedAt: null
-        },
-        include: includeQuery
-      });
-
-      return createSuccessResponse(res, 200, 'Students by school fetched successfully', students);
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentsBySchool');
-    }
-  }
-
-  // ======================
-  // CACHE MANAGEMENT
-  // ======================
-
-  /**
-   * Get cache statistics
-   */
-  async getCacheStats(req, res) {
-    try {
-      const stats = await getStudentCacheStats();
-      return createSuccessResponse(res, 200, 'Cache stats fetched successfully', stats);
-    } catch (error) {
-      return handlePrismaError(res, error, 'getCacheStats');
-    }
-  }
-
-  /**
-   * Warm cache
-   */
-  async warmCache(req, res) {
-    try {
-      const { studentId, schoolId } = req.body;
-      const result = await warmStudentCache(studentId, schoolId);
-      return createSuccessResponse(res, 200, 'Cache warmed successfully', result);
-    } catch (error) {
-      return handlePrismaError(res, error, 'warmCache');
-    }
-  }
-
-  // ======================
-  // ADDITIONAL FEATURES
-  // ======================
-
-  /**
-   * Get student dashboard data
-   */
-  async getStudentDashboard(req, res) {
-    try {
-      const { id } = req.params;
-      const studentId = parseInt(id);
-
-      // Get student with all related data
-      const student = await prisma.student.findUnique({
-        where: { id: studentId },
-        include: {
-          user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
-              phone: true,
-              status: true
-            }
-          },
-          class: {
-            select: {
-              id: true,
-              name: true,
-              code: true
-            }
-          },
-          section: {
-            select: {
-              id: true,
-              name: true
-            }
-          },
-          parent: {
-            select: {
-              id: true,
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  email: true,
-                  phone: true
-                }
-              }
-            }
-          },
-          school: {
-            select: {
-              id: true,
-              name: true,
-              code: true
-            }
-          },
-          attendances: {
-            take: 30,
-            orderBy: { date: 'desc' },
-            select: {
-              id: true,
-              date: true,
-              status: true,
-              remarks: true
-            }
-          },
-          grades: {
-            take: 10,
-            orderBy: { createdAt: 'desc' },
-            select: {
-              id: true,
-              subject: true,
-              grade: true,
-              score: true,
-              createdAt: true
-            }
-          },
-          payments: {
-            take: 10,
-            orderBy: { createdAt: 'desc' },
-            select: {
-              id: true,
-              amount: true,
-              method: true,
-              status: true,
-              createdAt: true
-            }
-          },
-          documents: {
-            take: 10,
-            orderBy: { createdAt: 'desc' },
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              status: true,
-              createdAt: true
-            }
-          }
-        }
-      });
-
-      if (!student) {
-        return createErrorResponse(res, 404, 'Student not found');
-      }
-
-      // Calculate quick stats
-      const totalAttendance = student.attendances.length;
-      const presentDays = student.attendances.filter(a => a.status === 'PRESENT').length;
-      const attendanceRate = totalAttendance > 0 ? (presentDays / totalAttendance) * 100 : 0;
-
-      const totalGrades = student.grades.length;
-      const averageGrade = totalGrades > 0 
-        ? student.grades.reduce((sum, grade) => sum + (grade.score || 0), 0) / totalGrades 
-        : 0;
-
-      const totalPayments = student.payments.length;
-      const paidAmount = student.payments
-        .filter(p => p.status === 'PAID')
-        .reduce((sum, payment) => sum + payment.amount, 0);
-
-      const dashboard = {
-        studentId: student.id,
-        quickStats: {
-          attendanceRate: Math.round(attendanceRate),
-          gpa: Math.round(averageGrade * 100) / 100,
-          conductScore: 85, // Placeholder - would need behavior data
-          feePaymentRate: totalPayments > 0 ? Math.round((paidAmount / totalPayments) * 100) : 0,
-          extracurricularParticipation: 75 // Placeholder
-        },
-        recentActivity: [
-          {
-            type: 'ATTENDANCE',
-            title: 'Attendance Recorded',
-            description: `${student.user.firstName} was present today`,
-            date: new Date().toISOString(),
-            impact: 'POSITIVE'
-          },
-          {
-            type: 'GRADE',
-            title: 'Grade Updated',
-            description: 'New grade recorded for Mathematics',
-            date: new Date().toISOString(),
-            impact: 'POSITIVE'
-          }
-        ],
-        upcomingEvents: [
-          {
-            type: 'EXAM',
-            title: 'Final Exams',
-            date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-            importance: 'HIGH'
-          },
-          {
-            type: 'PAYMENT',
-            title: 'Tuition Fee Due',
-            date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-            importance: 'MEDIUM'
-          }
-        ],
-        academicProgress: {
-          subjects: [
-            { name: 'Mathematics', grade: 'A', score: 92, trend: 'UP' },
-            { name: 'Science', grade: 'B+', score: 87, trend: 'STABLE' },
-            { name: 'English', grade: 'A-', score: 89, trend: 'UP' }
-          ],
-          overallProgress: 88,
-          targetGPA: 3.5,
-          currentGPA: 3.2
-        },
-        attendanceHistory: student.attendances.slice(0, 10).map(attendance => ({
-          date: attendance.date,
-          status: attendance.status,
-          remarks: attendance.remarks
-        })),
-        behaviorLog: [
-          {
-            date: new Date().toISOString(),
-            type: 'POSITIVE',
-            description: 'Excellent participation in class discussion',
-            points: 5
-          }
-        ],
-        financialStatus: {
-          totalFees: 5000,
-          paidAmount: paidAmount,
-          outstandingAmount: 5000 - paidAmount,
-          nextDueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          paymentHistory: student.payments.map(payment => ({
-            date: payment.createdAt,
-            amount: payment.amount,
-            method: payment.method,
-            status: payment.status
-          }))
-        },
-        healthRecords: [
-          {
-            date: new Date().toISOString(),
-            type: 'CHECKUP',
-            description: 'Annual physical examination',
-            severity: 'LOW'
-          }
-        ],
-        documents: student.documents.map(doc => ({
-          name: doc.name,
-          type: doc.type,
-          uploadDate: doc.createdAt,
-          status: doc.status
-        }))
-      };
-
-      return createSuccessResponse(res, 200, 'Student dashboard retrieved successfully', dashboard);
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentDashboard');
-    }
-  }
-
-  /**
-   * Get student attendance records
-   */
-  async getStudentAttendance(req, res) {
-    try {
-      const { id } = req.params;
-      const studentId = parseInt(id);
-
-      const attendances = await prisma.attendance.findMany({
-        where: { studentId },
-        orderBy: { date: 'desc' },
-        take: 100,
-        include: {
-          student: {
-            select: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true
-                }
-              }
-            }
-          }
-        }
-      });
-
-      return createSuccessResponse(res, 200, 'Student attendance retrieved successfully', attendances);
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentAttendance');
-    }
-  }
-
-  /**
-   * Update student attendance
-   */
-  async updateStudentAttendance(req, res) {
-    try {
-      const { id } = req.params;
-      const studentId = parseInt(id);
-      const attendanceData = req.body;
-
-      const attendance = await prisma.attendance.create({
-        data: {
-          studentId,
-          date: attendanceData.date,
-          status: attendanceData.status,
-          remarks: attendanceData.remarks,
-          createdBy: req.user.id
-        }
-      });
-
-      return createSuccessResponse(res, 201, 'Attendance updated successfully', attendance);
-    } catch (error) {
-      return handlePrismaError(res, error, 'updateStudentAttendance');
-    }
-  }
-
-  /**
-   * Get student behavior records
-   */
-  async getStudentBehavior(req, res) {
-    try {
-      const { id } = req.params;
-      const studentId = parseInt(id);
-
-      // Since we don't have a behavior table, return mock data
-      const behaviors = [
-        {
-          id: 1,
-          studentId,
-          type: 'POSITIVE',
-          description: 'Excellent participation in class discussion',
-          points: 5,
-          date: new Date().toISOString(),
-          createdBy: req.user.id
-        },
-        {
-          id: 2,
-          studentId,
-          type: 'NEUTRAL',
-          description: 'Regular attendance maintained',
-          points: 0,
-          date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          createdBy: req.user.id
-        }
-      ];
-
-      return createSuccessResponse(res, 200, 'Student behavior retrieved successfully', behaviors);
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentBehavior');
-    }
-  }
-
-  /**
-   * Add student behavior record
-   */
-  async addStudentBehavior(req, res) {
-    try {
-      const { id } = req.params;
-      const studentId = parseInt(id);
-      const behaviorData = req.body;
-
-      // Since we don't have a behavior table, return mock response
-      const behavior = {
-        id: Date.now(),
-        studentId,
-        type: behaviorData.type,
-        description: behaviorData.description,
-        points: behaviorData.points || 0,
-        date: new Date().toISOString(),
-        createdBy: req.user.id
-      };
-
-      return createSuccessResponse(res, 201, 'Behavior record added successfully', behavior);
-    } catch (error) {
-      return handlePrismaError(res, error, 'addStudentBehavior');
-    }
-  }
-
-  /**
-   * Get student documents
-   */
-  async getStudentDocuments(req, res) {
-    try {
-      const { id } = req.params;
-      const studentId = parseInt(id);
-
-      const documents = await prisma.document.findMany({
-        where: { 
-          studentId,
-          entityType: 'STUDENT'
-        },
-        orderBy: { createdAt: 'desc' },
-        include: {
-          student: {
-            select: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true
-                }
-              }
-            }
-          }
-        }
-      });
-
-      return createSuccessResponse(res, 200, 'Student documents retrieved successfully', documents);
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentDocuments');
-    }
-  }
-
-  /**
-   * Upload student document
-   */
-  async uploadStudentDocument(req, res) {
-    try {
-      const { id } = req.params;
-      const studentId = parseInt(id);
-      const documentData = req.body;
-
-      const document = await prisma.document.create({
-        data: {
-          studentId,
-          name: documentData.name,
-          type: documentData.type,
-          url: documentData.url,
-          status: 'PENDING',
-          entityType: 'STUDENT',
-          createdBy: req.user.id
-        }
-      });
-
-      return createSuccessResponse(res, 201, 'Document uploaded successfully', document);
-    } catch (error) {
-      return handlePrismaError(res, error, 'uploadStudentDocument');
-    }
-  }
-
-  /**
-   * Get student financial records
-   */
-  async getStudentFinancials(req, res) {
-    try {
-      const { id } = req.params;
-      const studentId = parseInt(id);
-
-      const payments = await prisma.payment.findMany({
-        where: { studentId },
-        orderBy: { createdAt: 'desc' },
-        include: {
-          student: {
-            select: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true
-                }
-              }
-            }
-          }
-        }
-      });
-
-      const totalFees = 5000; // Placeholder - would come from fees table
-      const paidAmount = payments
-        .filter(p => p.status === 'PAID')
-        .reduce((sum, payment) => sum + payment.amount, 0);
-
-      const financials = {
-        totalFees,
-        paidAmount,
-        outstandingAmount: totalFees - paidAmount,
-        payments,
-        nextDueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      };
-
-      return createSuccessResponse(res, 200, 'Student financials retrieved successfully', financials);
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentFinancials');
-    }
-  }
-
-  /**
-   * Update student financial records
-   */
-  async updateStudentFinancials(req, res) {
-    try {
-      const { id } = req.params;
-      const studentId = parseInt(id);
-      const financialData = req.body;
-
-      // Update student's financial information
-      const student = await prisma.student.update({
-        where: { id: studentId },
-        data: {
-          financialInfo: financialData
-        }
-      });
-
-      return createSuccessResponse(res, 200, 'Student financials updated successfully', student);
-    } catch (error) {
-      return handlePrismaError(res, error, 'updateStudentFinancials');
-    }
-  }
-
-  /**
-   * Get student health records
-   */
-  async getStudentHealth(req, res) {
-    try {
-      const { id } = req.params;
-      const studentId = parseInt(id);
-
-      // Since we don't have a health table, return mock data
-      const healthRecords = [
-        {
-          id: 1,
-          studentId,
-          type: 'CHECKUP',
-          description: 'Annual physical examination',
-          severity: 'LOW',
-          date: new Date().toISOString(),
-          createdBy: req.user.id
-        },
-        {
-          id: 2,
-          studentId,
-          type: 'VACCINATION',
-          description: 'Flu shot administered',
-          severity: 'LOW',
-          date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-          createdBy: req.user.id
-        }
-      ];
-
-      return createSuccessResponse(res, 200, 'Student health records retrieved successfully', healthRecords);
-    } catch (error) {
-      return handlePrismaError(res, error, 'getStudentHealth');
-    }
-  }
-
-  /**
-   * Add student health record
-   */
-  async addStudentHealthRecord(req, res) {
-    try {
-      const { id } = req.params;
-      const studentId = parseInt(id);
-      const healthData = req.body;
-
-      // Since we don't have a health table, return mock response
-      const healthRecord = {
-        id: Date.now(),
-        studentId,
-        type: healthData.type,
-        description: healthData.description,
-        severity: healthData.severity || 'LOW',
-        date: new Date().toISOString(),
-        createdBy: req.user.id
-      };
-
-      return createSuccessResponse(res, 201, 'Health record added successfully', healthRecord);
-    } catch (error) {
-      return handlePrismaError(res, error, 'addStudentHealthRecord');
-    }
-  }
-
-  /**
-   * Get all students that were converted from customers
-   */
-  async getConvertedStudents(req, res) {
-    try {
-      const { schoolId } = req.user;
-      const { page = 1, limit = 10, search, sortBy = 'conversionDate', sortOrder = 'desc' } = req.query;
-
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-
-      const whereClause = {
-        schoolId,
-        convertedFromCustomerId: { not: null }
-      };
-
-      if (search) {
-        whereClause.OR = [
-          { user: { firstName: { contains: search, mode: 'insensitive' } } },
-          { user: { lastName: { contains: search, mode: 'insensitive' } } },
-          { user: { displayName: { contains: search, mode: 'insensitive' } } },
-          { user: { email: { contains: search, mode: 'insensitive' } } },
-          { admissionNo: { contains: search, mode: 'insensitive' } },
-          { rollNo: { contains: search, mode: 'insensitive' } }
-        ];
-      }
-
-      const [students, total] = await Promise.all([
-        prisma.student.findMany({
-          where: whereClause,
-          include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                middleName: true,
-                lastName: true,
-                displayName: true,
-                email: true,
-                phone: true
-              }
-            },
-            convertedFromCustomer: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                phone: true,
-                createdAt: true
-              }
-            },
-            events: {
-              orderBy: { createdAt: 'desc' },
-              take: 5
-            },
-            _count: {
-              select: {
-                events: true
-              }
-            }
-          },
-          orderBy: { [sortBy]: sortOrder },
-          skip,
-          take: parseInt(limit)
-        }),
-        prisma.student.count({ where: whereClause })
-      ]);
-
-      res.json({
-        success: true,
-        data: convertBigInts(students),
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / parseInt(limit))
-        }
-      });
-    } catch (error) {
-      console.error('Error fetching converted students:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch converted students',
-        error: error.message
-      });
-    }
-  }
-
-  /**
-   * Get analytics for students converted from customers
-   */
-  async getStudentConversionAnalytics(req, res) {
-    try {
-      const { schoolId } = req.user;
-      const { period = '30d' } = req.query; // 7d, 30d, 90d, 1y, all
-
-      let dateFilter = {};
-      if (period !== 'all') {
-        const days = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 365;
-        dateFilter = {
-          gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-        };
-      }
-
-      // Get conversion statistics for students
-      const [
-        totalStudents,
-        convertedStudents,
-        conversionRate,
-        recentConversions,
-        conversionByMonth,
-        averageConversionTime
-      ] = await Promise.all([
-        // Total students
-        prisma.student.count({ where: { schoolId } }),
-        
-        // Students converted from customers
-        prisma.student.count({
-          where: {
-            schoolId,
-            convertedFromCustomerId: { not: null }
-          }
-        }),
-        
-        // Conversion rate calculation
-        prisma.student.count({ where: { schoolId } }).then(total => {
-          return prisma.student.count({
-            where: {
-              schoolId,
-              convertedFromCustomerId: { not: null }
-            }
-          }).then(converted => total > 0 ? (converted / total) * 100 : 0);
-        }),
-        
-        // Recent conversions (last 30 days)
-        prisma.student.count({
-          where: {
-            schoolId,
-            convertedFromCustomerId: { not: null },
-            conversionDate: {
-              gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-            }
-          }
-        }),
-        
-        // Conversion by month (last 6 months)
-        prisma.student.groupBy({
-          by: ['conversionDate'],
-          where: {
-            schoolId,
-            convertedFromCustomerId: { not: null },
-            conversionDate: {
-              gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)
-            }
-          },
-          _count: {
-            id: true
-          }
-        }),
-        
-        // Average time from customer creation to conversion
-        prisma.student.findMany({
-          where: {
-            schoolId,
-            convertedFromCustomerId: { not: null },
-            conversionDate: dateFilter
-          },
-          include: {
-            convertedFromCustomer: {
-              select: { createdAt: true }
-            }
-          }
-        }).then(students => {
-          if (students.length === 0) return 0;
-          const totalDays = students.reduce((sum, student) => {
-            const customerCreated = new Date(student.convertedFromCustomer.createdAt);
-            const converted = new Date(student.conversionDate);
-            return sum + (converted - customerCreated) / (1000 * 60 * 60 * 24);
-          }, 0);
-          return totalDays / students.length;
-        })
-      ]);
-
-      // Get conversion events for the period
-      const conversionEvents = await prisma.studentEvent.findMany({
-        where: {
-          student: { schoolId },
-          eventType: 'CONVERTED_FROM_CUSTOMER',
-          createdAt: dateFilter
-        },
-        include: {
-          student: {
-            select: {
-              id: true,
-              user: { 
-                select: { 
-                  id: true,
-                  uuid: true,
-                  username: true,
-                  email: true,
-                  emailVerified: true,
-                  phone: true,
-                  phoneVerified: true,
-                  // password: false, // Never include password for security
-                  // salt: false, // Never include salt for security
-                  firstName: true,
-                  middleName: true,
-                  lastName: true,
-                  displayName: true,
-                  gender: true,
-                  birthDate: true,
-                  avatar: true,
-                  coverImage: true,
-                  bio: true,
-                  role: true,
-                  status: true,
-                  lastLogin: true,
-                  lastIp: true,
-                  timezone: true,
-                  locale: true,
-                  metadata: true,
-                  schoolId: true,
-                  createdByOwnerId: true,
-                  createdBy: true,
-                  updatedBy: true,
-                  createdAt: true,
-                  updatedAt: true,
-                  deletedAt: true
-                } 
-              }
-            }
-          }
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 10
-      });
-
-      res.json({
-        success: true,
-        data: convertBigInts({
-          totalStudents,
-          convertedStudents,
-          conversionRate: Math.round(conversionRate * 100) / 100,
-          recentConversions,
-          conversionByMonth,
-          averageConversionTime: Math.round(averageConversionTime * 100) / 100,
-          conversionEvents
-        })
-      });
-    } catch (error) {
-      console.error('Error fetching student conversion analytics:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch student conversion analytics',
-        error: error.message
-      });
-    }
-  }
-
-  /**
-   * Get detailed statistics about student conversions
-   */
-  async getStudentConversionStats(req, res) {
-    try {
-      const { schoolId } = req.user;
-      const { studentId } = req.params;
-
-      if (studentId) {
-        // Get stats for specific student
-        const student = await prisma.student.findFirst({
-          where: {
-            id: BigInt(studentId),
-            schoolId,
-            convertedFromCustomerId: { not: null }
-          },
-          include: {
-            convertedFromCustomer: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                phone: true,
-                createdAt: true,
-                customerEvents: {
-                  orderBy: { createdAt: 'desc' },
-                  take: 10
-                }
-              }
-            },
-            events: {
-              orderBy: { createdAt: 'desc' },
-              take: 10
-            }
-          }
-        });
-
-        if (!student) {
-          return res.status(404).json({
-            success: false,
-            message: 'Converted student not found'
-          });
-        }
-
-        const customerCreated = new Date(student.convertedFromCustomer.createdAt);
-        const converted = new Date(student.conversionDate);
-        const daysToConvert = (converted - customerCreated) / (1000 * 60 * 60 * 24);
-
-        res.json({
-          success: true,
-          data: convertBigInts({
-            student,
-            conversionStats: {
-              daysToConvert: Math.round(daysToConvert * 100) / 100,
-              customerEventsCount: student.convertedFromCustomer.customerEvents.length,
-              studentEventsCount: student.events.length
-            }
-          })
-        });
-      } else {
-        // Get overall stats
-        const [
-          totalConverted,
-          averageConversionTime,
-          conversionTrend,
-          topConvertingCustomers
-        ] = await Promise.all([
-          prisma.student.count({
-            where: {
-              schoolId,
-              convertedFromCustomerId: { not: null }
-            }
-          }),
-          
-          prisma.student.findMany({
-            where: {
-              schoolId,
-              convertedFromCustomerId: { not: null }
-            },
-            include: {
-              convertedFromCustomer: {
-                select: { createdAt: true }
-              }
-            }
-          }).then(students => {
-            if (students.length === 0) return 0;
-            const totalDays = students.reduce((sum, student) => {
-              const customerCreated = new Date(student.convertedFromCustomer.createdAt);
-              const converted = new Date(student.conversionDate);
-              return sum + (converted - customerCreated) / (1000 * 60 * 60 * 24);
-            }, 0);
-            return totalDays / students.length;
-          }),
-          
-          prisma.student.groupBy({
-            by: ['conversionDate'],
-            where: {
-              schoolId,
-              convertedFromCustomerId: { not: null },
-              conversionDate: {
-                gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
-              }
-            },
-            _count: { id: true }
-          }),
-          
-          prisma.customer.findMany({
-            where: {
-              schoolId,
-              convertedStudents: { some: {} }
-            },
-            include: {
-              _count: {
-                select: { convertedStudents: true }
-              }
-            },
-            orderBy: {
-              convertedStudents: { _count: 'desc' }
-            },
-            take: 10
-          })
-        ]);
-
-        res.json({
-          success: true,
-          data: convertBigInts({
-            totalConverted,
-            averageConversionTime: Math.round(averageConversionTime * 100) / 100,
-            conversionTrend,
-            topConvertingCustomers
-          })
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching student conversion stats:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to fetch student conversion stats',
-        error: error.message
-      });
-    }
-  }
-}
-
-export default new StudentController(); 
+};
+
+export default {
+  triggerEntityCreatedNotifications,
+  triggerEntityUpdatedNotifications,
+  triggerEntityDeletedNotifications,
+  triggerBulkOperationNotifications,
+  triggerStatusChangeNotifications,
+  triggerPaymentNotifications,
+  triggerExamNotifications,
+  getUserIdsByRoles
+};
