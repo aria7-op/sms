@@ -144,6 +144,15 @@ class StudentController {
         }
       };
       
+      // Convert date strings to Date objects for Prisma
+      const processedStudentData = {
+        ...studentDataWithoutRelations,
+        // Convert admissionDate to Date object if it exists
+        ...(studentDataWithoutRelations.admissionDate && {
+          admissionDate: new Date(studentDataWithoutRelations.admissionDate)
+        })
+      };
+      
       // Check if parent data is provided
       let parentId = null;
       if (studentData.parent && studentData.parent.user) {
@@ -163,7 +172,7 @@ class StudentController {
       // Create student with user and parent connection
       const student = await prisma.student.create({
         data: {
-          ...studentDataWithoutRelations,
+          ...processedStudentData,
           admissionNo: studentCode,
           createdBy: req.user.id,
           school: {
@@ -187,8 +196,8 @@ class StudentController {
               // Generate username from email or firstName
               username: studentData.user.email.split('@')[0] || 
                        `${studentData.user.firstName.toLowerCase()}${Date.now()}`,
-              // Map dateOfBirth to birthDate for User model
-              birthDate: dateOfBirth,
+              // Map dateOfBirth to birthDate for User model and convert to Date
+              ...(dateOfBirth && { birthDate: new Date(dateOfBirth) }),
               // Store address in metadata
               metadata: userMetadata,
               role: 'STUDENT',
