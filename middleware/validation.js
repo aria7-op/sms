@@ -1110,11 +1110,18 @@ export const sanitizeObject = (obj) => {
     return obj.map(item => sanitizeObject(item));
   }
   
+  console.log('🔍 SANITIZE: Processing object with keys:', Object.keys(obj));
+  if (obj.parent) {
+    console.log('🔍 SANITIZE: Found parent data:', JSON.stringify(obj.parent, null, 2));
+  }
+  
   const sanitized = {};
   for (const [key, value] of Object.entries(obj)) {
+    console.log(`🔍 SANITIZE: Processing key: ${key}, value type: ${typeof value}`);
     sanitized[key] = sanitizeObject(value);
   }
   
+  console.log('🔍 SANITIZE: Final sanitized object keys:', Object.keys(sanitized));
   return sanitized;
 };
 
