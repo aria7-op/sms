@@ -301,7 +301,8 @@ class StudentController {
               role: 'STUDENT',
               schoolId,
               createdBy: req.user.id,
-              createdByOwnerId: studentOwnerId // Use the correct owner ID
+              createdByOwnerId: studentOwnerId, // Use the correct owner ID
+              password: 'temp_password_123' // Temporary password for student users
             }
           }
         },
