@@ -3361,8 +3361,7 @@ export const getConversionAnalytics = async (req, res) => {
         customer: {
           select: {
             id: true,
-            name: true,
-            email: true
+            name: true
           }
         }
       },
@@ -3422,7 +3421,6 @@ export const getConversionHistory = async (req, res) => {
             select: {
               id: true,
               name: true,
-              email: true,
               phone: true,
               createdAt: true
             }
