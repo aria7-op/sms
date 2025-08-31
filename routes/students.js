@@ -159,7 +159,7 @@ router.post('/',
   authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['student:create']),
   studentCreateLimiter,
-  // validateBody(StudentCreateSchema), // TEMPORARILY REMOVED TO DEBUG PARENT DATA LOSS
+  // validateBody(StudentCreateSchema), // TEMPORARILY DISABLED TO DEBUG USER DATA ISSUE
   auditLog('CREATE', 'Student'),
   studentController.createStudent.bind(studentController)
 );
