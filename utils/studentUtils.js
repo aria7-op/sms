@@ -375,8 +375,7 @@ export const buildStudentIncludeQuery = (include = []) => {
         id: true,
         uuid: true,
         username: true,
-        email: true,
-        emailVerified: true,
+
         phone: true,
         phoneVerified: true,
         // password: false, // Never include password for security
@@ -427,8 +426,7 @@ export const buildStudentIncludeQuery = (include = []) => {
             id: true,
             uuid: true,
             username: true,
-            email: true,
-            emailVerified: true,
+
             phone: true,
             phoneVerified: true,
             // password: false, // Never include password for security
@@ -775,7 +773,7 @@ export const generateStudentExportData = async (students, format = 'json') => {
     if (format === 'csv') {
       // Generate CSV format
       const headers = [
-        'ID', 'Admission No', 'Roll No', 'First Name', 'Last Name', 'Email',
+        'ID', 'Admission No', 'Roll No', 'First Name', 'Last Name',
         'Phone', 'Class', 'Section', 'Parent', 'Blood Group', 'Nationality',
         'Religion', 'Admission Date', 'Status', 'Created At'
       ];
@@ -786,7 +784,6 @@ export const generateStudentExportData = async (students, format = 'json') => {
         student.rollNo || '',
         student.user.firstName,
         student.user.lastName,
-        student.user.email,
         student.user.phone || '',
         student.class ? student.class.name : '',
         student.section ? student.section.name : '',
@@ -809,7 +806,6 @@ export const generateStudentExportData = async (students, format = 'json') => {
         user: {
           firstName: student.user.firstName,
           lastName: student.user.lastName,
-          email: student.user.email,
           phone: student.user.phone,
           status: student.user.status
         },
@@ -824,8 +820,7 @@ export const generateStudentExportData = async (students, format = 'json') => {
         } : null,
         parent: student.parent ? {
           id: student.parent.id,
-          name: `${student.parent.user.firstName} ${student.parent.user.lastName}`,
-          email: student.parent.user.email
+          name: `${student.parent.user.firstName} ${student.parent.user.lastName}`
         } : null,
         bloodGroup: student.bloodGroup,
         nationality: student.nationality,
@@ -858,16 +853,8 @@ export const validateStudentImportData = (students) => {
     if (!student.user?.lastName) {
       studentErrors.push('Last name is required');
     }
-    if (!student.user?.email) {
-      studentErrors.push('Email is required');
-    }
     if (!student.schoolId) {
       studentErrors.push('School ID is required');
-    }
-
-    // Validate email format
-    if (student.user?.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(student.user.email)) {
-      studentErrors.push('Invalid email format');
     }
 
     // Validate phone format
