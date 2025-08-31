@@ -296,8 +296,8 @@ class StudentController {
       );
 
       return createSuccessResponse(res, 201, 'Student created successfully', {
-        student,
-        event
+        student: convertBigInts(student),
+        event: convertBigInts(event)
       });
     } catch (error) {
       return handlePrismaError(res, error, 'createStudent');
