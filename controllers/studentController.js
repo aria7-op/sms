@@ -143,25 +143,6 @@ class StudentController {
           postalCode
         }
       };
-
-      // EVENT-FIRST WORKFLOW: Log event before creating student
-      const studentEventService = new StudentEventService();
-      const eventData = {
-        studentData: studentDataWithoutRelations,
-        userData: userDataWithoutAddress,
-        studentCode,
-        classId,
-        schoolId,
-        createdBy: req.user.id,
-        userMetadata
-      };
-      
-      // Log the student creation event FIRST
-      const event = await studentEventService.createStudentEnrollmentEvent(
-        eventData,
-        req.user.id,
-        schoolId
-      );
       
       // Check if parent data is provided
       let parentId = null;
@@ -264,16 +245,14 @@ class StudentController {
           }
         }
       });
-
-      // Update the event with the student ID
-      // Note: Event update not available in current StudentEventService
-      // await prisma.studentEvent.update({
-      //   where: { id: event.id },
-      //   data: { 
-      //     studentId: student.id,
-      //     metadata: { ...event.metadata, studentId: student.id.toString() }
-      //   }
-      // });
+      
+      // Create student enrollment event after student is created
+      const studentEventService = new StudentEventService();
+      const event = await studentEventService.createStudentEnrollmentEvent(
+        student,
+        req.user.id,
+        schoolId
+      );
 
       // Invalidate cache
       await invalidateStudentCacheOnCreate(student);
