@@ -2,6 +2,10 @@ import express from 'express';
 import parentController from '../controllers/parentController.js';
 import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 
+// Debug: Check if parentController is imported correctly
+console.log('parentController imported:', parentController);
+console.log('parentController type:', typeof parentController);
+
 const router = express.Router();
 
 // ============================================================================
