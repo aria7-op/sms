@@ -123,10 +123,11 @@ class ParentService {
           phone: parentData.user.phone,
           gender: parentData.user.gender,
           username: parentUsername,
+          password: 'Parent@123', // Default password that can be changed later
           role: 'PARENT',
           schoolId: BigInt(schoolId),
           createdBy: BigInt(userId),
-          createdByOwnerId: BigInt(userId)
+          createdByOwnerId: BigInt(userId) // userId should be the owner ID
         };
         
         // Add optional fields if they exist
