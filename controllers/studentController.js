@@ -1,9 +1,13 @@
-import { PrismaClient } from '../generated/prisma/index.js';
-import { createSuccessResponse, createErrorResponse, handlePrismaError } from '../utils/responseUtils.js';
-import { validateSchoolAccess, validateClassAccess } from '../middleware/validation.js';
+import { PrismaClient } from '../generated/prisma/client.js';
+import { 
+  handlePrismaError, 
+  createSuccessResponse, 
+  createErrorResponse 
+} from '../utils/responseUtils.js';
 import { 
   generateStudentCode, 
   validateStudentConstraints, 
+  buildStudentSearchQuery, 
   buildStudentIncludeQuery,
   generateStudentStats,
   generateStudentAnalytics,
@@ -15,23 +19,39 @@ import {
   getStudentCountByStatus
 } from '../utils/studentUtils.js';
 import { 
-  invalidateStudentCacheOnCreate,
-  getStudentStatsFromCache,
+  setStudentInCache, 
+  getStudentFromCache, 
+  setStudentListInCache, 
+  getStudentListFromCache,
+  setStudentSearchInCache,
+  getStudentSearchFromCache,
   setStudentStatsInCache,
-  getStudentAnalyticsFromCache,
+  getStudentStatsFromCache,
   setStudentAnalyticsInCache,
-  getStudentPerformanceFromCache,
+  getStudentAnalyticsFromCache,
   setStudentPerformanceInCache,
+  getStudentPerformanceFromCache,
+  invalidateStudentCacheOnCreate,
   invalidateStudentCacheOnUpdate,
   invalidateStudentCacheOnDelete,
   invalidateStudentCacheOnBulkOperation,
   getStudentCacheStats,
   warmStudentCache
 } from '../cache/studentCache.js';
-import { createAuditLog } from '../middleware/audit.js';
-import { triggerEntityCreatedNotifications, triggerEntityUpdatedNotifications } from '../utils/notificationTriggers.js';
-import { StudentEventService } from '../services/studentEventService.js';
-import parentService from '../services/parentService.js';
+import { 
+  createAuditLog, 
+  createNotification,
+  triggerEntityCreatedNotification,
+  triggerEntityUpdatedNotification
+} from '../services/notificationService.js';
+import { 
+  triggerEntityCreatedNotifications
+} from '../utils/notificationTriggers.js';
+import { 
+  validateSchoolAccess, 
+  validateClassAccess 
+} from '../middleware/validation.js';
+import StudentEventService from '../services/studentEventService.js';
 
 const prisma = new PrismaClient();
 
@@ -105,8 +125,8 @@ class StudentController {
       // Validate student constraints
       await validateStudentConstraints(schoolId, studentCode, classId);
 
-      // Remove relation fields from studentData to avoid Prisma validation error
-      const { classId: _, schoolId: __, parentId: ___, sectionId: ____, ...studentDataWithoutRelations } = studentData;
+      // Remove classId and schoolId from studentData to avoid Prisma validation error
+      const { classId: _, schoolId: __, ...studentDataWithoutRelations } = studentData;
       
       // Remove dateOfBirth from user data and map to birthDate
       const { dateOfBirth, ...userDataWithoutDateOfBirth } = studentData.user;
@@ -114,7 +134,7 @@ class StudentController {
       // Extract address fields and move to metadata
       const { address, city, state, country, postalCode, ...userDataWithoutAddress } = userDataWithoutDateOfBirth;
       
-      // Create metadata object with address information and convert to JSON string
+      // Create metadata object with address information
       const userMetadata = {
         address: {
           street: address,
@@ -124,86 +144,30 @@ class StudentController {
           postalCode
         }
       };
+
+      // EVENT-FIRST WORKFLOW: Log event before creating student
+      const studentEventService = new StudentEventService();
+      const eventData = {
+        studentData: studentDataWithoutRelations,
+        userData: userDataWithoutAddress,
+        studentCode,
+        classId,
+        schoolId,
+        createdBy: req.user.id,
+        userMetadata
+      };
       
-      // Convert metadata object to JSON string since the database expects a string
-      const userMetadataString = JSON.stringify(userMetadata);
-
-      // Filter out invalid fields and only use valid Student model fields
-      const validStudentFields = [
-        'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality',
-        'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode',
-        'previousSchool', 'conversionDate', 'convertedFromCustomerId'
-      ];
-
-      const filteredStudentData = {};
-      for (const key of Object.keys(studentDataWithoutRelations)) {
-        if (validStudentFields.includes(key)) {
-          // Handle special field type conversions
-          if (key === 'admissionDate' && studentDataWithoutRelations[key] === '') {
-            // Skip empty date strings
-            continue;
-          } else if (key === 'admissionDate' && studentDataWithoutRelations[key]) {
-            // Convert valid date strings to Date objects
-            filteredStudentData[key] = new Date(studentDataWithoutRelations[key]);
-          } else {
-            filteredStudentData[key] = studentDataWithoutRelations[key];
-          }
-        }
-      }
-
-      // Use transaction to create parent (if provided) and student together
-      const result = await prisma.$transaction(async (tx) => {
-        let parentId = null;
-
-        // If parent data is provided, create parent with user first
-        if (studentData.parent && studentData.parent.user) {
-          const parentUserData = studentData.parent.user;
-          const parentSpecificData = studentData.parent;
-
-          // Generate username for parent
-          const parentUsername = parentUserData.email.split('@')[0] || 
-                                `${parentUserData.firstName.toLowerCase()}${Date.now()}`;
-
-          // Create parent user
-          const parentUser = await tx.user.create({
-            data: {
-              ...parentUserData,
-              username: parentUsername,
-              role: 'PARENT',
-              schoolId: BigInt(schoolId),
-              createdBy: req.user.id,
-              createdByOwnerId: req.user.id,
-              // Handle address fields for parent
-              metadata: JSON.stringify({
-                address: {
-                  street: parentUserData.address || '',
-                  city: parentUserData.city || '',
-                  state: parentUserData.state || '',
-                  country: parentUserData.country || '',
-                  postalCode: parentUserData.postalCode || ''
-                }
-              })
-            }
-          });
-
-          // Create parent record
-          const parent = await tx.parent.create({
-            data: {
-              userId: parentUser.id,
-              occupation: parentSpecificData.occupation || null,
-              annualIncome: parentSpecificData.annualIncome ? parseFloat(parentSpecificData.annualIncome) : null,
-              education: parentSpecificData.education || null,
-              schoolId: BigInt(schoolId),
-              createdBy: BigInt(req.user.id)
-            }
-          });
-
-          parentId = parent.id;
-        }
-
-        // Log the final data being sent to Prisma
-        const finalStudentData = {
-          ...filteredStudentData,
+      // Log the student creation event FIRST
+      const event = await studentEventService.createStudentCreationEvent(
+        eventData,
+        req.user.id,
+        schoolId
+      );
+      
+      // Create student with user
+      const student = await prisma.student.create({
+        data: {
+          ...studentDataWithoutRelations,
           admissionNo: studentCode,
           createdBy: req.user.id,
           school: {
@@ -215,159 +179,96 @@ class StudentController {
               connect: { id: BigInt(classId) }
             }
           }),
-          // Handle section relation if sectionId is provided
-          ...(studentData.sectionId && {
-            section: {
-              connect: { id: BigInt(studentData.sectionId) }
+          user: {
+            create: {
+              ...userDataWithoutAddress,
+              // Generate username from email or firstName
+              username: studentData.user.email.split('@')[0] || 
+                       `${studentData.user.firstName.toLowerCase()}${Date.now()}`,
+              // Map dateOfBirth to birthDate for User model
+              birthDate: dateOfBirth,
+              // Store address in metadata
+              metadata: userMetadata,
+              role: 'STUDENT',
+              schoolId,
+              createdBy: req.user.id,
+              createdByOwnerId: req.user.id // For owner-created users
             }
-          }),
-          // Handle parent relation if parent was created or parentId was provided
-          ...(parentId && {
-            parent: {
-              connect: { id: parentId }
-            }
-          }),
-          ...(studentData.parentId && !parentId && {
-            parent: {
-              connect: { id: BigInt(studentData.parentId) }
-            }
-          }),
-        };
-
-        console.log('Final student data for Prisma:', JSON.stringify(finalStudentData, (key, value) => {
-          if (typeof value === 'bigint') {
-            return value.toString();
           }
-          return value;
-        }, 2));
-
-        // Create student with user
-        const student = await tx.student.create({
-          data: {
-            ...finalStudentData,
-            user: {
-              create: {
-                ...userDataWithoutAddress,
-                // Generate username from email or firstName
-                username: studentData.user.email.split('@')[0] || 
-                         `${studentData.user.firstName.toLowerCase()}${Date.now()}`,
-                // Map dateOfBirth to birthDate for User model
-                birthDate: dateOfBirth,
-                // Store address in metadata as JSON string
-                metadata: userMetadataString,
-                role: 'STUDENT',
-                schoolId,
-                createdBy: req.user.id,
-                createdByOwnerId: req.user.id // For owner-created users
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              uuid: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+              status: true,
+              createdAt: true
+            }
+          },
+          class: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          },
+          section: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          parent: {
+            select: {
+              id: true,
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true
+                }
               }
             }
           },
-          include: {
-            user: {
-              select: {
-                id: true,
-                uuid: true,
-                username: true,
-                email: true,
-                emailVerified: true,
-                phone: true,
-                phoneVerified: true,
-                // password: false, // Never include password for security
-                // salt: false, // Never include salt for security
-                firstName: true,
-                middleName: true,
-                lastName: true,
-                displayName: true,
-                gender: true,
-                birthDate: true,
-                avatar: true,
-                coverImage: true,
-                bio: true,
-                role: true,
-                status: true,
-                lastLogin: true,
-                lastIp: true,
-                timezone: true,
-                locale: true,
-                metadata: true,
-                schoolId: true,
-                createdByOwnerId: true,
-                createdBy: true,
-                updatedBy: true,
-                createdAt: true,
-                updatedAt: true,
-                deletedAt: true
-              }
-            },
-            class: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            },
-            section: {
-              select: {
-                id: true,
-                name: true
-              }
-            },
-            parent: {
-              select: {
-                id: true,
-                user: {
-                  select: {
-                    firstName: true,
-                    lastName: true,
-                    email: true
-                  }
-                }
-              }
-            },
-            school: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
+          school: {
+            select: {
+              id: true,
+              name: true,
+              code: true
             }
           }
-        });
-
-        return { student, parentId };
+        }
       });
 
-      const { student } = result;
-
-      // Log the student creation event AFTER student is created
-      const studentEventService = new StudentEventService();
-      try {
-        await studentEventService.createStudentEnrollmentEvent(
-          student,
-          req.user.id,
-          schoolId
-        );
-      } catch (eventError) {
-        // Log event error but don't fail the student creation
-        console.error('Failed to log student creation event:', eventError);
-      }
+      // Update the event with the student ID
+      await prisma.studentEvent.update({
+        where: { id: event.id },
+        data: { 
+          studentId: student.id,
+          metadata: { ...event.metadata, studentId: student.id.toString() }
+        }
+      });
 
       // Invalidate cache
       await invalidateStudentCacheOnCreate(student);
 
       // Create audit log
-      await createAuditLog(
-        req,
-        'CREATE',
-        'Student',
-        {
-          data: {
-            studentId: student.id,
-            admissionNo: student.admissionNo,
-            classId: student.classId
-          }
+      await createAuditLog({
+        action: 'CREATE',
+        entity: 'Student',
+        entityId: student.id,
+        userId: req.user.id,
+        schoolId,
+        details: {
+          studentId: student.id,
+          admissionNo: student.admissionNo,
+          classId: student.classId
         }
-      );
+      });
 
       // Trigger automatic notification for student creation
       await triggerEntityCreatedNotifications(
@@ -385,7 +286,8 @@ class StudentController {
       );
 
       return createSuccessResponse(res, 201, 'Student created successfully', {
-        student
+        student,
+        event
       });
     } catch (error) {
       return handlePrismaError(res, error, 'createStudent');
@@ -396,32 +298,32 @@ class StudentController {
    * Get students with pagination and filters
    */
   async getStudents(req, res) {
-    // console.log('=== getStudents START ===');
-    // console.log('Query:', req.query);
-    // console.log('User:', req.user);
+    console.log('=== getStudents START ===');
+    console.log('Query:', req.query);
+    console.log('User:', req.user);
     
     try {
-      // console.log('Step 1: Determining user type and schoolId...');
+      console.log('Step 1: Determining user type and schoolId...');
       // Handle different user types
       let schoolId;
       if (req.user.type === 'owner' || req.user.role === 'SUPER_ADMIN') {
         // Owner can access all schools or specific school
         schoolId = req.query.schoolId || req.user.schoolId;
-        // console.log('Owner accessing students for schoolId:', schoolId);
+        console.log('Owner accessing students for schoolId:', schoolId);
       } else {
         // Regular user can only access their school
         schoolId = req.user.schoolId;
-        // console.log('Regular user accessing students for schoolId:', schoolId);
+        console.log('Regular user accessing students for schoolId:', schoolId);
       }
 
-      // console.log('Step 2: Validating schoolId...');
+      console.log('Step 2: Validating schoolId...');
       if (!schoolId) {
-        // console.log('ERROR: No schoolId found');
+        console.log('ERROR: No schoolId found');
         return createErrorResponse(res, 400, 'School ID is required');
       }
-      // console.log('SchoolId validated:', schoolId);
+      console.log('SchoolId validated:', schoolId);
 
-      // console.log('Step 3: Extracting query parameters...');
+      console.log('Step 3: Extracting query parameters...');
       const { 
         page = 1, 
         limit = 10, 
@@ -433,33 +335,13 @@ class StudentController {
         sortBy = 'createdAt',
         sortOrder = 'desc'
       } = req.query;
-      
-      // Check if limit was explicitly provided in the request
-      const hasExplicitLimit = req.query.hasOwnProperty('limit');
-      const requestHost = req.get('host') || req.get('x-forwarded-host') || '';
-      
-      // Return all students if:
-      // 1. Request from specific domains AND no explicit limit provided, OR
-      // 2. Explicit limit is 'all'/'unlimited', OR  
-      // 3. Explicit limit is very large number
-      const shouldReturnAll = (!hasExplicitLimit && (requestHost.includes('khwanzay.school') || requestHost.includes('localhost:8081'))) ||
-                             limit === 'all' || 
-                             limit === 'unlimited' ||
-                             parseInt(limit) > 10000;
-      
-      // console.log('Query parameters extracted:', { page, limit, search, classId, sectionId, status, include, sortBy, sortOrder });
-      // console.log('Request analysis:', { 
-      //   requestHost, 
-      //   hasExplicitLimit, 
-      //   limitValue: limit,
-      //   shouldReturnAll 
-      // });
+      console.log('Query parameters extracted:', { page, limit, search, classId, sectionId, status, include, sortBy, sortOrder });
 
-      // console.log('Step 4: Building include query...');
+      console.log('Step 4: Building include query...');
       const includeQuery = buildStudentIncludeQuery(include);
-      // console.log('Include query built:', includeQuery);
+      console.log('Include query built:', includeQuery);
 
-      // console.log('Step 5: Building search query...');
+      console.log('Step 5: Building search query...');
       const searchQuery = buildStudentSearchQuery({
         search,
         classId,
@@ -467,9 +349,9 @@ class StudentController {
         status,
         schoolId
       });
-      // console.log('Search query built:', searchQuery);
+      console.log('Search query built:', searchQuery);
 
-      // console.log('Step 6: Preparing final query...');
+      console.log('Step 6: Preparing final query...');
       const finalQuery = {
         where: {
           ...searchQuery,
@@ -477,16 +359,10 @@ class StudentController {
           deletedAt: null
         },
         include: includeQuery,
-        orderBy: { [sortBy]: sortOrder }
+        orderBy: { [sortBy]: sortOrder },
+        skip: (parseInt(page) - 1) * parseInt(limit),
+        take: parseInt(limit)
       };
-      
-      // Only add pagination if not returning all students
-      if (!shouldReturnAll) {
-        finalQuery.skip = (parseInt(page) - 1) * parseInt(limit);
-        finalQuery.take = parseInt(limit);
-      } else {
-        // console.log('Returning ALL students - pagination disabled');
-      }
       
       // Convert BigInt values to strings for logging
       const logQuery = JSON.parse(JSON.stringify(finalQuery, (key, value) => {
@@ -495,28 +371,14 @@ class StudentController {
         }
         return value;
       }));
-      // console.log('Final query prepared:', JSON.stringify(logQuery, null, 2));
+      console.log('Final query prepared:', JSON.stringify(logQuery, null, 2));
 
-      // console.log('Step 7: Executing Prisma query...');
+      console.log('Step 7: Executing Prisma query...');
       const students = await prisma.student.findMany(finalQuery);
 
-      // console.log('Step 8: Query completed. Found students:', students.length);
-      // console.log('=== getStudents END ===');
-      
-      const message = shouldReturnAll ? 
-        `All ${students.length} students fetched successfully (no pagination)` : 
-        `Students fetched successfully (page ${page}, showing ${students.length} students)`;
-        
-      return createSuccessResponse(res, 200, message, students, {
-        totalCount: students.length,
-        returnedAll: shouldReturnAll,
-        pagination: shouldReturnAll ? null : {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          returned: students.length,
-          hasExplicitLimit: hasExplicitLimit
-        }
-      });
+      console.log('Step 8: Query completed. Found students:', students.length);
+      console.log('=== getStudents END ===');
+      return createSuccessResponse(res, 200, 'Students fetched successfully', students);
     } catch (error) {
       console.error('=== getStudents ERROR ===', error);
       return handlePrismaError(res, error, 'getStudents');
@@ -591,174 +453,29 @@ class StudentController {
         await validateClassAccess(req.user, updateData.classId, req.user.schoolId);
       }
 
-      // Clean and validate update data
-      const cleanedUpdateData = { ...updateData };
-      
-      // Remove relation fields that should be handled separately
-      const { classId, sectionId, parentId, user, ...cleanedUpdateDataWithoutRelations } = cleanedUpdateData;
-      
-      // Filter to only include valid student fields
-      const validStudentFields = [
-        'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality',
-        'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode',
-        'previousSchool', 'conversionDate', 'convertedFromCustomerId'
-      ];
-
-      const filteredUpdateData = {};
-      for (const key of Object.keys(cleanedUpdateDataWithoutRelations)) {
-        if (validStudentFields.includes(key)) {
-          filteredUpdateData[key] = cleanedUpdateDataWithoutRelations[key];
-        }
-      }
-      
-      // Handle empty date strings - convert to null or valid dates
-      if (filteredUpdateData.admissionDate === '' || filteredUpdateData.admissionDate === null || filteredUpdateData.admissionDate === undefined) {
-        filteredUpdateData.admissionDate = null;
-      } else if (filteredUpdateData.admissionDate && typeof filteredUpdateData.admissionDate === 'string') {
-        try {
-          const parsedDate = new Date(filteredUpdateData.admissionDate);
-          if (isNaN(parsedDate.getTime())) {
-            filteredUpdateData.admissionDate = null;
-          } else {
-            filteredUpdateData.admissionDate = parsedDate;
-          }
-        } catch (dateError) {
-          console.warn('Invalid admissionDate, setting to null:', filteredUpdateData.admissionDate);
-          filteredUpdateData.admissionDate = null;
-        }
-      }
-
-      // Handle other empty strings that should be null
-      const fieldsToClean = ['previousSchool', 'bloodGroup', 'rollNo'];
-      fieldsToClean.forEach(field => {
-        if (filteredUpdateData[field] === '') {
-          filteredUpdateData[field] = null;
-        }
-      });
-
-      // Convert BigInt values to proper types
-      if (filteredUpdateData.updatedBy && typeof filteredUpdateData.updatedBy === 'bigint') {
-        filteredUpdateData.updatedBy = filteredUpdateData.updatedBy.toString();
-      }
-
-      // Handle user data separately - don't include it in student update
-      let userUpdateData = null;
-      if (cleanedUpdateDataWithoutRelations.user) {
-        userUpdateData = cleanedUpdateDataWithoutRelations.user;
-        delete cleanedUpdateDataWithoutRelations.user; // Remove user data from student update
-      }
-
-      console.log('Cleaned update data:', filteredUpdateData);
-      console.log('User update data:', userUpdateData);
-      console.log('Original update data:', updateData);
-
       // EVENT-FIRST WORKFLOW: Log event before updating student
-      let event = null;
-      try {
-        const studentEventService = new StudentEventService();
-        console.log('StudentEventService instantiated:', typeof studentEventService);
-        console.log('Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(studentEventService)));
-        
-        const eventData = {
-          studentId: existingStudent.id,
-          updateData: filteredUpdateData,
-          previousData: existingStudent,
-          updatedBy: req.user.id,
-          schoolId: req.user.schoolId
-        };
-        
-        // Check if the method exists
-        if (typeof studentEventService.createStudentUpdateEvent === 'function') {
-          // Log the student update event FIRST
-          event = await studentEventService.createStudentUpdateEvent(
-            eventData,
-            req.user.id,
-            req.user.schoolId
-          );
-        } else {
-          console.error('createStudentUpdateEvent method not found on service');
-          // Create a basic event record directly
-          event = await prisma.studentEvent.create({
-            data: {
-              studentId: existingStudent.id,
-              eventType: 'STUDENT_UPDATED',
-              title: 'Student Information Updated',
-              description: 'Student information has been updated',
-              metadata: JSON.stringify({
-                updatedFields: Object.keys(filteredUpdateData),
-                previousData: existingStudent,
-                updatedBy: req.user.id,
-                schoolId: req.user.schoolId,
-                updateTimestamp: new Date().toISOString()
-              }, (key, value) => {
-                if (typeof value === 'bigint') {
-                  return value.toString();
-                }
-                return value;
-              }),
-              createdBy: req.user.id,
-              schoolId: req.user.schoolId,
-              severity: 'INFO'
-            }
-          });
-        }
-      } catch (eventError) {
-        console.error('Error creating student update event:', eventError);
-        // Create a fallback event record
-        try {
-          event = await prisma.studentEvent.create({
-            data: {
-              studentId: existingStudent.id,
-              eventType: 'STUDENT_UPDATED',
-              title: 'Student Information Updated',
-              description: 'Student information has been updated',
-              metadata: JSON.stringify({
-                updatedFields: Object.keys(filteredUpdateData),
-                previousData: existingStudent,
-                updatedBy: req.user.id,
-                schoolId: req.user.schoolId,
-                updateTimestamp: new Date().toISOString()
-              }, (key, value) => {
-                if (typeof value === 'bigint') {
-                  return value.toString();
-                }
-                return value;
-              }),
-              createdBy: req.user.id,
-              schoolId: req.user.schoolId,
-              severity: 'INFO'
-            }
-          });
-        } catch (fallbackError) {
-          console.error('Failed to create fallback event:', fallbackError);
-          // Continue without event if both fail
-        }
-      }
+      const studentEventService = new StudentEventService();
+      const eventData = {
+        studentId: existingStudent.id,
+        updateData,
+        previousData: existingStudent,
+        updatedBy: req.user.id,
+        schoolId: req.user.schoolId
+      };
+      
+      // Log the student update event FIRST
+      const event = await studentEventService.createStudentUpdateEvent(
+        eventData,
+        req.user.id,
+        req.user.schoolId
+      );
 
       // Update student
       const updatedStudent = await prisma.student.update({
         where: { id: parseInt(id) },
         data: {
-          ...filteredUpdateData,
-          updatedBy: req.user.id,
-          // Handle class relation if classId is provided
-          ...(classId && {
-            class: {
-              connect: { id: BigInt(classId) }
-            }
-          }),
-          // Handle section relation if sectionId is provided
-          ...(sectionId && {
-            section: {
-              connect: { id: BigInt(sectionId) }
-            }
-          }),
-          // Handle parent relation if parentId is provided
-          ...(parentId && {
-            parent: {
-              connect: { id: BigInt(parentId) }
-            }
-          })
+          ...updateData,
+          updatedBy: req.user.id
         },
         include: {
           user: {
@@ -800,73 +517,49 @@ class StudentController {
         }
       });
 
-      // Update user data if provided
-      if (userUpdateData && updatedStudent.userId) {
-        try {
-          await prisma.user.update({
-            where: { id: updatedStudent.userId },
-            data: userUpdateData
-          });
-          console.log('User data updated successfully');
-        } catch (userUpdateError) {
-          console.error('Failed to update user data:', userUpdateError);
-          // Continue without user update if it fails
-        }
-      }
-
       // Update the event with the final student data
-      if (event && event.id) {
-        try {
-          await prisma.studentEvent.update({
-            where: { id: event.id },
-            data: { 
-              metadata: JSON.stringify({
-                ...JSON.parse(event.metadata || '{}'),
-                updatedStudentData: updatedStudent,
-                updatedFields: Object.keys(filteredUpdateData)
-              }, (key, value) => {
-                if (typeof value === 'bigint') {
-                  return value.toString();
-                }
-                return value;
-              })
-            }
-          });
-        } catch (updateEventError) {
-          console.error('Failed to update event with final data:', updateEventError);
-          // Continue without updating the event
+      await prisma.studentEvent.update({
+        where: { id: event.id },
+        data: { 
+          metadata: { 
+            ...event.metadata, 
+            updatedStudentData: updatedStudent,
+            updatedFields: Object.keys(updateData)
+          }
         }
-      }
+      });
 
       // Invalidate cache
       await invalidateStudentCacheOnUpdate(updatedStudent, existingStudent);
 
       // Create audit log
-      await createAuditLog(
-        req,
-        'UPDATE',
-        'Student',
-        {
-          data: {
-            studentId: updatedStudent.id,
-            updatedFields: Object.keys(filteredUpdateData)
-          }
+      await createAuditLog({
+        action: 'UPDATE',
+        entity: 'Student',
+        entityId: updatedStudent.id,
+        userId: req.user.id,
+        schoolId: req.user.schoolId,
+        details: {
+          studentId: updatedStudent.id,
+          updatedFields: Object.keys(updateData)
         }
-      );
+      });
 
       // Trigger automatic notification for student update
-      await triggerEntityUpdatedNotifications(
+      await triggerEntityUpdatedNotification(
         'student',
         updatedStudent.id,
-        updatedStudent,
-        existingStudent,
-        req.user,
         {
-          auditDetails: {
-            studentId: updatedStudent.id.toString(),
-            updatedFields: Object.keys(filteredUpdateData)
-          }
-        }
+          ...updatedStudent,
+          entityType: 'student',
+          entityId: updatedStudent.id,
+          schoolId: updatedStudent.schoolId,
+          updatedBy: req.user.id,
+          previousData: existingStudent
+        },
+        req.user.id,
+        req.user.schoolId,
+        req.user.createdByOwnerId
       );
 
       return createSuccessResponse(res, 200, 'Student updated successfully', {
@@ -924,11 +617,14 @@ class StudentController {
       });
 
       // Update the event with deletion confirmation
-      await studentEventService.studentEventModel.update(event.id, {
-        metadata: { 
-          ...event.metadata, 
-          deletionConfirmed: true,
-          deletedAt: new Date()
+      await prisma.studentEvent.update({
+        where: { id: event.id },
+        data: { 
+          metadata: { 
+            ...event.metadata, 
+            deletionConfirmed: true,
+            deletedAt: new Date()
+          }
         }
       });
 
@@ -936,17 +632,17 @@ class StudentController {
       await invalidateStudentCacheOnDelete(existingStudent);
 
       // Create audit log
-      await createAuditLog(
-        req,
-        'DELETE',
-        'Student',
-        {
-          data: {
-            studentId: existingStudent.id,
-            admissionNo: existingStudent.admissionNo
-          }
+      await createAuditLog({
+        action: 'DELETE',
+        entity: 'Student',
+        entityId: existingStudent.id,
+        userId: req.user.id,
+        schoolId: req.user.schoolId,
+        details: {
+          studentId: existingStudent.id,
+          admissionNo: existingStudent.admissionNo
         }
-      );
+      });
 
       return createSuccessResponse(res, 200, 'Student deleted successfully', {
         student: deletedStudent,
@@ -989,17 +685,17 @@ class StudentController {
       await invalidateStudentCacheOnCreate(restoredStudent);
 
       // Create audit log
-      await createAuditLog(
-        req,
-        'RESTORE',
-        'Student',
-        {
-          data: {
-            studentId: restoredStudent.id,
-            admissionNo: restoredStudent.admissionNo
-          }
+      await createAuditLog({
+        action: 'RESTORE',
+        entity: 'Student',
+        entityId: restoredStudent.id,
+        userId: req.user.id,
+        schoolId: req.user.schoolId,
+        details: {
+          studentId: restoredStudent.id,
+          admissionNo: restoredStudent.admissionNo
         }
-      );
+      });
 
       return createSuccessResponse(res, 200, 'Student restored successfully');
     } catch (error) {
@@ -1348,18 +1044,18 @@ class StudentController {
    * Get students by class
    */
   async getStudentsByClass(req, res) {
-    // console.log('=== getStudentsByClass START ===');
-    // console.log('Params:', req.params);
-    // console.log('Query:', req.query);
-    // console.log('User:', req.user);
+    console.log('=== getStudentsByClass START ===');
+    console.log('Params:', req.params);
+    console.log('Query:', req.query);
+    console.log('User:', req.user);
     
     try {
       const { classId } = req.params;
       const { include = [] } = req.query;
 
-      // console.log('Building include query...');
+      console.log('Building include query...');
       const includeQuery = buildStudentIncludeQuery(include);
-      // console.log('Include query:', includeQuery);
+      console.log('Include query:', includeQuery);
 
       console.log('Executing Prisma query...');
       const students = await prisma.student.findMany({
@@ -1371,8 +1067,8 @@ class StudentController {
         include: includeQuery
       });
 
-      // console.log('Query completed. Found students:', students.length);
-      // console.log('=== getStudentsByClass END ===');
+      console.log('Query completed. Found students:', students.length);
+      console.log('=== getStudentsByClass END ===');
       return createSuccessResponse(res, 200, 'Students by class fetched successfully', students);
     } catch (error) {
       console.error('=== getStudentsByClass ERROR ===', error);
@@ -2155,42 +1851,7 @@ class StudentController {
           student: {
             select: {
               id: true,
-              user: { 
-                select: { 
-                  id: true,
-                  uuid: true,
-                  username: true,
-                  email: true,
-                  emailVerified: true,
-                  phone: true,
-                  phoneVerified: true,
-                  // password: false, // Never include password for security
-                  // salt: false, // Never include salt for security
-                  firstName: true,
-                  middleName: true,
-                  lastName: true,
-                  displayName: true,
-                  gender: true,
-                  birthDate: true,
-                  avatar: true,
-                  coverImage: true,
-                  bio: true,
-                  role: true,
-                  status: true,
-                  lastLogin: true,
-                  lastIp: true,
-                  timezone: true,
-                  locale: true,
-                  metadata: true,
-                  schoolId: true,
-                  createdByOwnerId: true,
-                  createdBy: true,
-                  updatedBy: true,
-                  createdAt: true,
-                  updatedAt: true,
-                  deletedAt: true
-                } 
-              }
+              user: { select: { firstName: true, lastName: true, displayName: true, email: true } }
             }
           }
         },
