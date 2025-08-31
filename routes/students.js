@@ -83,7 +83,7 @@ router.use((req, res, next) => {
 });
 
 // Apply sanitization to all routes
-router.use(sanitizeRequest);
+// router.use(sanitizeRequest); // TEMPORARILY DISABLED TO DEBUG USER DATA ISSUE
 
 // Debug middleware after sanitization
 router.use((req, res, next) => {
