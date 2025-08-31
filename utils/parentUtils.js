@@ -1,10 +1,10 @@
 // utils/parentUtils.js
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { formatResponse } from './responseUtils.js';
 // utils/parentSchemas.js
 import { z } from 'zod';
-import { validatePhone, validateEmail } from '../middleware/validation.js';
+import { validatePhone } from '../middleware/validation.js';
 
 const prisma = new PrismaClient();
 
@@ -29,7 +29,7 @@ export const ParentCreateWithUserSchema = z.object({
   firstName: z.string().min(1, "First name is required").max(50, "First name cannot exceed 50 characters"),
   middleName: z.string().max(50, "Middle name cannot exceed 50 characters").optional(),
   lastName: z.string().min(1, "Last name is required").max(50, "Last name cannot exceed 50 characters"),
-  email: z.string().email("Invalid email format").min(1, "Email is required"),
+  // Email field removed - no longer required
   phone: z.string().min(1, "Phone number is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
@@ -55,7 +55,7 @@ export const buildParentIncludeQuery = (include) => {
         id: true,
         uuid: true,
         username: true,
-        email: true,
+
         phone: true,
         firstName: true,
         middleName: true,
