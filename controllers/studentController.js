@@ -1,10 +1,35 @@
 import { PrismaClient } from '../generated/prisma/index.js';
 import { createSuccessResponse, createErrorResponse, handlePrismaError } from '../utils/responseUtils.js';
 import { validateSchoolAccess, validateClassAccess } from '../middleware/validation.js';
-import { generateStudentCode, validateStudentConstraints, buildStudentIncludeQuery } from '../utils/studentUtils.js';
-import { invalidateStudentCacheOnCreate } from '../cache/studentCache.js';
+import { 
+  generateStudentCode, 
+  validateStudentConstraints, 
+  buildStudentIncludeQuery,
+  generateStudentStats,
+  generateStudentAnalytics,
+  calculateStudentPerformance,
+  generateStudentExportData,
+  validateStudentImportData,
+  generateStudentCodeSuggestions,
+  getStudentCountByClass,
+  getStudentCountByStatus
+} from '../utils/studentUtils.js';
+import { 
+  invalidateStudentCacheOnCreate,
+  getStudentStatsFromCache,
+  setStudentStatsInCache,
+  getStudentAnalyticsFromCache,
+  setStudentAnalyticsInCache,
+  getStudentPerformanceFromCache,
+  setStudentPerformanceInCache,
+  invalidateStudentCacheOnUpdate,
+  invalidateStudentCacheOnDelete,
+  invalidateStudentCacheOnBulkOperation,
+  getStudentCacheStats,
+  warmStudentCache
+} from '../cache/studentCache.js';
 import { createAuditLog } from '../middleware/audit.js';
-import { triggerEntityCreatedNotifications } from '../utils/notificationTriggers.js';
+import { triggerEntityCreatedNotifications, triggerEntityUpdatedNotifications } from '../utils/notificationTriggers.js';
 import { StudentEventService } from '../services/studentEventService.js';
 import parentService from '../services/parentService.js';
 
