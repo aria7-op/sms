@@ -193,9 +193,9 @@ class StudentController {
           user: {
             create: {
               ...userDataWithoutAddress,
-              // Generate username from email or firstName
-              username: studentData.user.email.split('@')[0] || 
-                       `${studentData.user.firstName.toLowerCase()}${Date.now()}`,
+              // Generate unique username from email or firstName with timestamp and random suffix
+              username: `${studentData.user.email.split('@')[0]}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}` || 
+                       `${studentData.user.firstName.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               // Map dateOfBirth to birthDate for User model and convert to Date
               ...(dateOfBirth && { birthDate: new Date(dateOfBirth) }),
               // Generate a default password for the student
