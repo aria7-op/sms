@@ -1,5 +1,5 @@
 import express from 'express';
-// import parentController from '../controllers/parentController.js';
+import parentController from '../controllers/parentController.js';
 import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 
 const router = express.Router();
