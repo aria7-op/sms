@@ -100,9 +100,9 @@ class ParentService {
     try {
       // Use transaction to create both user and parent
       const result = await prisma.$transaction(async (tx) => {
-        // Generate username for parent
-        const parentUsername = parentData.user.email.split('@')[0] || 
-                              `${parentData.user.firstName.toLowerCase()}${Date.now()}`;
+        // Generate unique username for parent with timestamp and random suffix
+        const parentUsername = `${parentData.user.email.split('@')[0]}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}` || 
+                              `${parentData.user.firstName.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
         // Create parent user
         const parentUser = await tx.user.create({
