@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 const prisma = new PrismaClient();
 
 export const getAllIncomes = async (req, res) => {
@@ -23,8 +23,7 @@ export const getAllIncomes = async (req, res) => {
             id: true,
             username: true,
             firstName: true,
-            lastName: true,
-            email: true
+            lastName: true
           }
         },
         updatedByUser: {
@@ -32,8 +31,7 @@ export const getAllIncomes = async (req, res) => {
             id: true,
             username: true,
             firstName: true,
-            lastName: true,
-            email: true
+            lastName: true
           }
         }
       },
@@ -84,8 +82,7 @@ export const getIncomeById = async (req, res) => {
             id: true,
             username: true,
             firstName: true,
-            lastName: true,
-            email: true
+            lastName: true
           }
         },
         updatedByUser: {
@@ -93,8 +90,7 @@ export const getIncomeById = async (req, res) => {
             id: true,
             username: true,
             firstName: true,
-            lastName: true,
-            email: true
+            lastName: true
           }
         }
       }
@@ -157,8 +153,7 @@ export const createIncome = async (req, res) => {
             id: true,
             username: true,
             firstName: true,
-            lastName: true,
-            email: true
+            lastName: true
           }
         }
       }
@@ -227,8 +222,7 @@ export const updateIncome = async (req, res) => {
             id: true,
             username: true,
             firstName: true,
-            lastName: true,
-            email: true
+            lastName: true
           }
         },
         updatedByUser: {
@@ -236,8 +230,7 @@ export const updateIncome = async (req, res) => {
             id: true,
             username: true,
             firstName: true,
-            lastName: true,
-            email: true
+            lastName: true
           }
         }
       }
