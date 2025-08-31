@@ -1102,6 +1102,11 @@ export const sanitizeString = (str) => {
  * Sanitize object recursively
  */
 export const sanitizeObject = (obj) => {
+  // TEMPORARILY DISABLED SANITIZATION TO DEBUG PARENT DATA LOSS
+  console.log('🔍 SANITIZE: Returning object as-is to debug parent data loss');
+  return obj;
+  
+  /*
   if (typeof obj !== 'object' || obj === null) {
     return typeof obj === 'string' ? sanitizeString(obj) : obj;
   }
@@ -1121,7 +1126,15 @@ export const sanitizeObject = (obj) => {
     if (key === 'parent') {
       console.log(`🔍 SANITIZE: About to sanitize parent key with value:`, JSON.stringify(value, null, 2));
     }
+    
+    // Skip processing if the value is null or undefined
+    if (value === null || value === undefined) {
+      sanitized[key] = value;
+      continue;
+    }
+    
     sanitized[key] = sanitizeObject(value);
+    
     if (key === 'parent') {
       console.log(`🔍 SANITIZE: After sanitizing parent key, result:`, JSON.stringify(sanitized[key], null, 2));
     }
@@ -1134,6 +1147,7 @@ export const sanitizeObject = (obj) => {
     console.log('🔍 SANITIZE: Final sanitized object MISSING parent!');
   }
   return sanitized;
+  */
 };
 
 /**
