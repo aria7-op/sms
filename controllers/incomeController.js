@@ -4,7 +4,8 @@ const prisma = new PrismaClient();
 export const getAllIncomes = async (req, res) => {
   try {
     const { schoolId } = req.user;
-    
+    const { page = 1, limit = 20, search = '', status = '' } = req.query;
+
     if (!schoolId) {
       return res.status(400).json({ 
         success: false, 
@@ -12,16 +13,33 @@ export const getAllIncomes = async (req, res) => {
       });
     }
 
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = Math.min(parseInt(limit), 100); // Max 100 per page
+
+    const where = {
+      schoolId: BigInt(schoolId),
+      deletedAt: null
+    };
+
+    if (search) {
+      where.OR = [
+        { description: { contains: search, mode: 'insensitive' } },
+        { source: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
     const incomes = await prisma.income.findMany({
-      where: {
-        schoolId: BigInt(schoolId),
-        deletedAt: null
-      },
+      where,
+      skip,
+      take,
       include: {
         createdByUser: {
           select: {
             id: true,
-            username: true,
             firstName: true,
             lastName: true
           }
@@ -29,7 +47,6 @@ export const getAllIncomes = async (req, res) => {
         updatedByUser: {
           select: {
             id: true,
-            username: true,
             firstName: true,
             lastName: true
           }
@@ -40,9 +57,17 @@ export const getAllIncomes = async (req, res) => {
       }
     });
 
+    const total = await prisma.income.count({ where });
+
     res.json({
       success: true,
       data: incomes,
+      pagination: {
+        page: parseInt(page),
+        limit: take,
+        total,
+        pages: Math.ceil(total / take)
+      },
       meta: {
         timestamp: new Date().toISOString(),
         count: incomes.length
