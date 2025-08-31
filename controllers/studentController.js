@@ -134,6 +134,15 @@ class StudentController {
       // Remove classId and schoolId from studentData to avoid Prisma validation error
       const { classId: _, schoolId: __, ...studentDataWithoutRelations } = studentData;
       
+      // Validate that user data exists
+      if (!studentData.user) {
+        return res.status(400).json({
+          success: false,
+          message: 'User data is required for student creation',
+          error: 'MISSING_USER_DATA'
+        });
+      }
+      
       // Remove dateOfBirth from user data and map to birthDate
       const { dateOfBirth, ...userDataWithoutDateOfBirth } = studentData.user;
       
@@ -176,6 +185,15 @@ class StudentController {
       
       // Check if parent data is provided
       let parentId = null;
+      
+      // Validate parent data structure if provided
+      if (studentData.parent && !studentData.parent.user) {
+        return res.status(400).json({
+          success: false,
+          message: 'Parent data must include user information',
+          error: 'INVALID_PARENT_DATA_STRUCTURE'
+        });
+      }
       
       // Debug: Log the entire studentData to see what's being received
       console.log('🔍 DEBUG: Full studentData received:', JSON.stringify(studentData, null, 2));
