@@ -324,7 +324,6 @@ model User {
   groups                          Group[]
 
   @@index([username])
-  @@index([email])
   @@index([phone])
   @@index([role])
   @@index([status])
@@ -3130,6 +3129,7 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
+
 
 
 
