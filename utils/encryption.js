@@ -255,4 +255,14 @@ export const generateKey = () => {
 export const generateRSAKeyPair = (bits = 2048) => {
     const encryptionService = new EncryptionService();
     return encryptionService.generateRSAKeyPair(bits);
+};
+
+export const generateSecureRandom = (length = 32) => {
+    const encryptionService = new EncryptionService();
+    return encryptionService.generateSecureRandom(length);
+};
+
+export const hashPassword = (password, salt = null) => {
+    const encryptionService = new EncryptionService();
+    return encryptionService.hashPassword(password, salt);
 }; 
