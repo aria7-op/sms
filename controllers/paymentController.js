@@ -221,7 +221,7 @@ class PaymentController {
           // Get school information for file generation
           const school = await prismaClient.school.findFirst({
             where: { id: BigInt(schoolId) },
-            select: { id: true, name: true, address: true, phone: true, email: true }
+            select: { id: true, name: true, address: true, phone: true }
           });
 
           // Get student and parent information for file generation
@@ -2107,14 +2107,14 @@ class PaymentController {
             select: { 
               id: true,
               uuid: true,
-              user: { select: { firstName: true, lastName: true, email: true } }
+              user: { select: { firstName: true, lastName: true } }
             } 
           },
           parent: { 
             select: { 
               id: true,
               uuid: true,
-              user: { select: { firstName: true, lastName: true, email: true } }
+              user: { select: { firstName: true, lastName: true } }
             } 
           },
           feeStructure: { select: { id: true, name: true, description: true } },
