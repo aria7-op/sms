@@ -18,29 +18,29 @@ const convertBigInts = (obj) => {
 
 export const getAllPayrolls = async (req, res) => {
   try {
-    console.log('🔍 getAllPayrolls called');
-    console.log('🔍 req.user:', req.user);
-    console.log('🔍 req.headers:', req.headers);
-    
-    // Safety check for req.user
-    if (!req.user) {
-      console.error('❌ req.user is undefined in getAllPayrolls');
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Authentication required - req.user is undefined' 
-      });
-    }
-    
     const { schoolId } = req.user;
-    console.log('🔍 schoolId extracted:', schoolId);
-    
-    if (!prisma || !prisma.payroll) {
-      console.log('⚠️ Payroll model not available in Prisma schema');
-      return res.json({ success: true, data: [], message: 'Payroll model not configured' });
+    const { page = 1, limit = 20, status = '', month = '' } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = Math.min(parseInt(limit), 100); // Max 100 per page
+
+    const where = { schoolId: BigInt(schoolId) };
+
+    if (status) {
+      where.status = status;
     }
-    
+
+    if (month) {
+      where.salaryMonth = {
+        gte: new Date(month + '-01'),
+        lt: new Date(new Date(month + '-01').setMonth(new Date(month + '-01').getMonth() + 1))
+      };
+    }
+
     const payrolls = await prisma.payroll.findMany({
-      where: { schoolId: BigInt(schoolId) },
+      where,
+      skip,
+      take,
       include: {
         staff: {
           select: {
@@ -57,8 +57,19 @@ export const getAllPayrolls = async (req, res) => {
       },
       orderBy: { salaryMonth: 'desc' }
     });
+
+    const total = await prisma.payroll.count({ where });
     
-    res.json({ success: true, data: convertBigInts(payrolls) });
+    res.json({ 
+      success: true, 
+      data: convertBigInts(payrolls),
+      pagination: {
+        page: parseInt(page),
+        limit: take,
+        total,
+        pages: Math.ceil(total / take)
+      }
+    });
   } catch (error) {
     console.error('❌ Get payrolls error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch payrolls', error: error.message });
