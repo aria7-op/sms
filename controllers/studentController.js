@@ -203,7 +203,7 @@ class StudentController {
           console.log('🔍 Final parent owner ID:', parentOwnerId);
           console.log('🔍 School ID:', schoolId);
           
-          const parent = await parentService.createParentWithUser(
+          const parent = await ParentService.createParentWithUser(
             studentData.parent,
             parentOwnerId,
             schoolId
