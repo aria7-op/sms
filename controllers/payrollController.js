@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 const prisma = new PrismaClient();
 
 // Helper function to convert BigInt values to strings
@@ -49,8 +49,7 @@ export const getAllPayrolls = async (req, res) => {
             user: {
               select: {
                 firstName: true,
-                lastName: true,
-                email: true,
+                lastName: true
               }
             }
           }
@@ -88,8 +87,7 @@ export const getPayrollById = async (req, res) => {
             user: {
               select: {
                 firstName: true,
-                lastName: true,
-                email: true,
+                lastName: true
               }
             }
           }
