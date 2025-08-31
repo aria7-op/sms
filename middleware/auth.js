@@ -81,7 +81,7 @@ export const authenticateToken = async (req, res, next) => {
         });
         
         if (owner) {
-          console.log('Owner found:', owner.id, owner.email);
+          console.log('Owner found:', owner.id, owner.name);
           // Set owner properties for compatibility
           req.user = {
             ...owner,
@@ -108,13 +108,74 @@ export const authenticateToken = async (req, res, next) => {
     try {
       const user = await prisma.user.findUnique({
         where: { id: BigInt(decoded.userId) },
-        include: {
-          school: true,
-          createdByOwner: true,
-          teacher: true,
-          parent: true,
-          student: true,
-          staff: true
+        select: {
+          id: true,
+          uuid: true,
+          username: true,
+          phone: true,
+          phoneVerified: true,
+          password: true,
+          salt: true,
+          firstName: true,
+          middleName: true,
+          lastName: true,
+          displayName: true,
+          gender: true,
+          birthDate: true,
+          avatar: true,
+          coverImage: true,
+          bio: true,
+          role: true,
+          status: true,
+          lastLogin: true,
+          lastIp: true,
+          timezone: true,
+          locale: true,
+          metadata: true,
+          schoolId: true,
+          createdByOwnerId: true,
+          createdBy: true,
+          updatedBy: true,
+          createdAt: true,
+          updatedAt: true,
+          deletedAt: true,
+          school: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          },
+          createdByOwner: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          teacher: {
+            select: {
+              id: true,
+              employeeId: true
+            }
+          },
+          parent: {
+            select: {
+              id: true,
+              code: true
+            }
+          },
+          student: {
+            select: {
+              id: true,
+              admissionNo: true
+            }
+          },
+          staff: {
+            select: {
+              id: true,
+              employeeId: true
+            }
+          }
         }
       });
       
@@ -127,7 +188,7 @@ export const authenticateToken = async (req, res, next) => {
         });
       }
 
-      console.log('User found:', user.id, user.email);
+      console.log('User found:', user.id, user.username);
       
       // Ensure schoolId is properly set
       req.user = {
