@@ -311,11 +311,34 @@ router.delete('/:id', authenticateToken, authorizePermissions(['parent:delete'])
 router.get('/:id/students', authenticateToken, authorizePermissions(['parent:read', 'student:read_children']), async (req, res) => {
   try {
     const { schoolId } = req.user;
-    const { id } = req.params;
+    const { id } = req.params; // This is the parent user ID
 
+    console.log('🔍 Parent students route called with:', { parentUserId: id, schoolId });
+
+    // First, find the parent record using the user ID
+    const parent = await prisma.parent.findFirst({
+      where: {
+        userId: BigInt(id),
+        schoolId: BigInt(schoolId),
+        deletedAt: null
+      },
+      select: { id: true, userId: true }
+    });
+
+    if (!parent) {
+      console.log('❌ Parent not found for user ID:', id);
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Parent not found' 
+      });
+    }
+
+    console.log('✅ Parent found:', { parentId: parent.id, parentUserId: parent.userId });
+
+    // Now find students using the parent record ID
     const students = await prisma.student.findMany({
       where: {
-        parentId: BigInt(id),
+        parentId: parent.id, // Use parent record ID, not user ID
         schoolId: BigInt(schoolId),
         deletedAt: null
       },
@@ -324,6 +347,8 @@ router.get('/:id/students', authenticateToken, authorizePermissions(['parent:rea
         class: { select: { id: true, name: true } }
       }
     });
+
+    console.log('✅ Students found:', students.length);
 
     res.json({ success: true, data: convertBigInts(students) });
   } catch (error) {
@@ -336,8 +361,11 @@ router.get('/:id/students', authenticateToken, authorizePermissions(['parent:rea
 router.get('/:id/debug', authenticateToken, authorizePermissions(['parent:read']), async (req, res) => {
   try {
     const { schoolId } = req.user;
-    const { id } = req.params;
+    const { id } = req.params; // This is the parent user ID
 
+    console.log('🔍 Debug endpoint called with:', { parentUserId: id, schoolId });
+
+    // First, find the parent record using the user ID
     const parent = await prisma.parent.findFirst({
       where: {
         userId: BigInt(id),
@@ -370,12 +398,19 @@ router.get('/:id/debug', authenticateToken, authorizePermissions(['parent:read']
     });
 
     if (!parent) {
+      console.log('❌ Parent not found for user ID:', id);
       return res.json({
         success: false,
         message: 'Parent not found',
         debug: { searchedUserId: id, searchedSchoolId: schoolId, parentExists: false }
       });
     }
+
+    console.log('✅ Parent found with students:', { 
+      parentId: parent.id, 
+      parentUserId: parent.userId, 
+      studentsCount: parent.students?.length || 0 
+    });
 
     res.json({
       success: true,
