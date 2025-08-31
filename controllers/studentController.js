@@ -305,7 +305,13 @@ class StudentController {
       const studentPasswordHash = await bcrypt.hash('temp_password_123', studentSalt);
       
       // Generate unique username for student
+      console.log('🔍 Username from frontend:', studentData.user.username);
+      console.log('🔍 Username type:', typeof studentData.user.username);
+      console.log('🔍 Username length:', studentData.user.username?.length);
+      
       let studentUsername = studentData.user.username || `${studentData.user.firstName.toLowerCase()}_${Math.floor(Math.random() * 1000)}`;
+      
+      console.log('🔍 Initial studentUsername:', studentUsername);
       
       // Ensure username uniqueness by checking if it already exists
       let counter = 1;
@@ -315,6 +321,8 @@ class StudentController {
         counter++;
       }
       studentUsername = finalStudentUsername;
+      
+      console.log('🔍 Final studentUsername:', studentUsername);
       
       // Debug: Log the final data being sent to student creation
       console.log('🔍 Creating student with data:');
