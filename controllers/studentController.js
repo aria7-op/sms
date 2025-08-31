@@ -244,8 +244,19 @@ class StudentController {
             schoolId
           );
           console.log('🔍 Parent created successfully:', JSON.stringify(parent, null, 2));
-          parentId = parent.id;
-          console.log('🔍 Parent ID extracted:', parentId);
+          console.log('🔍 Parent object keys:', Object.keys(parent));
+          console.log('🔍 Parent ID type:', typeof parent.id);
+          console.log('🔍 Parent ID value:', parent.id);
+          
+          // Extract the parent record ID from the created parent
+          if (parent && parent.id) {
+            parentId = parent.id;
+            console.log('🔍 Parent record ID extracted:', parentId);
+            console.log('🔍 Parent ID type after extraction:', typeof parentId);
+          } else {
+            console.error('❌ Parent created but no ID returned');
+            throw new Error('Failed to get parent ID after creation');
+          }
         } catch (parentError) {
           console.error('❌ Error creating parent:', parentError);
           console.error('❌ Parent error stack:', parentError.stack);
@@ -270,6 +281,8 @@ class StudentController {
       }
       
       console.log('🔍 Final parentId before student creation:', parentId);
+      console.log('🔍 ParentId type:', typeof parentId);
+      console.log('🔍 ParentId value:', parentId);
       
       // Determine the correct owner ID for student creation
       let studentOwnerId;
@@ -302,6 +315,12 @@ class StudentController {
         counter++;
       }
       studentUsername = finalStudentUsername;
+      
+      // Debug: Log the final data being sent to student creation
+      console.log('🔍 Creating student with data:');
+      console.log('  - parentId:', parentId);
+      console.log('  - parentId type:', typeof parentId);
+      console.log('  - parent connection:', parentId ? { parent: { connect: { id: BigInt(parentId) } } } : 'No parent');
       
       // Create student with user and parent connection
       const student = await prisma.student.create({
