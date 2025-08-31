@@ -156,17 +156,27 @@ class StudentController {
       // Check if parent data is provided
       let parentId = null;
       if (studentData.parent && studentData.parent.user) {
-        // Create parent with user using the existing parent service
-        const parentService = new ParentService();
-        const parent = await parentService.createParentWithUser(
-          studentData.parent,
-          req.user.id,
-          schoolId
-        );
-        parentId = parent.id;
+        console.log('🔍 Creating parent with user data...');
+        try {
+          // Create parent with user using the existing parent service
+          const parentService = new ParentService();
+          console.log('🔍 Parent service created, calling createParentWithUser...');
+          const parent = await parentService.createParentWithUser(
+            studentData.parent,
+            req.user.id,
+            schoolId
+          );
+          console.log('🔍 Parent created successfully:', parent);
+          parentId = parent.id;
+          console.log('🔍 Parent ID:', parentId);
+        } catch (parentError) {
+          console.error('❌ Error creating parent:', parentError);
+          throw parentError;
+        }
       } else if (studentData.parentId) {
         // Use existing parent ID if provided
         parentId = studentData.parentId;
+        console.log('🔍 Using existing parent ID:', parentId);
       }
       
       // Create student with user and parent connection
@@ -274,9 +284,9 @@ class StudentController {
         'CREATE',
         'Student',
         JSON.stringify({
-          studentId: student.id,
+          studentId: student.id.toString(),
           admissionNo: student.admissionNo,
-          classId: student.classId
+          classId: student.classId ? student.classId.toString() : null
         })
       );
 
@@ -290,7 +300,7 @@ class StudentController {
           auditDetails: {
             studentId: student.id.toString(),
             admissionNo: student.admissionNo,
-            classId: student.classId
+            classId: student.classId ? student.classId.toString() : null
           }
         }
       );
