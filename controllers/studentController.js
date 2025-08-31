@@ -331,25 +331,18 @@ class StudentController {
       await invalidateStudentCacheOnCreate(student);
 
       // Create audit log
-      await createAuditLog({
-        action: 'CREATE',
-        entity: 'Student',
-        entityId: student.id,
-        userId: req.user.id,
-        schoolId,
-        oldData: null,
-        newData: JSON.stringify(student, (key, value) => {
-          if (typeof value === 'bigint') {
-            return value.toString();
+      await createAuditLog(
+        req,
+        'CREATE',
+        'Student',
+        {
+          data: {
+            studentId: student.id,
+            admissionNo: student.admissionNo,
+            classId: student.classId
           }
-          return value;
-        }),
-        details: {
-          studentId: student.id,
-          admissionNo: student.admissionNo,
-          classId: student.classId
         }
-      });
+      );
 
       // Trigger automatic notification for student creation
       await triggerEntityCreatedNotifications(
@@ -824,32 +817,20 @@ class StudentController {
       await invalidateStudentCacheOnUpdate(updatedStudent, existingStudent);
 
       // Create audit log
-      await createAuditLog({
-        action: 'UPDATE',
-        entity: 'Student',
-        entityId: updatedStudent.id,
-        userId: req.user.id,
-        schoolId: req.user.schoolId,
-        oldData: JSON.stringify(existingStudent, (key, value) => {
-          if (typeof value === 'bigint') {
-            return value.toString();
+      await createAuditLog(
+        req,
+        'UPDATE',
+        'Student',
+        {
+          data: {
+            studentId: updatedStudent.id,
+            updatedFields: Object.keys(filteredUpdateData)
           }
-          return value;
-        }),
-        newData: JSON.stringify(updatedStudent, (key, value) => {
-          if (typeof value === 'bigint') {
-            return value.toString();
-          }
-          return value;
-        }),
-        details: {
-          studentId: updatedStudent.id,
-          updatedFields: Object.keys(filteredUpdateData)
         }
-      });
+      );
 
       // Trigger automatic notification for student update
-      await triggerEntityUpdatedNotification(
+      await triggerEntityUpdatedNotifications(
         'student',
         updatedStudent.id,
         {
@@ -920,14 +901,11 @@ class StudentController {
       });
 
       // Update the event with deletion confirmation
-      await prisma.studentEvent.update({
-        where: { id: event.id },
-        data: { 
-          metadata: { 
-            ...event.metadata, 
-            deletionConfirmed: true,
-            deletedAt: new Date()
-          }
+      await studentEventService.studentEventModel.update(event.id, {
+        metadata: { 
+          ...event.metadata, 
+          deletionConfirmed: true,
+          deletedAt: new Date()
         }
       });
 
@@ -935,24 +913,17 @@ class StudentController {
       await invalidateStudentCacheOnDelete(existingStudent);
 
       // Create audit log
-      await createAuditLog({
-        action: 'DELETE',
-        entity: 'Student',
-        entityId: existingStudent.id,
-        userId: req.user.id,
-        schoolId: req.user.schoolId,
-        oldData: JSON.stringify(existingStudent, (key, value) => {
-          if (typeof value === 'bigint') {
-            return value.toString();
+      await createAuditLog(
+        req,
+        'DELETE',
+        'Student',
+        {
+          data: {
+            studentId: existingStudent.id,
+            admissionNo: existingStudent.admissionNo
           }
-          return value;
-        }),
-        newData: null,
-        details: {
-          studentId: existingStudent.id,
-          admissionNo: existingStudent.admissionNo
         }
-      });
+      );
 
       return createSuccessResponse(res, 200, 'Student deleted successfully', {
         student: deletedStudent,
@@ -995,24 +966,17 @@ class StudentController {
       await invalidateStudentCacheOnCreate(restoredStudent);
 
       // Create audit log
-      await createAuditLog({
-        action: 'RESTORE',
-        entity: 'Student',
-        entityId: restoredStudent.id,
-        userId: req.user.id,
-        schoolId: req.user.schoolId,
-        oldData: null,
-        newData: JSON.stringify(restoredStudent, (key, value) => {
-          if (typeof value === 'bigint') {
-            return value.toString();
+      await createAuditLog(
+        req,
+        'RESTORE',
+        'Student',
+        {
+          data: {
+            studentId: restoredStudent.id,
+            admissionNo: restoredStudent.admissionNo
           }
-          return value;
-        }),
-        details: {
-          studentId: restoredStudent.id,
-          admissionNo: restoredStudent.admissionNo
         }
-      });
+      );
 
       return createSuccessResponse(res, 200, 'Student restored successfully');
     } catch (error) {
