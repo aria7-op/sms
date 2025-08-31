@@ -291,6 +291,18 @@ class StudentController {
       const studentSalt = generateSecureRandom(16);
       const studentPasswordHash = hashPassword('temp_password_123', studentSalt);
       
+      // Generate unique username for student
+      let studentUsername = studentData.user.username || `${studentData.user.firstName.toLowerCase()}_${Math.floor(Math.random() * 1000)}`;
+      
+      // Ensure username uniqueness by checking if it already exists
+      let counter = 1;
+      let finalStudentUsername = studentUsername;
+      while (await prisma.user.findUnique({ where: { username: finalStudentUsername } })) {
+        finalStudentUsername = `${studentUsername}_${counter}`;
+        counter++;
+      }
+      studentUsername = finalStudentUsername;
+      
       // Create student with user and parent connection
       const student = await prisma.student.create({
         data: {
@@ -315,8 +327,8 @@ class StudentController {
           user: {
             create: {
               ...userDataWithoutAddress,
-              // Generate unique username from firstName with timestamp and random suffix
-              username: `${studentData.user.firstName.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              // Use the generated unique username
+              username: studentUsername,
               // Map dateOfBirth to birthDate for User model and convert to Date
               ...(dateOfBirth && { birthDate: new Date(dateOfBirth) }),
               // Store address in metadata as JSON string
