@@ -217,7 +217,7 @@ class ParentService {
         return parent;
       });
 
-      console.log('🔍 ParentService: Returning result:', JSON.stringify(result, null, 2));
+      console.log('🔍 ParentService: Returning result:', JSON.stringify(convertBigInts(result), null, 2));
       return convertBigInts(result);
     } catch (error) {
       console.error('❌ ParentService: Create parent with user service error:', error);
