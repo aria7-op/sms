@@ -36,6 +36,33 @@ class StudentEvent {
   }
 
   /**
+   * Update an existing student event
+   */
+  async update(eventId, updateData) {
+    try {
+      const event = await this.prisma.studentEvent.update({
+        where: { id: BigInt(eventId) },
+        data: {
+          ...updateData,
+          metadata: updateData.metadata ? JSON.stringify(updateData.metadata, (key, value) => {
+            if (typeof value === 'bigint') {
+              return value.toString();
+            }
+            return value;
+          }) : undefined,
+          updatedAt: new Date()
+        }
+      });
+
+      logger.info(`Student event updated: ${event.id} - ${event.eventType}`);
+      return { success: true, data: event };
+    } catch (error) {
+      logger.error('Error updating student event:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get student events with filtering and pagination
    */
   async getAll(filters = {}) {
