@@ -54,8 +54,7 @@ router.get('/', authenticateToken, authorizePermissions(['parent:read']), async 
     if (search) {
       where.OR = [
         { user: { firstName: { contains: search, mode: 'insensitive' } } },
-        { user: { lastName: { contains: search, mode: 'insensitive' } } },
-        { user: { email: { contains: search, mode: 'insensitive' } } }
+        { user: { lastName: { contains: search, mode: 'insensitive' } } }
       ];
     }
 
@@ -70,7 +69,7 @@ router.get('/', authenticateToken, authorizePermissions(['parent:read']), async 
       include: {
         user: {
           select: {
-            id: true, uuid: true, username: true, email: true, phone: true,
+            id: true, uuid: true, username: true, phone: true,
             firstName: true, lastName: true, status: true
           }
         }
@@ -111,7 +110,7 @@ router.get('/:id', authenticateToken, authorizePermissions(['parent:read']), asy
       include: {
         user: {
           select: {
-            id: true, uuid: true, username: true, email: true, phone: true,
+            id: true, uuid: true, username: true, phone: true,
             firstName: true, lastName: true, status: true
           }
         },
@@ -171,7 +170,7 @@ router.post('/', authenticateToken, authorizePermissions(['parent:create']), asy
       include: {
         user: {
           select: {
-            id: true, uuid: true, username: true, email: true, phone: true,
+            id: true, uuid: true, username: true, phone: true,
             firstName: true, lastName: true, status: true
           }
         }
@@ -278,7 +277,7 @@ router.get('/:id/students', authenticateToken, authorizePermissions(['parent:rea
         deletedAt: null
       },
       include: {
-        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+        user: { select: { id: true, firstName: true, lastName: true } },
         class: { select: { id: true, name: true } }
       }
     });
