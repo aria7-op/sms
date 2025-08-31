@@ -295,9 +295,13 @@ class StudentController {
         }
       );
 
+      // Convert all BigInt values to strings before response
+      const convertedStudent = convertBigInts(student);
+      const convertedEvent = convertBigInts(event);
+      
       return createSuccessResponse(res, 201, 'Student created successfully', {
-        student: convertBigInts(student),
-        event: convertBigInts(event)
+        student: convertedStudent,
+        event: convertedEvent
       });
     } catch (error) {
       return handlePrismaError(res, error, 'createStudent');
