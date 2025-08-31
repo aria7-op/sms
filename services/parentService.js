@@ -70,7 +70,6 @@ class ParentService {
               id: true,
               uuid: true,
               username: true,
-              email: true,
               phone: true,
               firstName: true,
               middleName: true,
@@ -190,7 +189,6 @@ class ParentService {
                 id: true,
                 uuid: true,
                 username: true,
-                email: true,
                 phone: true,
                 firstName: true,
                 middleName: true,
@@ -222,7 +220,9 @@ class ParentService {
       
       // Re-throw with more context
       if (error.code === 'P2002') {
-        throw new Error(`Duplicate entry: ${error.meta?.target?.join(', ')} already exists`);
+        const target = error.meta?.target;
+        const targetStr = Array.isArray(target) ? target.join(', ') : target;
+        throw new Error(`Duplicate entry: ${targetStr} already exists`);
       } else if (error.code === 'P2003') {
         throw new Error(`Foreign key constraint failed: ${error.meta?.field_name}`);
       } else if (error.code === 'P2025') {
@@ -259,11 +259,7 @@ class ParentService {
               lastName: { contains: search, mode: 'insensitive' }
             }
           },
-          {
-            user: {
-              email: { contains: search, mode: 'insensitive' }
-            }
-          },
+
           {
             user: {
               phone: { contains: search, mode: 'insensitive' }
@@ -287,7 +283,7 @@ class ParentService {
             id: true,
             uuid: true,
             username: true,
-            email: true,
+    
             phone: true,
             firstName: true,
             middleName: true,
@@ -311,8 +307,7 @@ class ParentService {
             user: {
               select: {
                 firstName: true,
-                lastName: true,
-                email: true
+                lastName: true
               }
             }
           }
@@ -357,7 +352,6 @@ class ParentService {
             id: true,
             uuid: true,
             username: true,
-            email: true,
             phone: true,
             firstName: true,
             middleName: true,
@@ -381,8 +375,7 @@ class ParentService {
             user: {
               select: {
                 firstName: true,
-                lastName: true,
-                email: true
+                lastName: true
               }
             }
           }
@@ -442,7 +435,6 @@ class ParentService {
               id: true,
               uuid: true,
               username: true,
-              email: true,
               phone: true,
               firstName: true,
               middleName: true,
@@ -518,7 +510,6 @@ class ParentService {
                   uuid: true,
                   firstName: true,
                   lastName: true,
-                  email: true,
                   phone: true,
                   avatar: true,
                   status: true
