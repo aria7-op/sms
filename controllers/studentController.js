@@ -180,18 +180,14 @@ class StudentController {
         });
         
         try {
-          // Create parent with user using the existing parent service
-          const parentService = new ParentService();
-          console.log('🔍 Parent service created, calling createParentWithUser...');
+          console.log('🔍 Creating parent with data:', JSON.stringify(studentData.parent, null, 2));
           
           // Determine the correct owner ID for parent creation
           let parentOwnerId;
           if (req.user.type === 'owner') {
             parentOwnerId = req.user.id;
-            console.log('🔍 Using owner ID for parent creation:', parentOwnerId);
           } else if (req.user.role === 'SUPER_ADMIN') {
             // For super admin, we need to find the school owner
-            console.log('🔍 Super admin detected, finding school owner...');
             const school = await prisma.school.findUnique({
               where: { id: BigInt(schoolId) },
               select: { ownerId: true }
