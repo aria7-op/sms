@@ -283,7 +283,7 @@ class StudentController {
         req,
         'CREATE',
         'Student',
-        JSON.stringify({
+        {
           studentId: student.id.toString(),
           admissionNo: student.admissionNo,
           classId: student.classId ? student.classId.toString() : null,
@@ -292,7 +292,7 @@ class StudentController {
           emergencyContact: student.emergencyContact,
           admissionDate: student.admissionDate,
           status: student.status
-        })
+        }
       );
 
       // Trigger automatic notification for student creation
