@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 
 // Import parentController with a different name to avoid conflicts
-import ParentControllerModule from './controllers/parentController.js';
+import ParentControllerModule from '../controllers/parentController.js';
 const parentController = ParentControllerModule;
 
 // Additional debugging
