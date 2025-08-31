@@ -190,14 +190,7 @@ dotenv.config();
 
   // Enhanced memory settings for 2GB RAM
   app.use(express.json({
-    limit: '10mb',
-    verify: (req, buf) => {
-      try {
-        JSON.parse(buf);
-      } catch (e) {
-        throw new Error('Invalid JSON');
-      }
-    }
+    limit: '10mb'
   }));
   
   // Debug logging for express.json middleware
@@ -324,7 +317,8 @@ dotenv.config();
         return next();
       }
 
-      // Check if request body contains encrypted data
+      // TEMPORARILY DISABLED: Check if request body contains encrypted data
+      /*
       if (req.body && req.body.encryptedData) {
         const encryptionKey = process.env.API_ENCRYPTION_KEY;
         
@@ -366,8 +360,10 @@ dotenv.config();
           });
         }
       }
+      */
 
-      // Store original send and json methods
+      // TEMPORARILY DISABLED: Store original send and json methods
+      /*
       const originalSend = res.send;
       const originalJson = res.json;
       
@@ -466,6 +462,7 @@ dotenv.config();
           return originalJson.call(this, data);
         }
       };
+      */
       
       next();
     } catch (error) {
