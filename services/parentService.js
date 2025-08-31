@@ -143,9 +143,9 @@ class ParentService {
           username: parentUsername,
           password: 'Parent@123', // Default password that can be changed later
           role: 'PARENT',
-          schoolId: BigInt(schoolId),
-          createdBy: BigInt(userId),
-          createdByOwnerId: BigInt(userId) // userId should be the owner ID
+          schoolId: Number(schoolId),
+          createdBy: Number(userId),
+          createdByOwnerId: Number(userId) // userId should be the owner ID
         };
         
         // Add optional fields if they exist
@@ -185,8 +185,8 @@ class ParentService {
           occupation: parentData.occupation || null,
           annualIncome: parentData.annualIncome ? parseFloat(parentData.annualIncome) : null,
           education: parentData.education || null,
-          schoolId: BigInt(schoolId),
-          createdBy: BigInt(userId)
+          schoolId: Number(schoolId),
+          createdBy: Number(userId)
         };
         console.log('🔍 ParentService: Parent record data:', JSON.stringify(convertBigInts(parentDataForRecord), null, 2));
         
