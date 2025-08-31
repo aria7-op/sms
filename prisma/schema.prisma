@@ -170,6 +170,7 @@ model User {
   username                        String                     @unique @db.VarChar(50)
   email                           String                     @unique @db.VarChar(255)
   emailVerified                   DateTime?
+  tazkiraNo                       String?                    @db.VarChar(50)
   phone                           String?                    @db.VarChar(20)
   phoneVerified                   DateTime?
   password                        String                     @db.VarChar(255)
@@ -549,10 +550,9 @@ model Student {
   nationality             String?                @db.VarChar(50)
   religion                String?                @db.VarChar(50)
   caste                   String?                @db.VarChar(50)
-  aadharNo                String?                @db.VarChar(20)
+  tazkiraNo               String?                @db.VarChar(50)
   bankAccountNo           String?                @db.VarChar(30)
   bankName                String?                @db.VarChar(100)
-  ifscCode                String?                @db.VarChar(20)
   previousSchool          String?                @db.VarChar(255)
   
   // Origin Address (Where the student is from)
@@ -3131,3 +3131,4 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
+
