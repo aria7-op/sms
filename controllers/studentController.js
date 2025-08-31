@@ -89,8 +89,10 @@ class StudentController {
     try {
       console.log('🔍 ===== STUDENT CREATION STARTED =====');
       console.log('🔍 Request body type:', typeof req.body);
-      console.log('🔍 Request body keys:', Object.keys(req.body));
+      console.log('🔍 Request body keys:', Object.keys(req.body || {}));
       console.log('🔍 Full request body:', JSON.stringify(req.body, null, 2));
+      console.log('🔍 Request body user field:', req.body?.user);
+      console.log('🔍 Request body parent field:', req.body?.parent);
       
       const studentData = req.body;
       let { schoolId, classId } = studentData;
