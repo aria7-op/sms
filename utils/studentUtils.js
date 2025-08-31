@@ -23,7 +23,6 @@ export const StudentCreateSchema = z.object({
   bankName: z.string().max(100).optional(),
   ifscCode: z.string().max(20).optional(),
   previousSchool: z.string().max(255).optional(),
-  schoolId: z.union([z.string(), z.number()]).transform(val => val ? parseInt(val) : undefined).optional(), // Made optional for owners
   
   // Origin Address (Where the student is from)
   originAddress: z.string().max(255).optional(),
@@ -44,33 +43,31 @@ export const StudentCreateSchema = z.object({
   user: z.object({
     firstName: z.string().min(2).max(50),
     lastName: z.string().min(2).max(50),
-    email: z.string().email(),
     phone: z.string().regex(/^\+?[\d\s\-\(\)]+$/).optional(),
-    password: z.string().min(8).optional(),
     gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
     dateOfBirth: z.string().optional(),
     address: z.string().max(255).optional(),
     city: z.string().max(100).optional(),
     state: z.string().max(100).optional(),
     country: z.string().max(100).optional(),
-    postalCode: z.string().max(20).optional()
+    postalCode: z.string().max(20).optional(),
+    tazkiraNo: z.string().max(50).optional()
   }),
   parent: z.object({
     user: z.object({
       firstName: z.string().min(2).max(50),
       lastName: z.string().min(2).max(50),
-      email: z.string().email(),
       phone: z.string().regex(/^\+?[\d\s\-\(\)]+$/).optional(),
-      password: z.string().min(8).optional(),
       gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
       address: z.string().max(255).optional(),
       city: z.string().max(100).optional(),
       state: z.string().max(100).optional(),
       country: z.string().max(100).optional(),
-      postalCode: z.string().max(20).optional()
+      postalCode: z.string().max(20).optional(),
+      tazkiraNo: z.string().max(50).optional()
     }),
     occupation: z.string().max(100).optional(),
-    annualIncome: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/).optional(),
+    annualIncome: z.string().regex(/^\d{1,10}(\.\d{1,10})?$/).optional(),
     education: z.string().max(100).optional()
   }).optional()
 });
@@ -91,6 +88,23 @@ export const StudentUpdateSchema = z.object({
   bankName: z.string().max(100).optional(),
   ifscCode: z.string().max(20).optional(),
   previousSchool: z.string().max(255).optional(),
+  
+  // Origin Address (Where the student is from)
+  originAddress: z.string().max(255).optional(),
+  originCity: z.string().max(100).optional(),
+  originState: z.string().max(100).optional(),
+  originProvince: z.string().max(100).optional(),
+  originCountry: z.string().max(100).optional(),
+  originPostalCode: z.string().max(20).optional(),
+  
+  // Current Residence Address (Where the student currently lives)
+  currentAddress: z.string().max(255).optional(),
+  currentCity: z.string().max(100).optional(),
+  currentState: z.string().max(100).optional(),
+  currentProvince: z.string().max(100).optional(),
+  currentCountry: z.string().max(100).optional(),
+  currentPostalCode: z.string().max(20).optional(),
+  
   user: z.object({
     firstName: z.string().min(2).max(50).optional(),
     lastName: z.string().min(2).max(50).optional(),
