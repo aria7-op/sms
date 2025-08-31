@@ -1969,7 +1969,7 @@ class StudentController {
           student: {
             select: {
               id: true,
-              user: { select: { firstName: true, lastName: true, displayName: true, email: true } }
+              user: { select: { firstName: true, lastName: true, displayName: true } }
             }
           }
         },
@@ -2020,7 +2020,6 @@ class StudentController {
               select: {
                 id: true,
                 name: true,
-                email: true,
                 phone: true,
                 createdAt: true,
                 customerEvents: {
