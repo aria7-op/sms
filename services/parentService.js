@@ -116,13 +116,19 @@ class ParentService {
         console.log('🔍 ParentService: Transaction started');
         
         // Generate unique username for parent - use provided username if available, otherwise generate simple one
+        console.log('🔍 ParentService: Username from frontend:', parentData.user.username);
+        console.log('🔍 ParentService: Username type:', typeof parentData.user.username);
+        console.log('🔍 ParentService: Username length:', parentData.user.username?.length);
+        
         let parentUsername;
         if (parentData.user.username) {
           // Use provided username if available
           parentUsername = parentData.user.username;
+          console.log('🔍 ParentService: Using provided username:', parentUsername);
         } else {
           // Generate simple username with just firstName and a small random number
           parentUsername = `${parentData.user.firstName.toLowerCase()}_${Math.floor(Math.random() * 1000)}`;
+          console.log('🔍 ParentService: Generated username:', parentUsername);
         }
         
         // Ensure username uniqueness by checking if it already exists
