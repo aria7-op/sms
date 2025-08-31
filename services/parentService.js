@@ -1,4 +1,5 @@
 import { PrismaClient } from '../generated/prisma/index.js';
+import { hashPassword, generateSecureRandom } from '../utils/encryption.js';
 
 const prisma = new PrismaClient();
 
@@ -122,6 +123,10 @@ class ParentService {
         // Create parent user
         console.log('🔍 ParentService: Creating parent user...');
         
+        // Generate salt and hash password for parent user
+        const salt = generateSecureRandom(16);
+        const passwordHash = hashPassword('temp_password_123', salt);
+        
         // Clean and map parent user data
         const cleanParentUserData = {
           firstName: parentData.user.firstName,
@@ -133,7 +138,8 @@ class ParentService {
           schoolId: Number(schoolId),
           createdBy: Number(userId),
           createdByOwnerId: Number(userId), // userId should be the owner ID
-          password: 'temp_password_123' // Temporary password for parent users
+          password: passwordHash.hash, // Hashed password for parent users
+          salt: passwordHash.salt // Salt for password verification
         };
         
         // Add optional fields if they exist
