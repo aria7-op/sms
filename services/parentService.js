@@ -102,6 +102,24 @@ class ParentService {
       console.log('🔍 ParentService: Input data:', JSON.stringify(parentData, null, 2));
       console.log('🔍 ParentService: userId:', userId, 'schoolId:', schoolId);
       
+      // Validate required fields
+      if (!parentData.user || !parentData.user.email || !parentData.user.firstName || !parentData.user.lastName) {
+        throw new Error('Parent user data is missing required fields: email, firstName, lastName');
+      }
+      
+      if (!userId || !schoolId) {
+        throw new Error('User ID and School ID are required');
+      }
+      
+      // Check if parent user email already exists
+      const existingUser = await prisma.user.findUnique({
+        where: { email: parentData.user.email }
+      });
+      
+      if (existingUser) {
+        throw new Error(`User with email ${parentData.user.email} already exists`);
+      }
+      
       // Use transaction to create both user and parent
       const result = await prisma.$transaction(async (tx) => {
         console.log('🔍 ParentService: Transaction started');
@@ -120,8 +138,8 @@ class ParentService {
           firstName: parentData.user.firstName,
           lastName: parentData.user.lastName,
           email: parentData.user.email,
-          phone: parentData.user.phone,
-          gender: parentData.user.gender,
+          phone: parentData.user.phone || null,
+          gender: parentData.user.gender || null,
           username: parentUsername,
           password: 'Parent@123', // Default password that can be changed later
           role: 'PARENT',
@@ -209,6 +227,16 @@ class ParentService {
         code: error.code,
         meta: error.meta
       });
+      
+      // Re-throw with more context
+      if (error.code === 'P2002') {
+        throw new Error(`Duplicate entry: ${error.meta?.target?.join(', ')} already exists`);
+      } else if (error.code === 'P2003') {
+        throw new Error(`Foreign key constraint failed: ${error.meta?.field_name}`);
+      } else if (error.code === 'P2025') {
+        throw new Error(`Record not found: ${error.meta?.cause}`);
+      }
+      
       throw error;
     }
   }
