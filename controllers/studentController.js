@@ -155,7 +155,21 @@ class StudentController {
         // Convert admissionDate to Date object if it exists
         ...(studentDataWithoutRelations.admissionDate && {
           admissionDate: new Date(studentDataWithoutRelations.admissionDate)
-        })
+        }),
+        // Include origin address fields
+        ...(studentDataWithoutRelations.originAddress && { originAddress: studentDataWithoutRelations.originAddress }),
+        ...(studentDataWithoutRelations.originCity && { originCity: studentDataWithoutRelations.originCity }),
+        ...(studentDataWithoutRelations.originState && { originState: studentDataWithoutRelations.originState }),
+        ...(studentDataWithoutRelations.originProvince && { originProvince: studentDataWithoutRelations.originProvince }),
+        ...(studentDataWithoutRelations.originCountry && { originCountry: studentDataWithoutRelations.originCountry }),
+        ...(studentDataWithoutRelations.originPostalCode && { originPostalCode: studentDataWithoutRelations.originPostalCode }),
+        // Include current residence address fields
+        ...(studentDataWithoutRelations.currentAddress && { currentAddress: studentDataWithoutRelations.currentAddress }),
+        ...(studentDataWithoutRelations.currentCity && { currentCity: studentDataWithoutRelations.currentCity }),
+        ...(studentDataWithoutRelations.currentState && { currentState: studentDataWithoutRelations.currentState }),
+        ...(studentDataWithoutRelations.currentProvince && { currentProvince: studentDataWithoutRelations.currentProvince }),
+        ...(studentDataWithoutRelations.currentCountry && { currentCountry: studentDataWithoutRelations.currentCountry }),
+        ...(studentDataWithoutRelations.currentPostalCode && { currentPostalCode: studentDataWithoutRelations.currentPostalCode })
       };
       
       // Check if parent data is provided
