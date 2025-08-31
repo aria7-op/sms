@@ -1,20 +1,6 @@
 import express from 'express';
 import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
-
-// Import parentController with a different name to avoid conflicts
-import ParentControllerModule from '../controllers/parentController.js';
-const parentController = ParentControllerModule;
-
-// Additional debugging
-console.log('File path being imported:', '../controllers/parentController.js');
-console.log('Current working directory:', process.cwd());
-console.log('__dirname equivalent:', import.meta.url);
-
-// Debug: Check what we actually imported
-console.log('ParentControllerModule:', ParentControllerModule);
-console.log('parentController:', parentController);
-console.log('parentController constructor:', parentController?.constructor?.name);
-console.log('Import path resolved to:', import.meta.url);
+import ParentController from '../controllers/parentController.js';
 
 const router = express.Router();
 
@@ -31,7 +17,7 @@ const router = express.Router();
 router.get('/',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
+  ParentController.getParents.bind(ParentController)
 );
 
 /**
@@ -43,7 +29,7 @@ router.get('/',
 router.get('/:id',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
+  ParentController.getParentById.bind(ParentController)
 );
 
 /**
@@ -55,7 +41,7 @@ router.get('/:id',
 router.post('/',
   authenticateToken,
   authorizePermissions(['parent:create']),
-  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
+  ParentController.createParent.bind(ParentController)
 );
 
 /**
@@ -67,7 +53,7 @@ router.post('/',
 router.put('/:id',
   authenticateToken,
   authorizePermissions(['parent:update']),
-  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
+  ParentController.updateParent.bind(ParentController)
 );
 
 /**
@@ -79,7 +65,7 @@ router.put('/:id',
 router.delete('/:id',
   authenticateToken,
   authorizePermissions(['parent:delete']),
-  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
+  ParentController.deleteParent.bind(ParentController)
 );
 
 // ============================================================================
@@ -95,14 +81,15 @@ router.delete('/:id',
 router.get('/:id/students',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
+  ParentController.getParentStudents.bind(ParentController)
 );
 
 // Debug endpoint
-router.get('/:id/debug', authenticateToken, authorizePermissions(['parent:read']), (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' }));
-
-// Get parent by ID
-router.get('/:id', authenticateToken, authorizePermissions(['parent:read']), (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' }));
+router.get('/:id/debug', 
+  authenticateToken, 
+  authorizePermissions(['parent:read']), 
+  ParentController.debugParent.bind(ParentController)
+);
 
 // ============================================================================
 // Comprehensive Student Data Endpoints
@@ -117,7 +104,7 @@ router.get('/:id', authenticateToken, authorizePermissions(['parent:read']), (re
 router.get('/:parentId/students/:studentId/attendance',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  parentController.getStudentAttendance.bind(parentController)
+  ParentController.getStudentAttendance.bind(ParentController)
 );
 
 /**
@@ -129,7 +116,7 @@ router.get('/:parentId/students/:studentId/attendance',
 router.get('/:parentId/students/:studentId/grades',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  parentController.getStudentGrades.bind(parentController)
+  ParentController.getStudentGrades.bind(ParentController)
 );
 
 /**
@@ -141,7 +128,7 @@ router.get('/:parentId/students/:studentId/grades',
 router.get('/:parentId/students/:studentId/assignments',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  parentController.getStudentAssignments.bind(parentController)
+  ParentController.getStudentAssignments.bind(ParentController)
 );
 
 /**
@@ -153,7 +140,7 @@ router.get('/:parentId/students/:studentId/assignments',
 router.get('/:parentId/students/:studentId/exams',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  parentController.getStudentExams.bind(parentController)
+  ParentController.getStudentExams.bind(ParentController)
 );
 
 /**
@@ -165,7 +152,7 @@ router.get('/:parentId/students/:studentId/exams',
 router.get('/:parentId/students/:studentId/fees',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  parentController.getStudentFees.bind(parentController)
+  ParentController.getStudentFees.bind(ParentController)
 );
 
 /**
@@ -177,7 +164,7 @@ router.get('/:parentId/students/:studentId/fees',
 router.get('/:parentId/students/:studentId/timetable',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  parentController.getStudentTimetable.bind(parentController)
+  ParentController.getStudentTimetable.bind(ParentController)
 );
 
 /**
@@ -189,7 +176,7 @@ router.get('/:parentId/students/:studentId/timetable',
 router.get('/:parentId/notifications',
   authenticateToken,
   authorizePermissions(['parent:read', 'notification:read']),
-  parentController.getParentNotifications.bind(parentController)
+  ParentController.getParentNotifications.bind(ParentController)
 );
 
 /**
@@ -201,7 +188,7 @@ router.get('/:parentId/notifications',
 router.patch('/:parentId/notifications/:notificationId/read',
   authenticateToken,
   authorizePermissions(['parent:read', 'notification:read']),
-  parentController.markParentNotificationAsRead.bind(parentController)
+  ParentController.markParentNotificationAsRead.bind(ParentController)
 );
 
 /**
@@ -213,7 +200,7 @@ router.patch('/:parentId/notifications/:notificationId/read',
 router.patch('/:parentId/notifications/read-all',
   authenticateToken,
   authorizePermissions(['parent:read', 'notification:read']),
-  parentController.markAllParentNotificationsAsRead.bind(parentController)
+  ParentController.markAllParentNotificationsAsRead.bind(ParentController)
 );
 
 /**
@@ -225,7 +212,7 @@ router.patch('/:parentId/notifications/read-all',
 router.get('/:parentId/students/:studentId/notifications',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  parentController.getStudentNotifications.bind(parentController)
+  ParentController.getStudentNotifications.bind(ParentController)
 );
 
 /**
@@ -237,7 +224,7 @@ router.get('/:parentId/students/:studentId/notifications',
 router.get('/:parentId/students/:studentId/academic-summary',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  parentController.getStudentAcademicSummary.bind(parentController)
+  ParentController.getStudentAcademicSummary.bind(ParentController)
 );
 
 // ============================================================================
@@ -253,7 +240,7 @@ router.get('/:parentId/students/:studentId/academic-summary',
 router.get('/stats',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  parentController.getParentStats.bind(parentController)
+  ParentController.getParentStats.bind(ParentController)
 );
 
 export default router; 
