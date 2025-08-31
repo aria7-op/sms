@@ -87,6 +87,11 @@ class StudentController {
    */
   async createStudent(req, res) {
     try {
+      console.log('🔍 ===== STUDENT CREATION STARTED =====');
+      console.log('🔍 Request body type:', typeof req.body);
+      console.log('🔍 Request body keys:', Object.keys(req.body));
+      console.log('🔍 Full request body:', JSON.stringify(req.body, null, 2));
+      
       const studentData = req.body;
       let { schoolId, classId } = studentData;
 
@@ -155,6 +160,14 @@ class StudentController {
       
       // Check if parent data is provided
       let parentId = null;
+      
+      // Debug: Log the entire studentData to see what's being received
+      console.log('🔍 DEBUG: Full studentData received:', JSON.stringify(studentData, null, 2));
+      console.log('🔍 DEBUG: studentData.parent exists?', !!studentData.parent);
+      console.log('🔍 DEBUG: studentData.parent.user exists?', !!(studentData.parent && studentData.parent.user));
+      console.log('🔍 DEBUG: studentData.parent type:', typeof studentData.parent);
+      console.log('🔍 DEBUG: studentData.parent keys:', studentData.parent ? Object.keys(studentData.parent) : 'null');
+      
       if (studentData.parent && studentData.parent.user) {
         console.log('🔍 Creating parent with user data...');
         console.log('🔍 Parent data:', JSON.stringify(studentData.parent, null, 2));
