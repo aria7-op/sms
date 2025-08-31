@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import { 
   handlePrismaError, 
   createSuccessResponse, 
@@ -39,19 +39,18 @@ import {
   warmStudentCache
 } from '../cache/studentCache.js';
 import { 
-  createAuditLog, 
-  createNotification,
-  triggerEntityCreatedNotification,
-  triggerEntityUpdatedNotification
-} from '../services/notificationService.js';
+  createAuditLog
+} from '../middleware/audit.js';
 import { 
-  triggerEntityCreatedNotifications
+  triggerEntityCreatedNotifications,
+  triggerEntityUpdatedNotifications
 } from '../utils/notificationTriggers.js';
 import { 
   validateSchoolAccess, 
   validateClassAccess 
 } from '../middleware/validation.js';
 import StudentEventService from '../services/studentEventService.js';
+import ParentService from '../services/parentService.js';
 
 const prisma = new PrismaClient();
 
@@ -158,13 +157,29 @@ class StudentController {
       };
       
       // Log the student creation event FIRST
-      const event = await studentEventService.createStudentCreationEvent(
+      const event = await studentEventService.createStudentEnrollmentEvent(
         eventData,
         req.user.id,
         schoolId
       );
       
-      // Create student with user
+      // Check if parent data is provided
+      let parentId = null;
+      if (studentData.parent && studentData.parent.user) {
+        // Create parent with user using the existing parent service
+        const parentService = new ParentService();
+        const parent = await parentService.createParentWithUser(
+          studentData.parent,
+          req.user.id,
+          schoolId
+        );
+        parentId = parent.id;
+      } else if (studentData.parentId) {
+        // Use existing parent ID if provided
+        parentId = studentData.parentId;
+      }
+      
+      // Create student with user and parent connection
       const student = await prisma.student.create({
         data: {
           ...studentDataWithoutRelations,
@@ -177,6 +192,12 @@ class StudentController {
           ...(classId && {
             class: {
               connect: { id: BigInt(classId) }
+            }
+          }),
+          // Connect to parent if parentId exists
+          ...(parentId && {
+            parent: {
+              connect: { id: BigInt(parentId) }
             }
           }),
           user: {
@@ -245,30 +266,29 @@ class StudentController {
       });
 
       // Update the event with the student ID
-      await prisma.studentEvent.update({
-        where: { id: event.id },
-        data: { 
-          studentId: student.id,
-          metadata: { ...event.metadata, studentId: student.id.toString() }
-        }
-      });
+      // Note: Event update not available in current StudentEventService
+      // await prisma.studentEvent.update({
+      //   where: { id: event.id },
+      //   data: { 
+      //     studentId: student.id,
+      //     metadata: { ...event.metadata, studentId: student.id.toString() }
+      //   }
+      // });
 
       // Invalidate cache
       await invalidateStudentCacheOnCreate(student);
 
       // Create audit log
-      await createAuditLog({
-        action: 'CREATE',
-        entity: 'Student',
-        entityId: student.id,
-        userId: req.user.id,
-        schoolId,
-        details: {
+      await createAuditLog(
+        req,
+        'CREATE',
+        'Student',
+        {
           studentId: student.id,
           admissionNo: student.admissionNo,
           classId: student.classId
         }
-      });
+      );
 
       // Trigger automatic notification for student creation
       await triggerEntityCreatedNotifications(
@@ -546,7 +566,7 @@ class StudentController {
       });
 
       // Trigger automatic notification for student update
-      await triggerEntityUpdatedNotification(
+      await triggerEntityUpdatedNotifications(
         'student',
         updatedStudent.id,
         {
