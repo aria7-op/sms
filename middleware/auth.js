@@ -161,7 +161,9 @@ export const authenticateToken = async (req, res, next) => {
           parent: {
             select: {
               id: true,
-              code: true
+              uuid: true,
+              occupation: true,
+              education: true
             }
           },
           student: {
