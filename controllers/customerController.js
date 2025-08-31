@@ -1941,7 +1941,10 @@ export const getCustomerCollaborations = async (req, res) => {
       where: whereClause,
       include: {
         customer: {
-          include: { user: true }
+          select: {
+            id: true,
+            name: true
+          }
         },
         assignedTo: {
           select: {
@@ -3023,7 +3026,31 @@ export const convertCustomerToStudent = async (req, res) => {
     const filteredStudentData = {};
     for (const key of Object.keys(studentData)) {
       if (validStudentFields.includes(key)) {
-        filteredStudentData[key] = studentData[key];
+        // Handle special field type conversions
+        if (key === 'parentId' && studentData[key] && studentData[key] !== 'null' && studentData[key] !== 'undefined') {
+          try {
+            filteredStudentData[key] = BigInt(studentData[key]);
+          } catch (error) {
+            console.warn(`Invalid parentId value: ${studentData[key]}, skipping...`);
+            continue;
+          }
+        } else if (key === 'classId' && studentData[key] && studentData[key] !== 'null' && studentData[key] !== 'undefined') {
+          try {
+            filteredStudentData[key] = BigInt(studentData[key]);
+          } catch (error) {
+            console.warn(`Invalid classId value: ${studentData[key]}, skipping...`);
+            continue;
+          }
+        } else if (key === 'sectionId' && studentData[key] && studentData[key] !== 'null' && studentData[key] !== 'undefined') {
+          try {
+            filteredStudentData[key] = BigInt(studentData[key]);
+          } catch (error) {
+            console.warn(`Invalid sectionId value: ${studentData[key]}, skipping...`);
+            continue;
+          }
+        } else {
+          filteredStudentData[key] = studentData[key];
+        }
       }
     }
     
