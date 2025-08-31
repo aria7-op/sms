@@ -253,8 +253,12 @@ router.put('/:id', authenticateToken, authorizePermissions(['parent:update']), a
       include: {
         user: {
           select: {
-            id: true, uuid: true, username: true, email: true, phone: true,
-            firstName: true, lastName: true, status: true
+            id: true,
+            uuid: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            status: true
           }
         }
       }
@@ -341,10 +345,26 @@ router.get('/:id/debug', authenticateToken, authorizePermissions(['parent:read']
         deletedAt: null
       },
       include: {
-        user: { select: { id: true, firstName: true, lastName: true, email: true, role: true } },
+        user: { 
+          select: { 
+            id: true, 
+            firstName: true, 
+            lastName: true, 
+            role: true 
+          } 
+        },
         students: {
           where: { deletedAt: null },
-          include: { user: { select: { id: true, firstName: true, lastName: true } } }
+          take: 20, // Limit students for debug
+          include: { 
+            user: { 
+              select: { 
+                id: true, 
+                firstName: true, 
+                lastName: true 
+              } 
+            } 
+          }
         }
       }
     });
