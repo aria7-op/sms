@@ -273,11 +273,11 @@ class StudentController {
         req,
         'CREATE',
         'Student',
-        {
+        JSON.stringify({
           studentId: student.id,
           admissionNo: student.admissionNo,
           classId: student.classId
-        }
+        })
       );
 
       // Trigger automatic notification for student creation
