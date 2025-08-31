@@ -369,40 +369,16 @@ export const buildStudentIncludeQuery = (include = []) => {
   const includeQuery = {};
 
   if (include.length === 0) {
-    // Default includes - fetch all user fields
+    // LIGHTWEIGHT DEFAULT - Only essential fields for list view
     includeQuery.user = {
       select: {
         id: true,
         uuid: true,
-        username: true,
-
-        phone: true,
-        phoneVerified: true,
-        // password: false, // Never include password for security
-        // salt: false, // Never include salt for security
         firstName: true,
-        middleName: true,
         lastName: true,
         displayName: true,
-        gender: true,
-        birthDate: true,
-        avatar: true,
-        coverImage: true,
-        bio: true,
-        role: true,
         status: true,
-        lastLogin: true,
-        lastIp: true,
-        timezone: true,
-        locale: true,
-        metadata: true,
-        schoolId: true,
-        createdByOwnerId: true,
-        createdBy: true,
-        updatedBy: true,
-        createdAt: true,
-        updatedAt: true,
-        deletedAt: true
+        avatar: true
       }
     };
     includeQuery.class = {
@@ -424,36 +400,9 @@ export const buildStudentIncludeQuery = (include = []) => {
         user: {
           select: {
             id: true,
-            uuid: true,
-            username: true,
-
-            phone: true,
-            phoneVerified: true,
-            // password: false, // Never include password for security
-            // salt: false, // Never include salt for security
             firstName: true,
-            middleName: true,
             lastName: true,
-            displayName: true,
-            gender: true,
-            birthDate: true,
-            avatar: true,
-            coverImage: true,
-            bio: true,
-            role: true,
-            status: true,
-            lastLogin: true,
-            lastIp: true,
-            timezone: true,
-            locale: true,
-            metadata: true,
-            schoolId: true,
-            createdByOwnerId: true,
-            createdBy: true,
-            updatedBy: true,
-            createdAt: true,
-            updatedAt: true,
-            deletedAt: true
+            phone: true
           }
         }
       }
@@ -465,69 +414,107 @@ export const buildStudentIncludeQuery = (include = []) => {
         code: true
       }
     };
-    includeQuery._count = {
-      select: {
-        attendances: true,
-        grades: true,
-        payments: true,
-        documents: true,
-        bookIssues: true,
-        studentTransports: true,
-        assignmentSubmissions: true
-      }
-    };
   } else {
-    // Custom includes
+    // SMART INCLUDES - Only load what's requested
     if (include.includes('user')) {
-      includeQuery.user = true;
-    }
-    if (include.includes('class')) {
-      includeQuery.class = true;
-    }
-    if (include.includes('section')) {
-      includeQuery.section = true;
-    }
-    if (include.includes('parent')) {
-      includeQuery.parent = {
-        include: {
-          user: true
+      includeQuery.user = {
+        select: {
+          id: true,
+          uuid: true,
+          firstName: true,
+          lastName: true,
+          displayName: true,
+          phone: true,
+          gender: true,
+          birthDate: true,
+          avatar: true,
+          status: true,
+          createdAt: true
         }
       };
     }
-    if (include.includes('school')) {
-      includeQuery.school = true;
-    }
-    if (include.includes('attendances')) {
-      includeQuery.attendances = true;
-    }
-    if (include.includes('grades')) {
-      includeQuery.grades = true;
-    }
-    if (include.includes('payments')) {
-      includeQuery.payments = true;
-    }
-    if (include.includes('documents')) {
-      includeQuery.documents = true;
-    }
-    if (include.includes('bookIssues')) {
-      includeQuery.bookIssues = true;
-    }
-    if (include.includes('studentTransports')) {
-      includeQuery.studentTransports = true;
-    }
-    if (include.includes('assignmentSubmissions')) {
-      includeQuery.assignmentSubmissions = true;
-    }
-    if (include.includes('_count')) {
-      includeQuery._count = {
+    
+    if (include.includes('class')) {
+      includeQuery.class = {
         select: {
-          attendances: true,
-          grades: true,
-          payments: true,
-          documents: true,
-          bookIssues: true,
-          studentTransports: true,
-          assignmentSubmissions: true
+          id: true,
+          name: true,
+          code: true
+        }
+      };
+    }
+    
+    if (include.includes('section')) {
+      includeQuery.section = {
+        select: {
+          id: true,
+          name: true
+        }
+      };
+    }
+    
+    if (include.includes('parent')) {
+      includeQuery.parent = {
+        select: {
+          id: true,
+          occupation: true,
+          education: true,
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              phone: true
+            }
+          }
+        }
+      };
+    }
+    
+    if (include.includes('school')) {
+      includeQuery.school = {
+        select: {
+          id: true,
+          name: true,
+          code: true
+        }
+      };
+    }
+    
+    if (include.includes('attendance')) {
+      includeQuery.attendances = {
+        take: 10,
+        orderBy: { date: 'desc' },
+        select: {
+          id: true,
+          date: true,
+          status: true
+        }
+      };
+    }
+    
+    if (include.includes('grades')) {
+      includeQuery.grades = {
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          subject: true,
+          grade: true,
+          score: true
+        }
+      };
+    }
+    
+    if (include.includes('payments')) {
+      includeQuery.payments = {
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          amount: true,
+          status: true,
+          createdAt: true
         }
       };
     }
