@@ -41,10 +41,10 @@ function convertBigInts(obj) {
 router.get('/', authenticateToken, authorizePermissions(['parent:read']), async (req, res) => {
   try {
     const { schoolId } = req.user;
-    const { page = 1, limit = 10, search, status } = req.query;
+    const { page = 1, limit = 20, search = '', status = '' } = req.query;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const take = Math.min(parseInt(limit), 100); // Max 100 per page
 
     const where = {
       schoolId: BigInt(schoolId),
@@ -69,8 +69,18 @@ router.get('/', authenticateToken, authorizePermissions(['parent:read']), async 
       include: {
         user: {
           select: {
-            id: true, uuid: true, username: true, phone: true,
-            firstName: true, lastName: true, status: true
+            id: true,
+            uuid: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            status: true,
+            avatar: true
+          }
+        },
+        _count: {
+          select: {
+            students: true
           }
         }
       },
@@ -82,7 +92,12 @@ router.get('/', authenticateToken, authorizePermissions(['parent:read']), async 
     res.json({
       success: true,
       data: convertBigInts(parents),
-      pagination: { page: parseInt(page), limit: parseInt(limit), total }
+      pagination: { 
+        page: parseInt(page), 
+        limit: take, 
+        total,
+        pages: Math.ceil(total / take)
+      }
     });
   } catch (error) {
     console.error('Get parents error:', error);
@@ -110,14 +125,34 @@ router.get('/:id', authenticateToken, authorizePermissions(['parent:read']), asy
       include: {
         user: {
           select: {
-            id: true, uuid: true, username: true, phone: true,
-            firstName: true, lastName: true, status: true
+            id: true,
+            uuid: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            status: true,
+            avatar: true
           }
         },
         students: {
           where: { deletedAt: null },
+          take: 50, // Limit students to prevent overloading
           include: {
-            user: { select: { id: true, firstName: true, lastName: true } }
+            user: { 
+              select: { 
+                id: true, 
+                firstName: true, 
+                lastName: true,
+                avatar: true
+              } 
+            },
+            class: {
+              select: {
+                id: true,
+                name: true,
+                code: true
+              }
+            }
           }
         }
       }
@@ -170,8 +205,12 @@ router.post('/', authenticateToken, authorizePermissions(['parent:create']), asy
       include: {
         user: {
           select: {
-            id: true, uuid: true, username: true, phone: true,
-            firstName: true, lastName: true, status: true
+            id: true,
+            uuid: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            status: true
           }
         }
       }
