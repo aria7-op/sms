@@ -114,28 +114,48 @@ class ParentService {
 
         // Create parent user
         console.log('🔍 ParentService: Creating parent user...');
-        const parentUserData = {
-          ...parentData.user,
+        
+        // Clean and map parent user data
+        const cleanParentUserData = {
+          firstName: parentData.user.firstName,
+          lastName: parentData.user.lastName,
+          email: parentData.user.email,
+          phone: parentData.user.phone,
+          gender: parentData.user.gender,
           username: parentUsername,
           role: 'PARENT',
           schoolId: BigInt(schoolId),
           createdBy: BigInt(userId),
-          createdByOwnerId: BigInt(userId),
-          // Handle address fields for parent
-          metadata: JSON.stringify({
-            address: {
-              street: parentData.user.address || '',
-              city: parentData.user.city || '',
-              state: parentData.user.state || '',
-              country: parentData.user.country || '',
-              postalCode: parentData.user.postalCode || ''
-            }
-          })
+          createdByOwnerId: BigInt(userId)
         };
-        console.log('🔍 ParentService: Parent user data:', JSON.stringify(parentUserData, null, 2));
+        
+        // Add optional fields if they exist
+        if (parentData.user.birthDate) {
+          cleanParentUserData.birthDate = new Date(parentData.user.birthDate);
+        }
+        if (parentData.user.displayName) {
+          cleanParentUserData.displayName = parentData.user.displayName;
+        }
+        if (parentData.user.avatar) {
+          cleanParentUserData.avatar = parentData.user.avatar;
+        }
+        
+        // Handle address fields for parent
+        const addressFields = {};
+        if (parentData.user.address) addressFields.street = parentData.user.address;
+        if (parentData.user.city) addressFields.city = parentData.user.city;
+        if (parentData.user.state) addressFields.state = parentData.user.state;
+        if (parentData.user.country) addressFields.country = parentData.user.country;
+        if (parentData.user.postalCode) addressFields.postalCode = parentData.user.postalCode;
+        
+        if (Object.keys(addressFields).length > 0) {
+          cleanParentUserData.metadata = JSON.stringify({ address: addressFields });
+        }
+        
+        console.log('🔍 ParentService: Cleaned parent user data:', JSON.stringify(cleanParentUserData, null, 2));
         
         const parentUser = await tx.user.create({
-          data: parentUserData
+          data: cleanParentUserData
         });
         console.log('🔍 ParentService: Parent user created successfully:', parentUser.id);
 
