@@ -1,5 +1,5 @@
 import express from 'express';
-import parentController from '../controllers/parentController.js';
+// import parentController from '../controllers/parentController.js';
 import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -17,7 +17,7 @@ const router = express.Router();
 router.get('/',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  parentController.getParents.bind(parentController)
+  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
 );
 
 /**
@@ -29,7 +29,7 @@ router.get('/',
 router.get('/:id',
   authenticateToken,
   authorizePermissions(['parent:read']),
-  parentController.getParentById.bind(parentController)
+  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
 );
 
 /**
@@ -41,7 +41,7 @@ router.get('/:id',
 router.post('/',
   authenticateToken,
   authorizePermissions(['parent:create']),
-  parentController.createParent.bind(parentController)
+  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
 );
 
 /**
@@ -53,7 +53,7 @@ router.post('/',
 router.put('/:id',
   authenticateToken,
   authorizePermissions(['parent:update']),
-  parentController.updateParent.bind(parentController)
+  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
 );
 
 /**
@@ -65,7 +65,7 @@ router.put('/:id',
 router.delete('/:id',
   authenticateToken,
   authorizePermissions(['parent:delete']),
-  parentController.deleteParent.bind(parentController)
+  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
 );
 
 // ============================================================================
@@ -81,14 +81,14 @@ router.delete('/:id',
 router.get('/:id/students',
   authenticateToken,
   authorizePermissions(['parent:read', 'student:read_children']),
-  parentController.getParentStudents.bind(parentController)
+  (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' })
 );
 
 // Debug endpoint
-router.get('/:id/debug', authenticateToken, authorizePermissions(['parent:read']), parentController.debugParent.bind(parentController));
+router.get('/:id/debug', authenticateToken, authorizePermissions(['parent:read']), (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' }));
 
 // Get parent by ID
-router.get('/:id', authenticateToken, authorizePermissions(['parent:read']), parentController.getParentById.bind(parentController));
+router.get('/:id', authenticateToken, authorizePermissions(['parent:read']), (req, res) => res.status(503).json({ message: 'Parent routes temporarily disabled' }));
 
 // ============================================================================
 // Comprehensive Student Data Endpoints
