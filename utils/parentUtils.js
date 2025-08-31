@@ -101,7 +101,6 @@ export const buildParentIncludeQuery = (include) => {
             id: true,
             firstName: true,
             lastName: true,
-            email: true,
             phone: true,
             avatar: true,
             status: true
@@ -152,7 +151,6 @@ export const buildParentIncludeQuery = (include) => {
         name: true,
         shortName: true,
         code: true,
-        email: true,
         phone: true,
         address: true,
         status: true
@@ -245,7 +243,6 @@ export const formatParentResponse = (parent, options = {}) => {
       firstName: parent.user.firstName,
       lastName: parent.user.lastName,
       fullName: `${parent.user.firstName} ${parent.user.lastName}`.trim(),
-      email: parent.user.email,
       phone: parent.user.phone,
       avatar: parent.user.avatar,
       status: parent.user.status
@@ -410,7 +407,6 @@ export const generateParentReport = async (schoolId, filters = {}) => {
         select: {
           firstName: true,
           lastName: true,
-          email: true,
           status: true,
           createdAt: true
         }
@@ -486,7 +482,6 @@ export const generateParentReport = async (schoolId, filters = {}) => {
   const csvData = parents.map(parent => ({
     parentId: parent.id,
     name: `${parent.user.firstName} ${parent.user.lastName}`,
-    email: parent.user.email,
     status: parent.user.status,
     incomeRange: calculateIncomeRange(parent.annualIncome),
     studentCount: parent.students?.length || 0,
@@ -541,17 +536,12 @@ export const validateParentData = async (data, schoolId, excludeId = null) => {
   const errors = [];
   
   // Required fields validation
-  const requiredFields = ['username', 'email', 'firstName', 'lastName'];
+  const requiredFields = ['username', 'firstName', 'lastName'];
   requiredFields.forEach(field => {
     if (!data[field]) {
       errors.push(`${field} is required`);
     }
   });
-
-  // Email format validation
-  if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
-    errors.push('Invalid email format');
-  }
 
   // Phone validation (if provided)
   if (data.phone && !/^[\d\s\+\-\(\)]{10,20}$/.test(data.phone)) {
@@ -571,19 +561,7 @@ export const validateParentData = async (data, schoolId, excludeId = null) => {
     errors.push('Last name must be 2-50 valid characters');
   }
 
-  // Check for existing email (if not excluded)
-  if (data.email && !errors.some(e => e.includes('email'))) {
-    const existingEmail = await prisma.user.findFirst({
-      where: {
-        email: data.email,
-        schoolId,
-        id: excludeId ? { not: excludeId } : undefined
-      }
-    });
-    if (existingEmail) {
-      errors.push('Email already exists in this school');
-    }
-  }
+
 
   // Check for existing username (if not excluded)
   if (data.username && !errors.some(e => e.includes('username'))) {
@@ -740,9 +718,7 @@ const commonFields = {
     .max(30, "Username cannot exceed 30 characters")
     .regex(/^[a-zA-Z0-9_]+$/, "Only letters, numbers and underscores allowed"),
   
-  email: z.string()
-    .email("Invalid email format")
-    .refine(validateEmail, "Invalid email domain"),
+
     
   phone: z.string()
     .optional()
@@ -854,9 +830,7 @@ export const ParentBulkUpdateSchema = z.object({
   .max(100, "Cannot update more than 100 parents at once"),
   
   options: z.object({
-    validateEmailUniqueness: z.boolean()
-      .default(true)
-      .describe("Verify updated emails remain unique"),
+
       
     validatePhoneUniqueness: z.boolean()
       .default(true)
@@ -891,26 +865,7 @@ export const ParentBulkUpdateSchema = z.object({
     });
   }
 
-  // Check for email uniqueness if enabled
-  if (data.options.validateEmailUniqueness) {
-    const emailUpdates = data.updates
-      .filter(u => u.data.email)
-      .map(u => ({ id: u.id, email: u.data.email?.toLowerCase() }));
 
-    const duplicateEmails = await checkFieldUniqueness(
-      'email',
-      emailUpdates,
-      existingParents
-    );
-    
-    if (duplicateEmails.length > 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Duplicate emails: ${duplicateEmails.join(', ')}`,
-        path: ["options", "validateEmailUniqueness"]
-      });
-    }
-  }
 
   // Check for phone uniqueness if enabled
   if (data.options.validatePhoneUniqueness) {
@@ -981,7 +936,6 @@ export const ParentSearchSchema = z.object({
     field: z.enum([
       'firstName',
       'lastName',
-      'email',
       'createdAt',
       'annualIncome'
     ]).default('lastName'),
@@ -1016,7 +970,7 @@ export function buildParentSearchQuery(params) {
       OR: [
         { user: { firstName: { contains: query, mode: 'insensitive' } } },
         { user: { lastName: { contains: query, mode: 'insensitive' } } },
-        { user: { email: { contains: query, mode: 'insensitive' } } },
+
         { occupation: { contains: query, mode: 'insensitive' } }
       ]
     });
