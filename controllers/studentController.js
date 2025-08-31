@@ -157,26 +157,71 @@ class StudentController {
       let parentId = null;
       if (studentData.parent && studentData.parent.user) {
         console.log('🔍 Creating parent with user data...');
+        console.log('🔍 Parent data:', JSON.stringify(studentData.parent, null, 2));
         try {
           // Create parent with user using the existing parent service
           const parentService = new ParentService();
           console.log('🔍 Parent service created, calling createParentWithUser...');
+          console.log('🔍 Parameters:', { userId: req.user.id, schoolId });
+          
+          // Determine the correct owner ID for parent creation
+          let parentOwnerId;
+          if (req.user.type === 'owner') {
+            parentOwnerId = req.user.id;
+          } else if (req.user.role === 'SUPER_ADMIN') {
+            // For super admin, we need to find the school owner
+            const school = await prisma.school.findUnique({
+              where: { id: BigInt(schoolId) },
+              select: { ownerId: true }
+            });
+            parentOwnerId = school.ownerId;
+          } else {
+            // For regular users, use their createdByOwnerId
+            parentOwnerId = req.user.createdByOwnerId;
+          }
+          
           const parent = await parentService.createParentWithUser(
             studentData.parent,
-            req.user.id,
+            parentOwnerId,
             schoolId
           );
-          console.log('🔍 Parent created successfully:', parent);
+          console.log('🔍 Parent created successfully:', JSON.stringify(parent, null, 2));
           parentId = parent.id;
-          console.log('🔍 Parent ID:', parentId);
+          console.log('🔍 Parent ID extracted:', parentId);
         } catch (parentError) {
           console.error('❌ Error creating parent:', parentError);
+          console.error('❌ Parent error stack:', parentError.stack);
+          console.error('❌ Parent error details:', {
+            message: parentError.message,
+            code: parentError.code,
+            meta: parentError.meta
+          });
           throw parentError;
         }
       } else if (studentData.parentId) {
         // Use existing parent ID if provided
         parentId = studentData.parentId;
         console.log('🔍 Using existing parent ID:', parentId);
+      } else {
+        console.log('🔍 No parent data provided, proceeding without parent');
+      }
+      
+      console.log('🔍 Final parentId before student creation:', parentId);
+      
+      // Determine the correct owner ID for student creation
+      let studentOwnerId;
+      if (req.user.type === 'owner') {
+        studentOwnerId = req.user.id;
+      } else if (req.user.role === 'SUPER_ADMIN') {
+        // For super admin, we need to find the school owner
+        const school = await prisma.school.findUnique({
+          where: { id: BigInt(schoolId) },
+          select: { ownerId: true }
+        });
+        studentOwnerId = school.ownerId;
+      } else {
+        // For regular users, use their createdByOwnerId
+        studentOwnerId = req.user.createdByOwnerId;
       }
       
       // Create student with user and parent connection
@@ -215,7 +260,7 @@ class StudentController {
               role: 'STUDENT',
               schoolId,
               createdBy: req.user.id,
-              createdByOwnerId: req.user.id // For owner-created users
+              createdByOwnerId: studentOwnerId // Use the correct owner ID
             }
           }
         },
