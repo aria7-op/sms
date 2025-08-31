@@ -103,21 +103,12 @@ class ParentService {
       console.log('🔍 ParentService: userId:', userId, 'schoolId:', schoolId);
       
       // Validate required fields
-      if (!parentData.user || !parentData.user.email || !parentData.user.firstName || !parentData.user.lastName) {
-        throw new Error('Parent user data is missing required fields: email, firstName, lastName');
+      if (!parentData.user || !parentData.user.firstName || !parentData.user.lastName) {
+        throw new Error('Parent user data is missing required fields: firstName, lastName');
       }
       
       if (!userId || !schoolId) {
         throw new Error('User ID and School ID are required');
-      }
-      
-      // Check if parent user email already exists
-      const existingUser = await prisma.user.findUnique({
-        where: { email: parentData.user.email }
-      });
-      
-      if (existingUser) {
-        throw new Error(`User with email ${parentData.user.email} already exists`);
       }
       
       // Use transaction to create both user and parent
@@ -125,8 +116,7 @@ class ParentService {
         console.log('🔍 ParentService: Transaction started');
         
         // Generate unique username for parent with timestamp and random suffix
-        const parentUsername = `${parentData.user.email.split('@')[0]}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}` || 
-                              `${parentData.user.firstName.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        const parentUsername = `${parentData.user.firstName.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
         
         console.log('🔍 ParentService: Generated username:', parentUsername);
 
@@ -137,11 +127,9 @@ class ParentService {
         const cleanParentUserData = {
           firstName: parentData.user.firstName,
           lastName: parentData.user.lastName,
-          email: parentData.user.email,
           phone: parentData.user.phone || null,
           gender: parentData.user.gender || null,
           username: parentUsername,
-          password: 'Parent@123', // Default password that can be changed later
           role: 'PARENT',
           schoolId: Number(schoolId),
           createdBy: Number(userId),
@@ -157,6 +145,9 @@ class ParentService {
         }
         if (parentData.user.avatar) {
           cleanParentUserData.avatar = parentData.user.avatar;
+        }
+        if (parentData.user.tazkiraNo) {
+          cleanParentUserData.tazkiraNo = parentData.user.tazkiraNo;
         }
         
         // Handle address fields for parent
