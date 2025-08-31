@@ -313,7 +313,6 @@ class StudentController {
               uuid: true,
               firstName: true,
               lastName: true,
-              email: true,
               phone: true,
               status: true,
               createdAt: true
@@ -338,8 +337,7 @@ class StudentController {
               user: {
                 select: {
                   firstName: true,
-                  lastName: true,
-                  email: true
+                  lastName: true
                 }
               }
             }
@@ -605,7 +603,6 @@ class StudentController {
               uuid: true,
               firstName: true,
               lastName: true,
-              email: true,
               phone: true,
               status: true
             }
