@@ -554,6 +554,23 @@ model Student {
   bankName                String?                @db.VarChar(100)
   ifscCode                String?                @db.VarChar(20)
   previousSchool          String?                @db.VarChar(255)
+  
+  // Origin Address (Where the student is from)
+  originAddress           String?                @db.VarChar(255)
+  originCity              String?                @db.VarChar(100)
+  originState             String?                @db.VarChar(100)
+  originProvince          String?                @db.VarChar(100)
+  originCountry           String?                @db.VarChar(100)
+  originPostalCode        String?                @db.VarChar(20)
+  
+  // Current Residence Address (Where the student currently lives)
+  currentAddress          String?                @db.VarChar(255)
+  currentCity             String?                @db.VarChar(100)
+  currentState            String?                @db.VarChar(100)
+  currentProvince         String?                @db.VarChar(100)
+  currentCountry          String?                @db.VarChar(100)
+  currentPostalCode       String?                @db.VarChar(20)
+  
   schoolId                BigInt
   createdBy               BigInt
   updatedBy               BigInt?
@@ -3114,7 +3131,3 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
-
-
-
-
