@@ -4,7 +4,7 @@ import {
   createSuccessResponse, 
   createErrorResponse 
 } from '../utils/responseUtils.js';
-import { hashPassword, generateSecureRandom } from '../utils/encryption.js';
+import bcrypt from 'bcryptjs';
 import { 
   generateStudentCode, 
   validateStudentConstraints, 
@@ -287,9 +287,9 @@ class StudentController {
         studentOwnerId = req.user.createdByOwnerId;
       }
       
-      // Generate salt and hash password for student user
-      const studentSalt = generateSecureRandom(16);
-      const studentPasswordHash = hashPassword('temp_password_123', studentSalt);
+      // Generate salt and hash password for student user using bcrypt
+      const studentSalt = await bcrypt.genSalt(10);
+      const studentPasswordHash = await bcrypt.hash('temp_password_123', studentSalt);
       
       // Generate unique username for student
       let studentUsername = studentData.user.username || `${studentData.user.firstName.toLowerCase()}_${Math.floor(Math.random() * 1000)}`;
@@ -338,7 +338,7 @@ class StudentController {
               createdBy: req.user.id,
               createdByOwnerId: studentOwnerId, // Use the correct owner ID
               salt: studentSalt,
-              password: studentPasswordHash.hash // Hashed password for student users
+              password: studentPasswordHash // Hashed password for student users
             }
           }
         },
