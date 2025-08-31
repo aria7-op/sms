@@ -133,7 +133,8 @@ class ParentService {
           role: 'PARENT',
           schoolId: Number(schoolId),
           createdBy: Number(userId),
-          createdByOwnerId: Number(userId) // userId should be the owner ID
+          createdByOwnerId: Number(userId), // userId should be the owner ID
+          password: 'temp_password_123' // Temporary password for parent users
         };
         
         // Add optional fields if they exist
