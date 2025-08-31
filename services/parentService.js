@@ -115,8 +115,24 @@ class ParentService {
       const result = await prisma.$transaction(async (tx) => {
         console.log('🔍 ParentService: Transaction started');
         
-        // Generate unique username for parent with timestamp and random suffix
-        const parentUsername = `${parentData.user.firstName.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        // Generate unique username for parent - use provided username if available, otherwise generate simple one
+        let parentUsername;
+        if (parentData.user.username) {
+          // Use provided username if available
+          parentUsername = parentData.user.username;
+        } else {
+          // Generate simple username with just firstName and a small random number
+          parentUsername = `${parentData.user.firstName.toLowerCase()}_${Math.floor(Math.random() * 1000)}`;
+        }
+        
+        // Ensure username uniqueness by checking if it already exists
+        let counter = 1;
+        let finalUsername = parentUsername;
+        while (await tx.user.findUnique({ where: { username: finalUsername } })) {
+          finalUsername = `${parentUsername}_${counter}`;
+          counter++;
+        }
+        parentUsername = finalUsername;
         
         console.log('🔍 ParentService: Generated username:', parentUsername);
 
