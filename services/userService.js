@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { 
@@ -593,63 +593,72 @@ class UserService {
       let isOwner = false;
       
       // If no user found, check if it's an owner (owners use email, not username)
-      if (!user) {
+      // Only check owner table if the username looks like an email (contains @)
+      if (!user && validatedData.username.includes('@')) {
         console.log('🔍 Checking owner table for email:', validatedData.username);
         
-        const owner = await this.prisma.owner.findUnique({
-          where: { email: validatedData.username }
-        });
-        
-        console.log('👑 Owner found:', owner ? 'YES' : 'NO');
-        
-        if (owner) {
-          console.log('👑 Owner status:', owner.status);
+        try {
+          const owner = await this.prisma.owner.findUnique({
+            where: { email: validatedData.username }
+          });
           
-          // Check if owner is active
-          if (owner.status !== 'ACTIVE') {
-            throw new Error('Account is not active. Please contact administrator.');
+          console.log('👑 Owner found:', owner ? 'YES' : 'NO');
+          
+          if (owner) {
+            console.log('👑 Owner status:', owner.status);
+            
+            // Check if owner is active
+            if (owner.status !== 'ACTIVE') {
+              throw new Error('Account is not active. Please contact administrator.');
+            }
+            
+            // Verify owner password using stored salt
+            let isPasswordValid = false;
+            if (owner.salt) {
+              // Use the stored salt to hash the provided password and compare
+              const hashedPassword = await bcrypt.hash(validatedData.password, owner.salt);
+              isPasswordValid = hashedPassword === owner.password;
+              console.log('🔐 Password validation (with salt):', isPasswordValid);
+            } else {
+              // Fallback to bcrypt.compare for backward compatibility
+              isPasswordValid = await bcrypt.compare(validatedData.password, owner.password);
+              console.log('🔐 Password validation (bcrypt.compare):', isPasswordValid);
+            }
+            
+            if (!isPasswordValid) {
+              throw new Error('Invalid username/email or password');
+            }
+            
+            // Create a user-like object for owner
+            user = {
+              id: owner.id,
+              email: owner.email,
+              role: 'SUPER_ADMIN',
+              status: owner.status,
+              name: owner.name,
+              timezone: owner.timezone,
+              locale: owner.locale,
+              emailVerified: owner.emailVerified,
+              createdAt: owner.createdAt,
+              metadata: owner.metadata,
+              school: null,
+              department: null,
+              class: null,
+            };
+            
+            isOwner = true;
+            console.log('✅ Owner login successful');
           }
-          
-          // Verify owner password using stored salt
-          let isPasswordValid = false;
-          if (owner.salt) {
-            // Use the stored salt to hash the provided password and compare
-            const hashedPassword = await bcrypt.hash(validatedData.password, owner.salt);
-            isPasswordValid = hashedPassword === owner.password;
-            console.log('🔐 Password validation (with salt):', isPasswordValid);
-          } else {
-            // Fallback to bcrypt.compare for backward compatibility
-            isPasswordValid = await bcrypt.compare(validatedData.password, owner.password);
-            console.log('🔐 Password validation (bcrypt.compare):', isPasswordValid);
-          }
-          
-          if (!isPasswordValid) {
-            throw new Error('Invalid username/email or password');
-          }
-          
-          // Create a user-like object for owner
-          user = {
-            id: owner.id,
-            email: owner.email,
-            role: 'SUPER_ADMIN',
-            status: owner.status,
-            name: owner.name,
-            timezone: owner.timezone,
-            locale: owner.locale,
-            emailVerified: owner.emailVerified,
-            createdAt: owner.createdAt,
-            metadata: owner.metadata,
-            school: null,
-            department: null,
-            class: null,
-          };
-          
-          isOwner = true;
-          console.log('✅ Owner login successful');
-        } else {
-          console.log('❌ No user or owner found with username/email:', validatedData.username);
-          throw new Error('Invalid username/email or password');
+        } catch (error) {
+          console.log('❌ Error checking owner table:', error.message);
+          // Continue with user authentication if owner check fails
         }
+      }
+      
+      // If still no user found, throw error
+      if (!user) {
+        console.log('❌ No user found with username:', validatedData.username);
+        throw new Error('Invalid username or password');
       }
       
       if (user) {
