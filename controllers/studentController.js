@@ -833,17 +833,15 @@ class StudentController {
       await triggerEntityUpdatedNotifications(
         'student',
         updatedStudent.id,
+        updatedStudent,
+        existingStudent,
+        req.user,
         {
-          ...updatedStudent,
-          entityType: 'student',
-          entityId: updatedStudent.id,
-          schoolId: updatedStudent.schoolId,
-          updatedBy: req.user.id,
-          previousData: existingStudent
-        },
-        req.user.id,
-        req.user.schoolId,
-        req.user.createdByOwnerId
+          auditDetails: {
+            studentId: updatedStudent.id.toString(),
+            updatedFields: Object.keys(filteredUpdateData)
+          }
+        }
       );
 
       return createSuccessResponse(res, 200, 'Student updated successfully', {
