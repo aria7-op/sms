@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 
 const prisma = new PrismaClient();
 
@@ -74,7 +74,7 @@ export const createAuditLog = async (req, action, resource, responseData) => {
       schoolId: schoolId ? BigInt(schoolId) : null,
       userId: userId ? BigInt(userId) : null,
       oldData: null,
-      newData: sanitizeRequestBody(req.body)
+      newData: JSON.stringify(sanitizeRequestBody(req.body))
     };
     
     await prisma.auditLog.create({
@@ -110,7 +110,7 @@ export const createAuditLogEntry = async (req, action, resource, responseData) =
       schoolId: schoolId ? BigInt(schoolId) : null,
       userId: userId ? BigInt(userId) : null,
       oldData: null,
-      newData: sanitizeRequestBody(req.body)
+      newData: JSON.stringify(sanitizeRequestBody(req.body))
     };
     
     // Store audit log in database
