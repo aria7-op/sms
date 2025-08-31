@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 
 const prisma = new PrismaClient();
 
@@ -88,6 +88,81 @@ class ParentService {
       return convertBigInts(parent);
     } catch (error) {
       console.error('Create parent service error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create parent with user data in a single transaction
+   * This method creates both user and parent records
+   */
+  async createParentWithUser(parentData, userId, schoolId) {
+    try {
+      // Use transaction to create both user and parent
+      const result = await prisma.$transaction(async (tx) => {
+        // Generate username for parent
+        const parentUsername = parentData.user.email.split('@')[0] || 
+                              `${parentData.user.firstName.toLowerCase()}${Date.now()}`;
+
+        // Create parent user
+        const parentUser = await tx.user.create({
+          data: {
+            ...parentData.user,
+            username: parentUsername,
+            role: 'PARENT',
+            schoolId: BigInt(schoolId),
+            createdBy: BigInt(userId),
+            createdByOwnerId: BigInt(userId),
+            // Handle address fields for parent
+            metadata: JSON.stringify({
+              address: {
+                street: parentData.user.address || '',
+                city: parentData.user.city || '',
+                state: parentData.user.state || '',
+                country: parentData.user.country || '',
+                postalCode: parentData.user.postalCode || ''
+              }
+            })
+          }
+        });
+
+        // Create parent record
+        const parent = await tx.parent.create({
+          data: {
+            userId: parentUser.id,
+            occupation: parentData.occupation || null,
+            annualIncome: parentData.annualIncome ? parseFloat(parentData.annualIncome) : null,
+            education: parentData.education || null,
+            schoolId: BigInt(schoolId),
+            createdBy: BigInt(userId)
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                uuid: true,
+                username: true,
+                email: true,
+                phone: true,
+                firstName: true,
+                middleName: true,
+                lastName: true,
+                displayName: true,
+                gender: true,
+                birthDate: true,
+                avatar: true,
+                status: true
+              }
+            }
+          }
+        });
+
+        return parent;
+      });
+
+      return convertBigInts(result);
+    } catch (error) {
+      console.error('Create parent with user service error:', error);
       throw error;
     }
   }
