@@ -72,7 +72,7 @@ const safeControllerMethod = (controller, methodName) => {
 // ======================
 
 // Apply sanitization to all routes
-// router.use(sanitizeRequest); // TEMPORARILY DISABLED FOR DEBUGGING
+router.use(sanitizeRequest);
 
 // Apply general rate limiting
 router.use(generalLimiter);
