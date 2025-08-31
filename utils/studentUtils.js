@@ -108,7 +108,6 @@ export const StudentUpdateSchema = z.object({
   user: z.object({
     firstName: z.string().min(2).max(50).optional(),
     lastName: z.string().min(2).max(50).optional(),
-    email: z.string().email().optional(),
     phone: z.string().regex(/^\+?[\d\s\-\(\)]+$/).optional(),
     gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
     dateOfBirth: z.string().optional(),
@@ -117,23 +116,24 @@ export const StudentUpdateSchema = z.object({
     state: z.string().max(100).optional(),
     country: z.string().max(100).optional(),
     postalCode: z.string().max(20).optional(),
+    tazkiraNo: z.string().max(50).optional(),
     status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'GRADUATED', 'TRANSFERRED']).optional()
   }).optional(),
   parent: z.object({
     user: z.object({
       firstName: z.string().min(2).max(50).optional(),
       lastName: z.string().min(2).max(50).optional(),
-      email: z.string().email().optional(),
       phone: z.string().regex(/^\+?[\d\s\-\(\)]+$/).optional(),
       gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
       address: z.string().max(255).optional(),
       city: z.string().max(100).optional(),
       state: z.string().max(100).optional(),
       country: z.string().max(100).optional(),
-      postalCode: z.string().max(20).optional()
+      postalCode: z.string().max(20).optional(),
+      tazkiraNo: z.string().max(50).optional()
     }).optional(),
     occupation: z.string().max(100).optional(),
-    annualIncome: z.string().regex(/^\d{1,10}(\.\d{1,2})?$/).optional(),
+    annualIncome: z.string().regex(/^\d{1,10}(\.\d{1,10})?$/).optional(),
     education: z.string().max(100).optional()
   }).optional()
 });
