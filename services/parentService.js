@@ -98,44 +98,61 @@ class ParentService {
    */
   async createParentWithUser(parentData, userId, schoolId) {
     try {
+      console.log('🔍 ParentService: Starting createParentWithUser...');
+      console.log('🔍 ParentService: Input data:', JSON.stringify(parentData, null, 2));
+      console.log('🔍 ParentService: userId:', userId, 'schoolId:', schoolId);
+      
       // Use transaction to create both user and parent
       const result = await prisma.$transaction(async (tx) => {
+        console.log('🔍 ParentService: Transaction started');
+        
         // Generate unique username for parent with timestamp and random suffix
         const parentUsername = `${parentData.user.email.split('@')[0]}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}` || 
                               `${parentData.user.firstName.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        
+        console.log('🔍 ParentService: Generated username:', parentUsername);
 
         // Create parent user
+        console.log('🔍 ParentService: Creating parent user...');
+        const parentUserData = {
+          ...parentData.user,
+          username: parentUsername,
+          role: 'PARENT',
+          schoolId: BigInt(schoolId),
+          createdBy: BigInt(userId),
+          createdByOwnerId: BigInt(userId),
+          // Handle address fields for parent
+          metadata: JSON.stringify({
+            address: {
+              street: parentData.user.address || '',
+              city: parentData.user.city || '',
+              state: parentData.user.state || '',
+              country: parentData.user.country || '',
+              postalCode: parentData.user.postalCode || ''
+            }
+          })
+        };
+        console.log('🔍 ParentService: Parent user data:', JSON.stringify(parentUserData, null, 2));
+        
         const parentUser = await tx.user.create({
-          data: {
-            ...parentData.user,
-            username: parentUsername,
-            role: 'PARENT',
-            schoolId: BigInt(schoolId),
-            createdBy: BigInt(userId),
-            createdByOwnerId: BigInt(userId),
-            // Handle address fields for parent
-            metadata: JSON.stringify({
-              address: {
-                street: parentData.user.address || '',
-                city: parentData.user.city || '',
-                state: parentData.user.state || '',
-                country: parentData.user.country || '',
-                postalCode: parentData.user.postalCode || ''
-              }
-            })
-          }
+          data: parentUserData
         });
+        console.log('🔍 ParentService: Parent user created successfully:', parentUser.id);
 
         // Create parent record
+        console.log('🔍 ParentService: Creating parent record...');
+        const parentDataForRecord = {
+          userId: parentUser.id,
+          occupation: parentData.occupation || null,
+          annualIncome: parentData.annualIncome ? parseFloat(parentData.annualIncome) : null,
+          education: parentData.education || null,
+          schoolId: BigInt(schoolId),
+          createdBy: BigInt(userId)
+        };
+        console.log('🔍 ParentService: Parent record data:', JSON.stringify(parentDataForRecord, null, 2));
+        
         const parent = await tx.parent.create({
-          data: {
-            userId: parentUser.id,
-            occupation: parentData.occupation || null,
-            annualIncome: parentData.annualIncome ? parseFloat(parentData.annualIncome) : null,
-            education: parentData.education || null,
-            schoolId: BigInt(schoolId),
-            createdBy: BigInt(userId)
-          },
+          data: parentDataForRecord,
           include: {
             user: {
               select: {
@@ -156,13 +173,21 @@ class ParentService {
             }
           }
         });
-
+        console.log('🔍 ParentService: Parent record created successfully:', parent.id);
+        console.log('🔍 ParentService: Transaction completed successfully');
         return parent;
       });
 
+      console.log('🔍 ParentService: Returning result:', JSON.stringify(result, null, 2));
       return convertBigInts(result);
     } catch (error) {
-      console.error('Create parent with user service error:', error);
+      console.error('❌ ParentService: Create parent with user service error:', error);
+      console.error('❌ ParentService: Error stack:', error.stack);
+      console.error('❌ ParentService: Error details:', {
+        message: error.message,
+        code: error.code,
+        meta: error.meta
+      });
       throw error;
     }
   }
