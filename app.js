@@ -204,6 +204,14 @@ dotenv.config();
   // Ensure req.body is always an object
   app.use((req, res, next) => {
     if (req.body === undefined) req.body = {};
+    
+    // Debug logging for request body after parsing
+    if (req.method === 'POST' && req.path.includes('/api/students')) {
+      console.log('🔍 APP.JS BODY PARSING: Request body keys after parsing:', Object.keys(req.body || {}));
+      console.log('🔍 APP.JS BODY PARSING: Request body type after parsing:', typeof req.body);
+      console.log('🔍 APP.JS BODY PARSING: Request body after parsing:', JSON.stringify(req.body, null, 2));
+    }
+    
     next();
   });
 
@@ -293,6 +301,13 @@ dotenv.config();
   // Encryption middleware for handling encrypted API requests and responses
   app.use((req, res, next) => {
     try {
+      // Debug logging for request body
+      if (req.method === 'POST' && req.path.includes('/api/students')) {
+        console.log('🔍 APP.JS ENCRYPTION MIDDLEWARE: Request body keys:', Object.keys(req.body || {}));
+        console.log('🔍 APP.JS ENCRYPTION MIDDLEWARE: Request body type:', typeof req.body);
+        console.log('🔍 APP.JS ENCRYPTION MIDDLEWARE: Request body:', JSON.stringify(req.body, null, 2));
+      }
+
       // Skip encryption check for file uploads, health checks, and attendance routes
       if (req.path.includes('/upload') || req.path.includes('/health') || req.path.includes('/attendances')) {
         return next();
