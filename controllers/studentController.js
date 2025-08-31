@@ -158,27 +158,41 @@ class StudentController {
       if (studentData.parent && studentData.parent.user) {
         console.log('🔍 Creating parent with user data...');
         console.log('🔍 Parent data:', JSON.stringify(studentData.parent, null, 2));
+        console.log('🔍 Current user:', {
+          id: req.user.id,
+          type: req.user.type,
+          role: req.user.role,
+          schoolId: req.user.schoolId,
+          createdByOwnerId: req.user.createdByOwnerId
+        });
+        
         try {
           // Create parent with user using the existing parent service
           const parentService = new ParentService();
           console.log('🔍 Parent service created, calling createParentWithUser...');
-          console.log('🔍 Parameters:', { userId: req.user.id, schoolId });
           
           // Determine the correct owner ID for parent creation
           let parentOwnerId;
           if (req.user.type === 'owner') {
             parentOwnerId = req.user.id;
+            console.log('🔍 Using owner ID for parent creation:', parentOwnerId);
           } else if (req.user.role === 'SUPER_ADMIN') {
             // For super admin, we need to find the school owner
+            console.log('🔍 Super admin detected, finding school owner...');
             const school = await prisma.school.findUnique({
               where: { id: BigInt(schoolId) },
               select: { ownerId: true }
             });
             parentOwnerId = school.ownerId;
+            console.log('🔍 Found school owner ID:', parentOwnerId);
           } else {
             // For regular users, use their createdByOwnerId
             parentOwnerId = req.user.createdByOwnerId;
+            console.log('🔍 Using user createdByOwnerId for parent creation:', parentOwnerId);
           }
+          
+          console.log('🔍 Final parent owner ID:', parentOwnerId);
+          console.log('🔍 School ID:', schoolId);
           
           const parent = await parentService.createParentWithUser(
             studentData.parent,
@@ -196,7 +210,12 @@ class StudentController {
             code: parentError.code,
             meta: parentError.meta
           });
-          throw parentError;
+          
+          // Return a more specific error response
+          return createErrorResponse(res, 500, 'Failed to create parent', {
+            error: parentError.message,
+            details: parentError.code || 'UNKNOWN_ERROR'
+          });
         }
       } else if (studentData.parentId) {
         // Use existing parent ID if provided
