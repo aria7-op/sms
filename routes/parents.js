@@ -15,7 +15,6 @@ console.log('ParentControllerModule:', ParentControllerModule);
 console.log('parentController:', parentController);
 console.log('parentController constructor:', parentController?.constructor?.name);
 console.log('Import path resolved to:', import.meta.url);
-console.log('Current file path:', __filename);
 
 const router = express.Router();
 
