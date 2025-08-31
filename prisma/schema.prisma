@@ -168,7 +168,7 @@ model User {
   id                              BigInt                     @id @default(autoincrement())
   uuid                            String                     @unique @default(uuid()) @db.VarChar(36)
   username                        String                     @unique @db.VarChar(50)
-  email                           String                     @unique @db.VarChar(255)
+  email                           String?                    @unique @db.VarChar(255)
   emailVerified                   DateTime?
   tazkiraNo                       String?                    @db.VarChar(50)
   phone                           String?                    @db.VarChar(20)
@@ -3131,4 +3131,5 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
+
 
