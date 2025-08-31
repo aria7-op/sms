@@ -173,7 +173,7 @@ model User {
   tazkiraNo                       String?                    @db.VarChar(50)
   phone                           String?                    @db.VarChar(20)
   phoneVerified                   DateTime?
-  password                        String                     @db.VarChar(255)
+  password                        String?                    @db.VarChar(255)
   salt                            String?                    @db.VarChar(255)
   firstName                       String                     @db.VarChar(50)
   middleName                      String?                    @db.VarChar(50)
@@ -3131,5 +3131,6 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
+
 
 
