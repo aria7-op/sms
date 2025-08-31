@@ -200,8 +200,8 @@ class StudentController {
               ...(dateOfBirth && { birthDate: new Date(dateOfBirth) }),
               // Generate a default password for the student
               password: 'Student@123', // Default password that can be changed later
-              // Store address in metadata
-              metadata: userMetadata,
+              // Store address in metadata as JSON string
+              metadata: Object.keys(userMetadata).length > 0 ? JSON.stringify(userMetadata) : null,
               role: 'STUDENT',
               schoolId,
               createdBy: req.user.id,
