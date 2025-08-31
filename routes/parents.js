@@ -5,10 +5,17 @@ import { authenticateToken, authorizePermissions } from '../middleware/auth.js';
 import ParentControllerModule from '../controllers/parentController.js';
 const parentController = ParentControllerModule;
 
+// Additional debugging
+console.log('File path being imported:', '../controllers/parentController.js');
+console.log('Current working directory:', process.cwd());
+console.log('__dirname equivalent:', import.meta.url);
+
 // Debug: Check what we actually imported
 console.log('ParentControllerModule:', ParentControllerModule);
 console.log('parentController:', parentController);
 console.log('parentController constructor:', parentController?.constructor?.name);
+console.log('Import path resolved to:', import.meta.url);
+console.log('Current file path:', __filename);
 
 const router = express.Router();
 
