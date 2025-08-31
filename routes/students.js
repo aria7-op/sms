@@ -71,8 +71,30 @@ const safeControllerMethod = (controller, methodName) => {
 // GLOBAL MIDDLEWARE
 // ======================
 
+// Debug middleware to see request body at each step
+router.use((req, res, next) => {
+  console.log('🔍 DEBUG MIDDLEWARE: Request body keys:', Object.keys(req.body || {}));
+  if (req.body && req.body.parent) {
+    console.log('🔍 DEBUG MIDDLEWARE: Parent data found:', JSON.stringify(req.body.parent, null, 2));
+  } else {
+    console.log('🔍 DEBUG MIDDLEWARE: No parent data found in request body');
+  }
+  next();
+});
+
 // Apply sanitization to all routes
 router.use(sanitizeRequest);
+
+// Debug middleware after sanitization
+router.use((req, res, next) => {
+  console.log('🔍 DEBUG MIDDLEWARE AFTER SANITIZATION: Request body keys:', Object.keys(req.body || {}));
+  if (req.body && req.body.parent) {
+    console.log('🔍 DEBUG MIDDLEWARE AFTER SANITIZATION: Parent data found:', JSON.stringify(req.body.parent, null, 2));
+  } else {
+    console.log('🔍 DEBUG MIDDLEWARE AFTER SANITIZATION: No parent data found in request body');
+  }
+  next();
+});
 
 // Apply general rate limiting
 router.use(generalLimiter);
@@ -137,7 +159,7 @@ router.post('/',
   authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['student:create']),
   studentCreateLimiter,
-  validateBody(StudentCreateSchema),
+  // validateBody(StudentCreateSchema), // TEMPORARILY REMOVED TO DEBUG PARENT DATA LOSS
   auditLog('CREATE', 'Student'),
   studentController.createStudent.bind(studentController)
 );
