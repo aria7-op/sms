@@ -133,16 +133,16 @@ class StudentController {
       // Extract address fields and move to metadata
       const { address, city, state, country, postalCode, ...userDataWithoutAddress } = userDataWithoutDateOfBirth;
       
-      // Create metadata object with address information
-      const userMetadata = {
-        address: {
-          street: address,
-          city,
-          state,
-          country,
-          postalCode
-        }
-      };
+      // Create metadata object with address information (only include defined values)
+      const userMetadata = {};
+      if (address || city || state || country || postalCode) {
+        userMetadata.address = {};
+        if (address) userMetadata.address.street = address;
+        if (city) userMetadata.address.city = city;
+        if (state) userMetadata.address.state = state;
+        if (country) userMetadata.address.country = country;
+        if (postalCode) userMetadata.address.postalCode = postalCode;
+      }
       
       // Convert date strings to Date objects for Prisma
       const processedStudentData = {
@@ -198,6 +198,8 @@ class StudentController {
                        `${studentData.user.firstName.toLowerCase()}${Date.now()}`,
               // Map dateOfBirth to birthDate for User model and convert to Date
               ...(dateOfBirth && { birthDate: new Date(dateOfBirth) }),
+              // Generate a default password for the student
+              password: 'Student@123', // Default password that can be changed later
               // Store address in metadata
               metadata: userMetadata,
               role: 'STUDENT',
