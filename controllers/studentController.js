@@ -1,57 +1,14 @@
 import { PrismaClient } from '../generated/prisma/index.js';
-import { 
-  handlePrismaError, 
-  createSuccessResponse, 
-  createErrorResponse 
-} from '../utils/responseUtils.js';
-import { 
-  generateStudentCode, 
-  validateStudentConstraints, 
-  buildStudentSearchQuery, 
-  buildStudentIncludeQuery,
-  generateStudentStats,
-  generateStudentAnalytics,
-  calculateStudentPerformance,
-  generateStudentExportData,
-  validateStudentImportData,
-  generateStudentCodeSuggestions,
-  getStudentCountByClass,
-  getStudentCountByStatus
-} from '../utils/studentUtils.js';
-import { 
-  setStudentInCache, 
-  getStudentFromCache, 
-  setStudentListInCache, 
-  getStudentListFromCache,
-  setStudentSearchInCache,
-  getStudentSearchFromCache,
-  setStudentStatsInCache,
-  getStudentStatsFromCache,
-  setStudentAnalyticsInCache,
-  getStudentAnalyticsFromCache,
-  setStudentPerformanceInCache,
-  getStudentPerformanceFromCache,
-  invalidateStudentCacheOnCreate,
-  invalidateStudentCacheOnUpdate,
-  invalidateStudentCacheOnDelete,
-  invalidateStudentCacheOnBulkOperation,
-  getStudentCacheStats,
-  warmStudentCache
-} from '../cache/studentCache.js';
-import { 
-  createAuditLog, 
-  createNotification,
-  triggerEntityCreatedNotification,
-  triggerEntityUpdatedNotification
-} from '../services/notificationService.js';
-import { 
-  triggerEntityCreatedNotifications
-} from '../utils/notificationTriggers.js';
-import { 
-  validateSchoolAccess, 
-  validateClassAccess 
-} from '../middleware/validation.js';
-import StudentEventService from '../services/studentEventService.js';
+import { createSuccessResponse, createErrorResponse } from '../utils/responseUtils.js';
+import { handlePrismaError } from '../utils/errorUtils.js';
+import { validateSchoolAccess, validateClassAccess } from '../middleware/accessControl.js';
+import { generateStudentCode } from '../utils/studentUtils.js';
+import { validateStudentConstraints } from '../utils/studentUtils.js';
+import { invalidateStudentCacheOnCreate } from '../cache/studentCache.js';
+import { createAuditLog } from '../middleware/audit.js';
+import { triggerEntityCreatedNotifications } from '../services/notificationService.js';
+import { StudentEventService } from '../services/studentEventService.js';
+import parentService from '../services/parentService.js';
 
 const prisma = new PrismaClient();
 
@@ -171,9 +128,58 @@ class StudentController {
         }
       }
 
-      // Create student with user FIRST
-      const student = await prisma.student.create({
-        data: {
+      // Use transaction to create parent (if provided) and student together
+      const result = await prisma.$transaction(async (tx) => {
+        let parentId = null;
+
+        // If parent data is provided, create parent with user first
+        if (studentData.parent && studentData.parent.user) {
+          const parentUserData = studentData.parent.user;
+          const parentSpecificData = studentData.parent;
+
+          // Generate username for parent
+          const parentUsername = parentUserData.email.split('@')[0] || 
+                                `${parentUserData.firstName.toLowerCase()}${Date.now()}`;
+
+          // Create parent user
+          const parentUser = await tx.user.create({
+            data: {
+              ...parentUserData,
+              username: parentUsername,
+              role: 'PARENT',
+              schoolId: BigInt(schoolId),
+              createdBy: req.user.id,
+              createdByOwnerId: req.user.id,
+              // Handle address fields for parent
+              metadata: JSON.stringify({
+                address: {
+                  street: parentUserData.address || '',
+                  city: parentUserData.city || '',
+                  state: parentUserData.state || '',
+                  country: parentUserData.country || '',
+                  postalCode: parentUserData.postalCode || ''
+                }
+              })
+            }
+          });
+
+          // Create parent record
+          const parent = await tx.parent.create({
+            data: {
+              userId: parentUser.id,
+              occupation: parentSpecificData.occupation || null,
+              annualIncome: parentSpecificData.annualIncome ? parseFloat(parentSpecificData.annualIncome) : null,
+              education: parentSpecificData.education || null,
+              schoolId: BigInt(schoolId),
+              createdBy: BigInt(req.user.id)
+            }
+          });
+
+          parentId = parent.id;
+        }
+
+        // Log the final data being sent to Prisma
+        const finalStudentData = {
           ...filteredStudentData,
           admissionNo: studentCode,
           createdBy: req.user.id,
@@ -192,100 +198,123 @@ class StudentController {
               connect: { id: BigInt(studentData.sectionId) }
             }
           }),
-          // Handle parent relation if parentId is provided
-          ...(studentData.parentId && {
+          // Handle parent relation if parent was created or parentId was provided
+          ...(parentId && {
+            parent: {
+              connect: { id: parentId }
+            }
+          }),
+          ...(studentData.parentId && !parentId && {
             parent: {
               connect: { id: BigInt(studentData.parentId) }
             }
           }),
-          user: {
-            create: {
-              ...userDataWithoutAddress,
-              // Generate username from email or firstName
-              username: studentData.user.email.split('@')[0] || 
-                       `${studentData.user.firstName.toLowerCase()}${Date.now()}`,
-              // Map dateOfBirth to birthDate for User model
-              birthDate: dateOfBirth,
-              // Store address in metadata as JSON string
-              metadata: userMetadataString,
-              role: 'STUDENT',
-              schoolId,
-              createdBy: req.user.id,
-              createdByOwnerId: req.user.id // For owner-created users
-            }
+        };
+
+        console.log('Final student data for Prisma:', JSON.stringify(finalStudentData, (key, value) => {
+          if (typeof value === 'bigint') {
+            return value.toString();
           }
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              uuid: true,
-              username: true,
-              email: true,
-              emailVerified: true,
-              phone: true,
-              phoneVerified: true,
-              // password: false, // Never include password for security
-              // salt: false, // Never include salt for security
-              firstName: true,
-              middleName: true,
-              lastName: true,
-              displayName: true,
-              gender: true,
-              birthDate: true,
-              avatar: true,
-              coverImage: true,
-              bio: true,
-              role: true,
-              status: true,
-              lastLogin: true,
-              lastIp: true,
-              timezone: true,
-              locale: true,
-              metadata: true,
-              schoolId: true,
-              createdByOwnerId: true,
-              createdBy: true,
-              updatedBy: true,
-              createdAt: true,
-              updatedAt: true,
-              deletedAt: true
-            }
-          },
-          class: {
-            select: {
-              id: true,
-              name: true,
-              code: true
-            }
-          },
-          section: {
-            select: {
-              id: true,
-              name: true
-            }
-          },
-          parent: {
-            select: {
-              id: true,
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  email: true
-                }
+          return value;
+        }, 2));
+
+        // Create student with user
+        const student = await tx.student.create({
+          data: {
+            ...finalStudentData,
+            user: {
+              create: {
+                ...userDataWithoutAddress,
+                // Generate username from email or firstName
+                username: studentData.user.email.split('@')[0] || 
+                         `${studentData.user.firstName.toLowerCase()}${Date.now()}`,
+                // Map dateOfBirth to birthDate for User model
+                birthDate: dateOfBirth,
+                // Store address in metadata as JSON string
+                metadata: userMetadataString,
+                role: 'STUDENT',
+                schoolId,
+                createdBy: req.user.id,
+                createdByOwnerId: req.user.id // For owner-created users
               }
             }
           },
-          school: {
-            select: {
-              id: true,
-              name: true,
-              code: true
+          include: {
+            user: {
+              select: {
+                id: true,
+                uuid: true,
+                username: true,
+                email: true,
+                emailVerified: true,
+                phone: true,
+                phoneVerified: true,
+                // password: false, // Never include password for security
+                // salt: false, // Never include salt for security
+                firstName: true,
+                middleName: true,
+                lastName: true,
+                displayName: true,
+                gender: true,
+                birthDate: true,
+                avatar: true,
+                coverImage: true,
+                bio: true,
+                role: true,
+                status: true,
+                lastLogin: true,
+                lastIp: true,
+                timezone: true,
+                locale: true,
+                metadata: true,
+                schoolId: true,
+                createdByOwnerId: true,
+                createdBy: true,
+                updatedBy: true,
+                createdAt: true,
+                updatedAt: true,
+                deletedAt: true
+              }
+            },
+            class: {
+              select: {
+                id: true,
+                name: true,
+                code: true
+              }
+            },
+            section: {
+              select: {
+                id: true,
+                name: true
+              }
+            },
+            parent: {
+              select: {
+                id: true,
+                user: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                    email: true
+                  }
+                }
+              }
+            },
+            school: {
+              select: {
+                id: true,
+                name: true,
+                code: true
+              }
             }
           }
-        }
+        });
+
+        return { student, parentId };
       });
+
+      const { student } = result;
 
       // Log the student creation event AFTER student is created
       const studentEventService = new StudentEventService();
@@ -552,34 +581,48 @@ class StudentController {
       // Remove relation fields that should be handled separately
       const { classId, sectionId, parentId, user, ...cleanedUpdateDataWithoutRelations } = cleanedUpdateData;
       
+      // Filter to only include valid student fields
+      const validStudentFields = [
+        'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality',
+        'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode',
+        'previousSchool', 'conversionDate', 'convertedFromCustomerId'
+      ];
+
+      const filteredUpdateData = {};
+      for (const key of Object.keys(cleanedUpdateDataWithoutRelations)) {
+        if (validStudentFields.includes(key)) {
+          filteredUpdateData[key] = cleanedUpdateDataWithoutRelations[key];
+        }
+      }
+      
       // Handle empty date strings - convert to null or valid dates
-      if (cleanedUpdateDataWithoutRelations.admissionDate === '' || cleanedUpdateDataWithoutRelations.admissionDate === null || cleanedUpdateDataWithoutRelations.admissionDate === undefined) {
-        cleanedUpdateDataWithoutRelations.admissionDate = null;
-      } else if (cleanedUpdateDataWithoutRelations.admissionDate && typeof cleanedUpdateDataWithoutRelations.admissionDate === 'string') {
+      if (filteredUpdateData.admissionDate === '' || filteredUpdateData.admissionDate === null || filteredUpdateData.admissionDate === undefined) {
+        filteredUpdateData.admissionDate = null;
+      } else if (filteredUpdateData.admissionDate && typeof filteredUpdateData.admissionDate === 'string') {
         try {
-          const parsedDate = new Date(cleanedUpdateDataWithoutRelations.admissionDate);
+          const parsedDate = new Date(filteredUpdateData.admissionDate);
           if (isNaN(parsedDate.getTime())) {
-            cleanedUpdateDataWithoutRelations.admissionDate = null;
+            filteredUpdateData.admissionDate = null;
           } else {
-            cleanedUpdateDataWithoutRelations.admissionDate = parsedDate;
+            filteredUpdateData.admissionDate = parsedDate;
           }
         } catch (dateError) {
-          console.warn('Invalid admissionDate, setting to null:', cleanedUpdateDataWithoutRelations.admissionDate);
-          cleanedUpdateDataWithoutRelations.admissionDate = null;
+          console.warn('Invalid admissionDate, setting to null:', filteredUpdateData.admissionDate);
+          filteredUpdateData.admissionDate = null;
         }
       }
 
       // Handle other empty strings that should be null
       const fieldsToClean = ['previousSchool', 'bloodGroup', 'rollNo'];
       fieldsToClean.forEach(field => {
-        if (cleanedUpdateDataWithoutRelations[field] === '') {
-          cleanedUpdateDataWithoutRelations[field] = null;
+        if (filteredUpdateData[field] === '') {
+          filteredUpdateData[field] = null;
         }
       });
 
       // Convert BigInt values to proper types
-      if (cleanedUpdateDataWithoutRelations.updatedBy && typeof cleanedUpdateDataWithoutRelations.updatedBy === 'bigint') {
-        cleanedUpdateDataWithoutRelations.updatedBy = cleanedUpdateDataWithoutRelations.updatedBy.toString();
+      if (filteredUpdateData.updatedBy && typeof filteredUpdateData.updatedBy === 'bigint') {
+        filteredUpdateData.updatedBy = filteredUpdateData.updatedBy.toString();
       }
 
       // Handle user data separately - don't include it in student update
@@ -589,7 +632,7 @@ class StudentController {
         delete cleanedUpdateDataWithoutRelations.user; // Remove user data from student update
       }
 
-      console.log('Cleaned update data:', cleanedUpdateDataWithoutRelations);
+      console.log('Cleaned update data:', filteredUpdateData);
       console.log('User update data:', userUpdateData);
       console.log('Original update data:', updateData);
 
@@ -602,7 +645,7 @@ class StudentController {
         
         const eventData = {
           studentId: existingStudent.id,
-          updateData: cleanedUpdateDataWithoutRelations,
+          updateData: filteredUpdateData,
           previousData: existingStudent,
           updatedBy: req.user.id,
           schoolId: req.user.schoolId
@@ -626,7 +669,7 @@ class StudentController {
               title: 'Student Information Updated',
               description: 'Student information has been updated',
               metadata: JSON.stringify({
-                updatedFields: Object.keys(cleanedUpdateDataWithoutRelations),
+                updatedFields: Object.keys(filteredUpdateData),
                 previousData: existingStudent,
                 updatedBy: req.user.id,
                 schoolId: req.user.schoolId,
@@ -654,7 +697,7 @@ class StudentController {
               title: 'Student Information Updated',
               description: 'Student information has been updated',
               metadata: JSON.stringify({
-                updatedFields: Object.keys(cleanedUpdateDataWithoutRelations),
+                updatedFields: Object.keys(filteredUpdateData),
                 previousData: existingStudent,
                 updatedBy: req.user.id,
                 schoolId: req.user.schoolId,
@@ -680,7 +723,7 @@ class StudentController {
       const updatedStudent = await prisma.student.update({
         where: { id: parseInt(id) },
         data: {
-          ...cleanedUpdateDataWithoutRelations,
+          ...filteredUpdateData,
           updatedBy: req.user.id,
           // Handle class relation if classId is provided
           ...(classId && {
@@ -764,7 +807,7 @@ class StudentController {
               metadata: JSON.stringify({
                 ...JSON.parse(event.metadata || '{}'),
                 updatedStudentData: updatedStudent,
-                updatedFields: Object.keys(cleanedUpdateDataWithoutRelations)
+                updatedFields: Object.keys(filteredUpdateData)
               }, (key, value) => {
                 if (typeof value === 'bigint') {
                   return value.toString();
@@ -803,7 +846,7 @@ class StudentController {
         }),
         details: {
           studentId: updatedStudent.id,
-          updatedFields: Object.keys(cleanedUpdateDataWithoutRelations)
+          updatedFields: Object.keys(filteredUpdateData)
         }
       });
 
