@@ -286,7 +286,12 @@ class StudentController {
         JSON.stringify({
           studentId: student.id.toString(),
           admissionNo: student.admissionNo,
-          classId: student.classId ? student.classId.toString() : null
+          classId: student.classId ? student.classId.toString() : null,
+          rollNumber: student.rollNumber,
+          bloodGroup: student.bloodGroup,
+          emergencyContact: student.emergencyContact,
+          admissionDate: student.admissionDate,
+          status: student.status
         })
       );
 
@@ -359,7 +364,12 @@ class StudentController {
         sortBy = 'createdAt',
         sortOrder = 'desc'
       } = req.query;
-      console.log('Query parameters extracted:', { page, limit, search, classId, sectionId, status, include, sortBy, sortOrder });
+      
+      // Validate and sanitize pagination parameters
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
+      
+      console.log('Query parameters extracted:', { page: pageNum, limit: limitNum, search, classId, sectionId, status, include, sortBy, sortOrder });
 
       console.log('Step 4: Building include query...');
       const includeQuery = buildStudentIncludeQuery(include);
@@ -384,8 +394,8 @@ class StudentController {
         },
         include: includeQuery,
         orderBy: { [sortBy]: sortOrder },
-        skip: (parseInt(page) - 1) * parseInt(limit),
-        take: parseInt(limit)
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum
       };
       
       // Convert BigInt values to strings for logging
