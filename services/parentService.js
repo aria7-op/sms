@@ -171,7 +171,7 @@ class ParentService {
           cleanParentUserData.metadata = JSON.stringify({ address: addressFields });
         }
         
-        console.log('🔍 ParentService: Cleaned parent user data:', JSON.stringify(cleanParentUserData, null, 2));
+        console.log('🔍 ParentService: Cleaned parent user data:', JSON.stringify(convertBigInts(cleanParentUserData), null, 2));
         
         const parentUser = await tx.user.create({
           data: cleanParentUserData
@@ -188,7 +188,7 @@ class ParentService {
           schoolId: BigInt(schoolId),
           createdBy: BigInt(userId)
         };
-        console.log('🔍 ParentService: Parent record data:', JSON.stringify(parentDataForRecord, null, 2));
+        console.log('🔍 ParentService: Parent record data:', JSON.stringify(convertBigInts(parentDataForRecord), null, 2));
         
         const parent = await tx.parent.create({
           data: parentDataForRecord,
