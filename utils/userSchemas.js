@@ -17,7 +17,8 @@ export const UserCreateSchema = z.object({
   email: z.string()
     .email('Invalid email format')
     .max(255, 'Email must be less than 255 characters')
-    .trim(),
+    .trim()
+    .optional(),
   
   firstName: z.string()
     .min(1, 'First name is required')
@@ -544,13 +545,7 @@ export const buildUserIncludeQuery = (include = []) => {
   const includeQuery = {};
   
   if (include.includes('school')) {
-    includeQuery.school = {
-      select: {
-        id: true,
-        name: true,
-        code: true,
-      }
-    };
+    includeQuery.school = true;
   }
   
   // Department is linked through Staff/Teacher models, not directly to User
