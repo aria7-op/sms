@@ -82,6 +82,8 @@ export const validateRequest = (schema, source = 'body') => {
   return (req, res, next) => {
     console.log('VALIDATE REQUEST:', source, 'Schema:', schema._def?.typeName || 'unknown');
     console.log('VALIDATE DATA:', req[source]);
+    console.log('VALIDATE DATA TYPE:', typeof req[source]);
+    console.log('VALIDATE DATA KEYS:', req[source] ? Object.keys(req[source]) : 'null/undefined');
     try {
       const dataToValidate = req[source];
       
