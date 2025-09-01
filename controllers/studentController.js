@@ -689,8 +689,7 @@ class StudentController {
               user: {
                 select: {
                   firstName: true,
-                  lastName: true,
-                  email: true
+                  lastName: true
                 }
               }
             }
