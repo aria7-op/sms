@@ -11,6 +11,33 @@ class StudentEventService {
   }
 
   /**
+   * Convert BigInt values to strings for JSON serialization
+   */
+  convertBigInts(obj) {
+    if (obj === null || obj === undefined) {
+      return obj;
+    }
+    
+    if (typeof obj === 'bigint') {
+      return obj.toString();
+    }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.convertBigInts(item));
+    }
+    
+    if (typeof obj === 'object') {
+      const newObj = {};
+      for (const [key, value] of Object.entries(obj)) {
+        newObj[key] = this.convertBigInts(value);
+      }
+      return newObj;
+    }
+    
+    return obj;
+  }
+
+  /**
    * Create student enrollment event
    */
   async createStudentEnrollmentEvent(studentData, userId, schoolId) {
@@ -484,6 +511,9 @@ class StudentEventService {
    */
   async createStudentUpdateEvent(eventData, userId, schoolId) {
     try {
+      // Convert BigInt values in previousData to strings
+      const sanitizedPreviousData = eventData.previousData ? this.convertBigInts(eventData.previousData) : null;
+      
       const event = {
         studentId: eventData.studentId,
         eventType: 'STUDENT_UPDATED',
@@ -491,7 +521,7 @@ class StudentEventService {
         description: `Student information has been updated`,
         metadata: {
           updatedFields: eventData.updateData ? Object.keys(eventData.updateData) : [],
-          previousData: eventData.previousData,
+          previousData: sanitizedPreviousData,
           updatedBy: eventData.updatedBy,
           schoolId: eventData.schoolId,
           updateTimestamp: new Date().toISOString()
@@ -520,6 +550,37 @@ class StudentEventService {
       return result;
     } catch (error) {
       logger.error('Error creating student update event:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create student deletion event
+   */
+  async createStudentDeletionEvent(eventData, userId, schoolId) {
+    try {
+      const event = {
+        studentId: eventData.studentId,
+        eventType: 'STUDENT_DELETED',
+        title: 'Student Deleted',
+        description: `Student has been deleted`,
+        metadata: {
+          deletionReason: eventData.deletionReason || 'Manual deletion',
+          deletedBy: eventData.deletedBy,
+          schoolId: eventData.schoolId,
+          deletionTimestamp: new Date().toISOString(),
+          studentData: eventData.studentData
+        },
+        createdBy: userId,
+        schoolId: schoolId,
+        severity: 'WARNING'
+      };
+
+      const result = await this.studentEventModel.create(event);
+
+      return result;
+    } catch (error) {
+      logger.error('Error creating student deletion event:', error);
       throw error;
     }
   }
