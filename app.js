@@ -200,6 +200,13 @@ dotenv.config();
         console.log('🔍 [DEV] Student request received:', req.method, req.path);
         console.log('🔍 [DEV] Request body keys:', Object.keys(req.body || {}));
       }
+      // Add login debugging
+      if (req.method === 'POST' && req.path.includes('/api/users/login')) {
+        console.log('🔐 [DEV] Login request received:', req.method, req.path);
+        console.log('🔐 [DEV] Request body:', req.body);
+        console.log('🔐 [DEV] Request body type:', typeof req.body);
+        console.log('🔐 [DEV] Request body keys:', req.body ? Object.keys(req.body) : 'null/undefined');
+      }
       next();
     });
   }
