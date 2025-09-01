@@ -701,11 +701,11 @@ class StudentController {
       await prisma.studentEvent.update({
         where: { id: event.id },
         data: { 
-          metadata: { 
+          metadata: JSON.stringify({ 
             ...event.metadata, 
-            updatedStudentData: updatedStudent,
+            updatedStudentData: convertBigInts(updatedStudent),
             updatedFields: Object.keys(updateData)
-          }
+          })
         }
       });
 
@@ -800,11 +800,11 @@ class StudentController {
       await prisma.studentEvent.update({
         where: { id: event.id },
         data: { 
-          metadata: { 
+          metadata: JSON.stringify({ 
             ...event.metadata, 
             deletionConfirmed: true,
             deletedAt: new Date()
-          }
+          })
         }
       });
 
