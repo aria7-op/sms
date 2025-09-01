@@ -80,7 +80,7 @@ class StudentEventService {
         }
       });
 
-      return result;
+      return result.data; // Return just the event data, not the wrapper object
     } catch (error) {
       logger.error('Error creating student enrollment event:', error);
       throw error;
@@ -547,7 +547,7 @@ class StudentEventService {
         }
       });
 
-      return result;
+      return result.data; // Return just the event data, not the wrapper object
     } catch (error) {
       logger.error('Error creating student update event:', error);
       throw error;
@@ -578,7 +578,7 @@ class StudentEventService {
 
       const result = await this.studentEventModel.create(event);
 
-      return result;
+      return result.data; // Return just the event data, not the wrapper object
     } catch (error) {
       logger.error('Error creating student deletion event:', error);
       throw error;
