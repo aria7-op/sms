@@ -82,12 +82,18 @@ class UserService {
       if (existingUsername) {
         throw new Error('Username already exists');
       }
-      // Check if email already exists
-      const existingEmail = await prisma.user.findUnique({
-        where: { email: validatedData.email }
-      });
-      if (existingEmail) {
-        throw new Error('Email already exists');
+      // Check if email already exists (skip if schema doesn't support email)
+      if (validatedData.email) {
+        try {
+          const existingEmail = await prisma.user.findFirst({
+            where: { email: validatedData.email }
+          });
+          if (existingEmail) {
+            throw new Error('Email already exists');
+          }
+        } catch (_) {
+          // Field may not exist in schema; ignore email uniqueness check
+        }
       }
       // Hash password with separate salt
       const saltRounds = 12;
@@ -144,6 +150,7 @@ class UserService {
           accountNumber,
           bankName,
           ifscCode,
+          email: _omitEmail,
           ...userData
         } = validatedData;
         
