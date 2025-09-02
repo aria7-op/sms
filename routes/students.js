@@ -150,17 +150,16 @@ router.get('/conversion-stats/:studentId?',
 /**
  * @route   POST /api/students
  * @desc    Create a new student
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
+ * @access  Public (No authentication required)
  * @body    StudentCreateSchema
- * @permissions student:create
  */
 router.post('/',
-  authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
-  authorizePermissions(['student:create']),
+  // authenticateToken, // REMOVED - No authentication required for student creation
+  // authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']), // REMOVED - No role authorization
+  // authorizePermissions(['student:create']), // REMOVED - No permission check
   // studentCreateLimiter, // REMOVED - No rate limiting for student creation
   // validateBody(StudentCreateSchema), // TEMPORARILY DISABLED TO DEBUG USER DATA ISSUE
-  auditLog('CREATE', 'Student'),
+  // auditLog('CREATE', 'Student'), // REMOVED - No audit logging without auth
   studentController.createStudent.bind(studentController)
 );
 
