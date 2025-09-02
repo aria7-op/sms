@@ -339,7 +339,7 @@ router.put('/bulk/update',
   authenticateToken,
   authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
   authorizePermissions(['student:update']),
-  bulkLimiter,
+  // bulkLimiter, // REMOVED - No rate limiting for bulk student update
   auditLog('BULK_UPDATE', 'Student'),
   studentController.bulkUpdateStudents.bind(studentController)
 );
@@ -355,7 +355,7 @@ router.delete('/bulk/delete',
   authenticateToken,
   authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
   authorizePermissions(['student:delete']),
-  bulkLimiter,
+  // bulkLimiter, // REMOVED - No rate limiting for bulk student delete
   auditLog('BULK_DELETE', 'Student'),
   studentController.bulkDeleteStudents.bind(studentController)
 );
