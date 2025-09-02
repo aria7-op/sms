@@ -1,3 +1,4 @@
+
 import { 
   triggerEntityCreatedNotification,
   triggerEntityUpdatedNotification,
@@ -71,18 +72,7 @@ export const triggerEntityCreatedNotifications = async (
   options = {}
 ) => {
   try {
-    // Create audit log
-    await createAuditLog({
-      action: 'CREATE',
-      entity: entityType.charAt(0).toUpperCase() + entityType.slice(1),
-      entityId: entityId.toString(),
-      userId: user.id,
-      schoolId: user.schoolId,
-      details: {
-        [`${entityType}Id`]: entityId.toString(),
-        ...options.auditDetails
-      }
-    });
+    // Note: Audit log is already created in the controller, no need to create it here
 
     // Trigger automatic notification
     await triggerEntityCreatedNotification(
@@ -149,21 +139,15 @@ export const triggerEntityUpdatedNotifications = async (
   options = {}
 ) => {
   try {
-    // Create audit log
-    await createAuditLog({
-      action: 'UPDATE',
-      entity: entityType.charAt(0).toUpperCase() + entityType.slice(1),
-      entityId: entityId.toString(),
-      userId: user.id,
-      schoolId: user.schoolId,
-      details: {
-        [`${entityType}Id`]: entityId.toString(),
-        updatedFields: Object.keys(entityData).filter(key => 
-          entityData[key] !== previousData[key]
-        ),
-        ...options.auditDetails
-      }
+    // Debug: Log user object to understand structure
+    console.log('🔍 DEBUG: User object in triggerEntityUpdatedNotifications:', {
+      user,
+      userId: user?.id,
+      schoolId: user?.schoolId,
+      role: user?.role
     });
+
+    // Note: Audit log is already created in the controller, no need to create it here
 
     // Trigger automatic notification
     await triggerEntityUpdatedNotification(
@@ -233,18 +217,7 @@ export const triggerEntityDeletedNotifications = async (
   options = {}
 ) => {
   try {
-    // Create audit log
-    await createAuditLog({
-      action: 'DELETE',
-      entity: entityType.charAt(0).toUpperCase() + entityType.slice(1),
-      entityId: entityId.toString(),
-      userId: user.id,
-      schoolId: user.schoolId,
-      details: {
-        [`${entityType}Id`]: entityId.toString(),
-        ...options.auditDetails
-      }
-    });
+    // Note: Audit log is already created in the controller, no need to create it here
 
     // Trigger automatic notification (direct call to createNotification)
     const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'TEACHER'], user.schoolId);
@@ -286,20 +259,7 @@ export const triggerBulkOperationNotifications = async (
   options = {}
 ) => {
   try {
-    // Create audit log for bulk operation
-    await createAuditLog({
-      action: operation,
-      entity: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)}_BULK`,
-      entityId: entityIds.join(','),
-      userId: user.id,
-      schoolId: user.schoolId,
-      details: {
-        entityIds: entityIds,
-        count: entityIds.length,
-        operation,
-        ...options.auditDetails
-      }
-    });
+    // Note: Audit log is already created in the controller, no need to create it here
 
     // Get recipient user IDs
     const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'TEACHER'], user.schoolId);
@@ -347,20 +307,7 @@ export const triggerStatusChangeNotifications = async (
   options = {}
 ) => {
   try {
-    // Create audit log
-    await createAuditLog({
-      action: 'STATUS_CHANGE',
-      entity: entityType.charAt(0).toUpperCase() + entityType.slice(1),
-      entityId: entityId.toString(),
-      userId: user.id,
-      schoolId: user.schoolId,
-      details: {
-        [`${entityType}Id`]: entityId.toString(),
-        oldStatus,
-        newStatus,
-        ...options.auditDetails
-      }
-    });
+    // Note: Audit log is already created in the controller, no need to create it here
 
     // Get recipient user IDs
     const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'TEACHER'], user.schoolId);
@@ -404,20 +351,7 @@ export const triggerPaymentNotifications = async (
   options = {}
 ) => {
   try {
-    // Create audit log
-    await createAuditLog({
-      action: 'PAYMENT',
-      entity: 'Payment',
-      entityId: paymentId.toString(),
-      userId: user.id,
-      schoolId: user.schoolId,
-      details: {
-        paymentId: paymentId.toString(),
-        paymentType,
-        amount: paymentData.amount,
-        ...options.auditDetails
-      }
-    });
+    // Note: Audit log is already created in the controller, no need to create it here
 
     // Get recipient user IDs
     const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'FINANCE'], user.schoolId);
@@ -460,19 +394,7 @@ export const triggerExamNotifications = async (
   options = {}
 ) => {
   try {
-    // Create audit log
-    await createAuditLog({
-      action: examEvent.toUpperCase(),
-      entity: 'Exam',
-      entityId: examId.toString(),
-      userId: user.id,
-      schoolId: user.schoolId,
-      details: {
-        examId: examId.toString(),
-        examEvent,
-        ...options.auditDetails
-      }
-    });
+    // Note: Audit log is already created in the controller, no need to create it here
 
     // Get recipient user IDs
     const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'TEACHER', 'STUDENT'], user.schoolId);
