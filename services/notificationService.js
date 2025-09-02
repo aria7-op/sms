@@ -2,15 +2,7 @@ import { PrismaClient } from '../generated/prisma/index.js';
 
 const prisma = new PrismaClient();
 
-// WebSocket service reference (will be set by the main app)
-let websocketService = null;
-
-/**
- * Set WebSocket service reference
- */
-export const setWebSocketService = (wsService) => {
-  websocketService = wsService;
-};
+// WebSocket service removed - no longer needed
 
 // ======================
 // NOTIFICATION TYPES & PRIORITIES
@@ -387,63 +379,7 @@ export const createNotification = async (notificationData) => {
       });
     }
 
-    // Broadcast via WebSocket if available
-    if (websocketService && websocketService.isServiceInitialized()) {
-      try {
-        const io = websocketService.manager.getServer();
-        
-        // Broadcast to specific recipients
-        if (recipients.length > 0) {
-          recipients.forEach(recipientId => {
-            io.to(`user_${recipientId}`).emit('notification:new', {
-              id: notification.id.toString(),
-              type: notification.type,
-              title: notification.title,
-              message: notification.message,
-              priority: notification.priority,
-              entityType: notification.entityType,
-              entityId: notification.entityId ? notification.entityId.toString() : null,
-              createdAt: notification.createdAt,
-              isRead: false
-            });
-          });
-        }
-        
-        // Broadcast to school users if school-wide notification
-        if (schoolId && !recipients.length) {
-          io.to(`school_${schoolId}`).emit('notification:new', {
-            id: notification.id.toString(),
-            type: notification.type,
-            title: notification.title,
-            message: notification.message,
-            priority: notification.priority,
-            entityType: notification.entityType,
-            entityId: notification.entityId ? notification.entityId.toString() : null,
-            createdAt: notification.createdAt,
-            isRead: false
-          });
-        }
-        
-        // Broadcast to owner users if owner-wide notification
-        if (ownerId && !schoolId && !recipients.length) {
-          io.to(`owner_${ownerId}`).emit('notification:new', {
-            id: notification.id.toString(),
-            type: notification.type,
-            title: notification.title,
-            message: notification.message,
-            priority: notification.priority,
-            entityType: notification.entityType,
-            entityId: notification.entityId ? notification.entityId.toString() : null,
-            createdAt: notification.createdAt,
-            isRead: false
-          });
-        }
-        
-        console.log('✅ Notification broadcasted via WebSocket');
-      } catch (wsError) {
-        console.error('❌ WebSocket broadcast failed:', wsError.message);
-      }
-    }
+    // WebSocket broadcasting removed - notifications will be delivered via polling
 
     // Send via other channels if specified
     if (channels.includes('EMAIL')) {
