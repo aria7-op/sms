@@ -308,7 +308,7 @@ class StudentController {
       
       // Generate salt and hash password for student user using bcrypt
       const studentSalt = await bcrypt.genSalt(10);
-      const studentPasswordHash = await bcrypt.hash('temp_password_123', studentSalt);
+      const studentPasswordHash = await bcrypt.hash('password123', studentSalt);
       
       // Generate unique username for student
       console.log('🔍 Username from frontend:', studentData.user.username);
