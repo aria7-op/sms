@@ -48,6 +48,7 @@ const getFormattedAfghanTime = () => {
 /**
  * Automatically mark absent students who don't have both inTime and outTime before today
  * This function checks for students without complete attendance records and marks them absent
+ * Note: No SMS notifications are sent for automatic absent marking to avoid spam
  */
 export const markIncompleteAttendanceAsAbsent = async (schoolId = 1) => {
   try {
@@ -171,7 +172,10 @@ export const markIncompleteAttendanceAsAbsent = async (schoolId = 1) => {
 /**
  * Automatically mark absent students who haven't marked in by 9 AM
  * This function should be called by a scheduled task/cron job
+ * Note: No SMS notifications are sent for automatic absent marking to avoid spam
+ * COMMENTED OUT: Automatic attendance marking is disabled
  */
+/*
 export const autoMarkAbsentStudents = async (schoolId = 1) => {
   try {
     console.log('🤖 Auto-marking absent students...');
@@ -299,6 +303,7 @@ export const autoMarkAbsentStudents = async (schoolId = 1) => {
     throw error;
   }
 };
+*/
 
 /**
  * Get current attendance time status
@@ -339,7 +344,9 @@ export const getAttendanceTimeStatus = () => {
 /**
  * Start the automatic attendance service
  * This function will run the attendance marking service at regular intervals
+ * COMMENTED OUT: Automatic attendance marking is disabled
  */
+/*
 export const startAttendanceService = (schoolId = 1) => {
   console.log('🚀 Starting Automatic Attendance Service...');
   
@@ -374,10 +381,11 @@ export const startAttendanceService = (schoolId = 1) => {
   console.log(`✅ Automatic Attendance Service started. Checking every 15 minutes.`);
   console.log(`⏰ Next check will be at ${new Date(Date.now() + ATTENDANCE_CHECK_INTERVAL).toLocaleString()}`);
 };
+*/
 
 export default {
   markIncompleteAttendanceAsAbsent,
-  autoMarkAbsentStudents,
+  // autoMarkAbsentStudents, // COMMENTED OUT: Automatic attendance marking is disabled
   getAttendanceTimeStatus,
-  startAttendanceService
+  // startAttendanceService // COMMENTED OUT: Automatic attendance marking is disabled
 }; 
