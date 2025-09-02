@@ -556,11 +556,49 @@ class StudentController {
       console.log('Final query prepared:', JSON.stringify(logQuery, null, 2));
 
       console.log('Step 7: Executing Prisma query...');
-      const students = await prisma.student.findMany(finalQuery);
+      
+      // Add timeout to prevent hanging queries
+      const queryTimeout = 30000; // 30 seconds
+      
+      // Execute both count and data queries in parallel for better performance
+      const [students, totalCount] = await Promise.race([
+        Promise.all([
+          prisma.student.findMany(finalQuery),
+          prisma.student.count({
+            where: {
+              ...searchQuery,
+              schoolId: BigInt(schoolId),
+              deletedAt: null
+            }
+          })
+        ]),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Query timeout after 30 seconds')), queryTimeout)
+        )
+      ]);
 
-      console.log('Step 8: Query completed. Found students:', students.length);
+      console.log('Step 8: Query completed. Found students:', students.length, 'Total count:', totalCount);
+      
+      // Calculate pagination metadata
+      const totalPages = Math.ceil(totalCount / limitNum);
+      const hasNextPage = pageNum < totalPages;
+      const hasPrevPage = pageNum > 1;
+      
+      const pagination = {
+        currentPage: pageNum,
+        totalPages,
+        totalCount,
+        limit: limitNum,
+        hasNextPage,
+        hasPrevPage
+      };
+      
+      console.log('Step 9: Pagination metadata:', pagination);  
       console.log('=== getStudents END ===');
-      return createSuccessResponse(res, 200, 'Students fetched successfully', students);
+      
+      return createSuccessResponse(res, 200, 'Students fetched successfully', students, {
+        pagination
+      });
     } catch (error) {
       console.error('=== getStudents ERROR ===', error);
       return handlePrismaError(res, error, 'getStudents');
