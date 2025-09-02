@@ -735,9 +735,8 @@ class StudentController {
           updatedBy: req.user.id,
           previousData: existingStudent
         },
-        req.user.id,
-        req.user.schoolId,
-        req.user.createdByOwnerId
+        existingStudent,
+        req.user
       );
 
       return createSuccessResponse(res, 200, 'Student updated successfully', {
