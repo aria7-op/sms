@@ -2288,7 +2288,9 @@ export const exportAttendanceData = async (req, res) => {
   /**
    * Automatically mark absent students who haven't marked in by 9 AM
    * This function should be called by a scheduled task/cron job
+   * COMMENTED OUT: Automatic attendance marking is disabled
    */
+  /*
   export const autoMarkAbsentStudents = async (req, res) => {
     try {
       console.log('🤖 Auto-marking absent students...');
@@ -2444,6 +2446,7 @@ export const exportAttendanceData = async (req, res) => {
       });
     }
   };
+  */
 
   /**
    * Automatically mark absent students who don't have both inTime and outTime before today
@@ -2699,7 +2702,7 @@ export const exportAttendanceData = async (req, res) => {
     getAttendanceAnalytics,
     getMonthlyAttendanceMatrix,
     exportAttendanceData,
-    autoMarkAbsentStudents,
+    // autoMarkAbsentStudents, // COMMENTED OUT: Automatic attendance marking is disabled
     markIncompleteAttendanceAsAbsent,
     getAttendanceTimeStatus
   };
