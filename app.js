@@ -46,8 +46,7 @@ import documentsRoutes from './routes/documents.js';
 import filesRoutes from './routes/files.js';
 import { authenticateToken } from './middleware/auth.js';
 import feeController from './controllers/feeController.js';
-import WebSocketService from './services/websocket/WebSocketService.js';
-import { setWebSocketService } from './services/notificationService.js';
+// WebSocket services removed - no longer needed
 
 dotenv.config();
 
