@@ -212,35 +212,48 @@ class StudentController {
       if (studentData.parent && studentData.parent.user) {
         console.log('🔍 Creating parent with user data...');
         console.log('🔍 Parent data:', JSON.stringify(studentData.parent, null, 2));
-        console.log('🔍 Current user:', {
-          id: req.user.id,
-          type: req.user.type,
-          role: req.user.role,
-          schoolId: req.user.schoolId,
-          createdByOwnerId: req.user.createdByOwnerId
-        });
+        if (req.user) {
+          console.log('🔍 Current user:', {
+            id: req.user.id,
+            type: req.user.type,
+            role: req.user.role,
+            schoolId: req.user.schoolId,
+            createdByOwnerId: req.user.createdByOwnerId
+          });
+        } else {
+          console.log('🔍 No authenticated user (public creation)');
+        }
         
         try {
           console.log('🔍 Creating parent with data:', JSON.stringify(studentData.parent, null, 2));
           
           // Determine the correct owner ID for parent creation
           let parentOwnerId;
-          if (req.user.type === 'owner') {
-            parentOwnerId = req.user.id;
-          } else if (req.user.role === 'SUPER_ADMIN') {
-            // For super admin, we need to find the school owner
+          if (req.user) {
+            if (req.user.type === 'owner') {
+              parentOwnerId = req.user.id;
+            } else if (req.user.role === 'SUPER_ADMIN') {
+              // For super admin, we need to find the school owner
+              const school = await prisma.school.findUnique({
+                where: { id: BigInt(schoolId) },
+                select: { ownerId: true }
+              });
+              parentOwnerId = school?.ownerId;
+              console.log('🔍 Found school owner ID:', parentOwnerId);
+            } else {
+              // For regular users, use their createdByOwnerId
+              parentOwnerId = req.user.createdByOwnerId;
+            }
+          } else {
+            // Public creation: use school.ownerId as the parent owner
             const school = await prisma.school.findUnique({
               where: { id: BigInt(schoolId) },
               select: { ownerId: true }
             });
-            parentOwnerId = school.ownerId;
-            console.log('🔍 Found school owner ID:', parentOwnerId);
-          } else {
-            // For regular users, use their createdByOwnerId
-            parentOwnerId = req.user.createdByOwnerId;
-            console.log('🔍 Using user createdByOwnerId for parent creation:', parentOwnerId);
+            parentOwnerId = school?.ownerId || null;
+            console.log('🔍 Public creation: using school owner ID for parent:', parentOwnerId);
           }
-          
+
           console.log('🔍 Final parent owner ID:', parentOwnerId);
           console.log('🔍 School ID:', schoolId);
           
@@ -258,25 +271,10 @@ class StudentController {
           if (parent && parent.id) {
             parentId = parent.id;
             console.log('🔍 Parent record ID extracted:', parentId);
-            console.log('🔍 Parent ID type after extraction:', typeof parentId);
-          } else {
-            console.error('❌ Parent created but no ID returned');
-            throw new Error('Failed to get parent ID after creation');
           }
         } catch (parentError) {
           console.error('❌ Error creating parent:', parentError);
-          console.error('❌ Parent error stack:', parentError.stack);
-          console.error('❌ Parent error details:', {
-            message: parentError.message,
-            code: parentError.code,
-            meta: parentError.meta
-          });
-          
-          // Return a more specific error response
-          return createErrorResponse(res, 500, 'Failed to create parent', {
-            error: parentError.message,
-            details: parentError.code || 'UNKNOWN_ERROR'
-          });
+          return createErrorResponse(res, 500, `Failed to create parent: ${parentError.message}`);
         }
       } else if (studentData.parentId) {
         // Use existing parent ID if provided
