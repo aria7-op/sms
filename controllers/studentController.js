@@ -713,17 +713,15 @@ class StudentController {
       await invalidateStudentCacheOnUpdate(updatedStudent, existingStudent);
 
       // Create audit log
-      await createAuditLog({
-        action: 'UPDATE',
-        entity: 'Student',
-        entityId: updatedStudent.id,
-        userId: req.user.id,
-        schoolId: req.user.schoolId,
-        details: {
-          studentId: updatedStudent.id,
+      await createAuditLog(
+        req,
+        'UPDATE',
+        'Student',
+        {
+          studentId: updatedStudent.id.toString(),
           updatedFields: Object.keys(updateData)
         }
-      });
+      );
 
       // Trigger automatic notification for student update
       await triggerEntityUpdatedNotifications(
@@ -812,17 +810,15 @@ class StudentController {
       await invalidateStudentCacheOnDelete(existingStudent);
 
       // Create audit log
-      await createAuditLog({
-        action: 'DELETE',
-        entity: 'Student',
-        entityId: existingStudent.id,
-        userId: req.user.id,
-        schoolId: req.user.schoolId,
-        details: {
-          studentId: existingStudent.id,
+      await createAuditLog(
+        req,
+        'DELETE',
+        'Student',
+        {
+          studentId: existingStudent.id.toString(),
           admissionNo: existingStudent.admissionNo
         }
-      });
+      );
 
       return createSuccessResponse(res, 200, 'Student deleted successfully', {
         student: deletedStudent,
@@ -865,17 +861,15 @@ class StudentController {
       await invalidateStudentCacheOnCreate(restoredStudent);
 
       // Create audit log
-      await createAuditLog({
-        action: 'RESTORE',
-        entity: 'Student',
-        entityId: restoredStudent.id,
-        userId: req.user.id,
-        schoolId: req.user.schoolId,
-        details: {
-          studentId: restoredStudent.id,
+      await createAuditLog(
+        req,
+        'RESTORE',
+        'Student',
+        {
+          studentId: restoredStudent.id.toString(),
           admissionNo: restoredStudent.admissionNo
         }
-      });
+      );
 
       return createSuccessResponse(res, 200, 'Student restored successfully');
     } catch (error) {
