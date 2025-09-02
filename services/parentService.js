@@ -147,7 +147,7 @@ class ParentService {
         
         // Generate salt and hash password for parent user using bcrypt
         const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash('temp_password_123', salt);
+        const hashedPassword = await bcrypt.hash('password123', salt);
         
         // Clean and map parent user data
         const cleanParentUserData = {
