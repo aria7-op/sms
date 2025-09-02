@@ -14,7 +14,7 @@ import {
   getAttendanceAnalytics,
   getMonthlyAttendanceMatrix,
   exportAttendanceData,
-  autoMarkAbsentStudents,
+  // autoMarkAbsentStudents, // COMMENTED OUT: Automatic attendance marking is disabled
   markIncompleteAttendanceAsAbsent,
   getAttendanceTimeStatus
 } from '../controllers/attendanceController.js';
@@ -61,7 +61,8 @@ router.get('/monthly-matrix', authorizeRolesOrPermissions(['ADMIN', 'SCHOOL_ADMI
 router.get('/export', authorizeRolesOrPermissions(['ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'], ['attendance:read']), exportAttendanceData);
 
 // Automated attendance management
-router.post('/auto-mark-absent', authorizeRolesOrPermissions(['ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'], ['attendance:create', 'attendance:update']), autoMarkAbsentStudents);
+// COMMENTED OUT: Automatic attendance marking is disabled
+// router.post('/auto-mark-absent', authorizeRolesOrPermissions(['ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'], ['attendance:create', 'attendance:update']), autoMarkAbsentStudents);
 
 // Mark incomplete attendance as absent (students without both inTime and outTime)
 router.post('/mark-incomplete-absent', authorizeRolesOrPermissions(['ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'], ['attendance:create', 'attendance:update']), markIncompleteAttendanceAsAbsent);
