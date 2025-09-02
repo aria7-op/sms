@@ -98,28 +98,34 @@ class StudentController {
       const studentData = req.body;
       let { schoolId, classId } = studentData;
 
-      // If schoolId is not provided in request body, get it from user context
+      // If schoolId is not provided in request body, get it from user context or use default
       if (!schoolId) {
-        if (req.user.type === 'owner' || req.user.role === 'SUPER_ADMIN') {
-          // For owners, use the first school or require schoolId in request
-          schoolId = req.user.schoolId || req.user.schoolIds?.[0];
-          if (!schoolId) {
-            return createErrorResponse(res, 400, 'School ID is required for student creation');
+        if (req.user) {
+          // Authenticated user - use their school context
+          if (req.user.type === 'owner' || req.user.role === 'SUPER_ADMIN') {
+            // For owners, use the first school or require schoolId in request
+            schoolId = req.user.schoolId || req.user.schoolIds?.[0];
+            if (!schoolId) {
+              return createErrorResponse(res, 400, 'School ID is required for student creation');
+            }
+          } else {
+            // For regular users, use their school
+            schoolId = req.user.schoolId;
+            if (!schoolId) {
+              return createErrorResponse(res, 400, 'User does not have an associated school');
+            }
           }
+          // Validate school access for authenticated users
+          await validateSchoolAccess(req.user, schoolId);
         } else {
-          // For regular users, use their school
-          schoolId = req.user.schoolId;
-          if (!schoolId) {
-            return createErrorResponse(res, 400, 'User does not have an associated school');
-          }
+          // No authentication - use default school ID (1) or require it in request
+          schoolId = schoolId || 1; // Default to school ID 1
+          console.log('🔍 No authentication - using default school ID:', schoolId);
         }
       }
 
-      // Validate school access
-      await validateSchoolAccess(req.user, schoolId);
-
-      // Validate class access if provided
-      if (classId) {
+      // Validate class access if provided (only for authenticated users)
+      if (classId && req.user) {
         await validateClassAccess(req.user, classId, schoolId);
       }
 
@@ -601,6 +607,24 @@ class StudentController {
       });
     } catch (error) {
       console.error('=== getStudents ERROR ===', error);
+      
+      // Handle specific timeout errors
+      if (error.message.includes('timeout')) {
+        console.error('Query timed out - this might indicate a database performance issue');
+        return createErrorResponse(res, 408, 'Request timeout - database query took too long', {
+          error: 'Query timeout',
+          suggestion: 'Try reducing the limit or adding more specific filters'
+        });
+      }
+      
+      // Handle connection errors
+      if (error.code === 'P1001' || error.message.includes('connection')) {
+        console.error('Database connection error');
+        return createErrorResponse(res, 503, 'Database connection error - please try again', {
+          error: 'Database unavailable'
+        });
+      }
+      
       return handlePrismaError(res, error, 'getStudents');
     }
   }
