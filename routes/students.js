@@ -25,10 +25,10 @@ import {
 } from '../middleware/validation.js';
 import { 
   generalLimiter,
-  studentCreateLimiter,
+  // studentCreateLimiter, // REMOVED - No rate limiting for student creation
   studentSearchLimiter,
   exportLimiter,
-  bulkLimiter,
+  // bulkLimiter, // REMOVED - No rate limiting for bulk student creation
   analyticsLimiter,
   cacheLimiter,
   roleBasedLimiter,
@@ -158,7 +158,7 @@ router.post('/',
   authenticateToken,
   authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['student:create']),
-  studentCreateLimiter,
+  // studentCreateLimiter, // REMOVED - No rate limiting for student creation
   // validateBody(StudentCreateSchema), // TEMPORARILY DISABLED TO DEBUG USER DATA ISSUE
   auditLog('CREATE', 'Student'),
   studentController.createStudent.bind(studentController)
@@ -323,7 +323,7 @@ router.post('/bulk/create',
   authenticateToken,
   authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
   authorizePermissions(['student:create']),
-  bulkLimiter,
+  // bulkLimiter, // REMOVED - No rate limiting for bulk student creation
   auditLog('BULK_CREATE', 'Student'),
   studentController.bulkCreateStudents.bind(studentController)
 );
@@ -410,7 +410,7 @@ router.post('/import',
   authenticateToken,
   authorizeRoles(['SUPER_ADMIN']),
   authorizePermissions(['student:import']),
-  bulkLimiter,
+  // bulkLimiter, // REMOVED - No rate limiting for student import
   auditLog('IMPORT', 'Student'),
   studentController.importStudents.bind(studentController)
 );
