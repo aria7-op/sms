@@ -200,13 +200,7 @@ dotenv.config();
         console.log('🔍 [DEV] Student request received:', req.method, req.path);
         console.log('🔍 [DEV] Request body keys:', Object.keys(req.body || {}));
       }
-      // Add login debugging
-      if (req.method === 'POST' && req.path.includes('/api/users/login')) {
-        console.log('🔐 [DEV] Login request received:', req.method, req.path);
-        console.log('🔐 [DEV] Request body:', req.body);
-        console.log('🔐 [DEV] Request body type:', typeof req.body);
-        console.log('🔐 [DEV] Request body keys:', req.body ? Object.keys(req.body) : 'null/undefined');
-      }
+
       next();
     });
   }
@@ -1581,6 +1575,8 @@ server.keepAliveTimeout = 30000; // 30 seconds
       });
       
       // Start automatic attendance service after server is running
+      // COMMENTED OUT: Automatic attendance marking is disabled
+      /*
       try {
         const attendanceService = await import('./services/attendanceService.js');
         const schoolId = process.env.SCHOOL_ID || 1;
@@ -1590,6 +1586,7 @@ server.keepAliveTimeout = 30000; // 30 seconds
         console.error('❌ Failed to start Automatic Attendance Service:', attendanceError.message);
         console.log('⚠️ Attendance service will not run automatically');
       }
+      */
       
     } catch (error) {
       console.error('❌ Failed to start server:', error);
