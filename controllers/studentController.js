@@ -290,18 +290,27 @@ class StudentController {
       
       // Determine the correct owner ID for student creation
       let studentOwnerId;
-      if (req.user.type === 'owner') {
-        studentOwnerId = req.user.id;
-      } else if (req.user.role === 'SUPER_ADMIN') {
-        // For super admin, we need to find the school owner
+      if (req.user) {
+        if (req.user.type === 'owner') {
+          studentOwnerId = req.user.id;
+        } else if (req.user.role === 'SUPER_ADMIN') {
+          // For super admin, we need to find the school owner
+          const school = await prisma.school.findUnique({
+            where: { id: BigInt(schoolId) },
+            select: { ownerId: true }
+          });
+          studentOwnerId = school?.ownerId;
+        } else {
+          // For regular users, use their createdByOwnerId
+          studentOwnerId = req.user.createdByOwnerId;
+        }
+      } else {
+        // Public creation: use the school owner id
         const school = await prisma.school.findUnique({
           where: { id: BigInt(schoolId) },
           select: { ownerId: true }
         });
-        studentOwnerId = school.ownerId;
-      } else {
-        // For regular users, use their createdByOwnerId
-        studentOwnerId = req.user.createdByOwnerId;
+        studentOwnerId = school?.ownerId || null;
       }
       
       // Generate salt and hash password for student user using bcrypt
