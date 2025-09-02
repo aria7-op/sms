@@ -4,7 +4,7 @@ import {
   createNotification,
   createAuditLog
 } from '../services/notificationService.js';
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 
 const prisma = new PrismaClient();
 
@@ -26,6 +26,28 @@ export const getUserIdsByRoles = async (roles, schoolId) => {
     return [];
   }
 };
+
+/**
+ * Map entity type to valid notification type
+ */
+function getNotificationType(entityType) {
+  const typeMap = {
+    'student': 'ACADEMIC',
+    'teacher': 'ACADEMIC',
+    'class': 'ACADEMIC',
+    'section': 'ACADEMIC',
+    'exam': 'EXAM',
+    'assignment': 'ASSIGNMENT',
+    'payment': 'PAYMENT',
+    'customer': 'CUSTOMER',
+    'book': 'LIBRARY',
+    'inventory': 'INVENTORY',
+    'transport': 'TRANSPORT',
+    'event': 'EVENT',
+    'notice': 'NOTICE'
+  };
+  return typeMap[entityType.toLowerCase()] || 'CREATION';
+}
 
 /**
  * Automatic notification trigger utilities for entity operations
@@ -80,26 +102,6 @@ export const triggerEntityCreatedNotifications = async (
 
     // Get recipient user IDs
     const recipientUserIds = await getUserIdsByRoles(['SCHOOL_ADMIN', 'TEACHER'], user.schoolId);
-
-    // Map entity type to valid notification type
-    const getNotificationType = (entityType) => {
-      const typeMap = {
-        'student': 'ACADEMIC',
-        'teacher': 'ACADEMIC',
-        'class': 'ACADEMIC',
-        'section': 'ACADEMIC',
-        'exam': 'EXAM',
-        'assignment': 'ASSIGNMENT',
-        'payment': 'PAYMENT',
-        'customer': 'CUSTOMER',
-        'book': 'LIBRARY',
-        'inventory': 'INVENTORY',
-        'transport': 'TRANSPORT',
-        'event': 'EVENT',
-        'notice': 'NOTICE'
-      };
-      return typeMap[entityType.toLowerCase()] || 'CREATION';
-    };
 
     // Create fallback notification if no rules are configured
     await createNotification({
@@ -175,6 +177,7 @@ export const triggerEntityUpdatedNotifications = async (
         updatedBy: user.id,
         previousData
       },
+      previousData,
       user.id,
       user.schoolId,
       user.createdByOwnerId
@@ -252,6 +255,7 @@ export const triggerEntityDeletedNotifications = async (
       message: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)} has been deleted`,
       recipients: recipientUserIds,
       schoolId: user.schoolId,
+      senderId: user.id,
       metadata: {
         entityType,
         entityId: entityId.toString(),
@@ -307,6 +311,7 @@ export const triggerBulkOperationNotifications = async (
       message: `Bulk ${operation.toLowerCase()} operation completed for ${entityIds.length} ${entityType}s`,
       recipients: recipientUserIds,
       schoolId: user.schoolId,
+      senderId: user.id,
       metadata: {
         entityType,
         entityIds,
@@ -367,6 +372,7 @@ export const triggerStatusChangeNotifications = async (
       message: `${entityType.charAt(0).toUpperCase() + entityType.slice(1)} status changed from ${oldStatus} to ${newStatus}`,
       recipients: recipientUserIds,
       schoolId: user.schoolId,
+      senderId: user.id,
       metadata: {
         entityType,
         entityId: entityId.toString(),
@@ -423,6 +429,7 @@ export const triggerPaymentNotifications = async (
       message: `${paymentType.charAt(0).toUpperCase() + paymentType.slice(1)} payment of ${paymentData.amount} has been processed`,
       recipients: recipientUserIds,
       schoolId: user.schoolId,
+      senderId: user.id,
       metadata: {
         paymentType,
         paymentId: paymentId.toString(),
@@ -477,6 +484,7 @@ export const triggerExamNotifications = async (
       message: `Exam "${examData.name}" has been ${examEvent}`,
       recipients: recipientUserIds,
       schoolId: user.schoolId,
+      senderId: user.id,
       metadata: {
         examId: examId.toString(),
         examEvent,
@@ -499,5 +507,6 @@ export default {
   triggerStatusChangeNotifications,
   triggerPaymentNotifications,
   triggerExamNotifications,
-  getUserIdsByRoles
-}; 
+  getUserIdsByRoles,
+  getNotificationType
+};
