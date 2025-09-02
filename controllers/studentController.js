@@ -348,7 +348,7 @@ class StudentController {
         data: {
           ...processedStudentData,
           admissionNo: studentCode,
-          createdBy: req.user.id,
+          createdBy: req.user ? req.user.id : (studentOwnerId ?? BigInt(1)),
           school: {
             connect: { id: BigInt(schoolId) }
           },
@@ -375,10 +375,10 @@ class StudentController {
               metadata: Object.keys(userMetadata).length > 0 ? JSON.stringify(userMetadata) : null,
               role: 'STUDENT',
               schoolId,
-              createdBy: req.user.id,
+              createdBy: req.user ? req.user.id : (studentOwnerId ?? BigInt(1)),
               createdByOwnerId: studentOwnerId, // Use the correct owner ID
               salt: studentSalt,
-              password: studentPasswordHash // Hashed password for student users
+              password: studentPasswordHash
             }
           }
         },
