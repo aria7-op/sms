@@ -76,9 +76,13 @@ export const register = async (req, res) => {
 
   const hashedPassword = await bcrypt.hash(password, 10);
   
+  // Generate username from name
+  const username = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+  
   // Prepare user data
   const userData = {
     name,
+    username,
     password: hashedPassword,
     role: mappedRole
   };
