@@ -663,7 +663,7 @@ export const createCustomer = async (req, res) => {
 
     // Only allow fields that exist in the Prisma Customer model
     const validFields = [
-      'name', 'email', 'phone', 'gender', 'source', 'purpose', 'department', 'metadata', 'createdBy', 'updatedBy',
+      'name', 'phone', 'gender', 'source', 'purpose', 'department', 'metadata', 'createdBy', 'updatedBy',
       'serialNumber', 'totalSpent', 'orderCount', 'type', 'referredTo', 'referredById',
       'schoolId', 'ownerId', 'pipelineStageId', 'createdAt', 'updatedAt', 'deletedAt', 'userId'
     ];
