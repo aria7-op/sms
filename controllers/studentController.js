@@ -432,7 +432,7 @@ class StudentController {
       const studentEventService = new StudentEventService();
       const event = await studentEventService.createStudentEnrollmentEvent(
         student,
-        req.user.id,
+        req.user ? req.user.id : (studentOwnerId ?? BigInt(1)),
         schoolId
       );
 
@@ -461,7 +461,7 @@ class StudentController {
         'student',
         student.id,
         student,
-        req.user,
+        req.user || { id: studentOwnerId ?? BigInt(1) },
         {
           auditDetails: {
             studentId: student.id.toString(),
