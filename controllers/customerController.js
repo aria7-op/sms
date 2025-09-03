@@ -599,7 +599,7 @@ export const getCustomerById = async (req, res) => {
 export const createCustomer = async (req, res) => {
   console.log('createCustomer controller called');
   try {
-    const customerData = req.body;
+    let customerData = req.body;
     const { schoolId, id: createdBy } = req.user;
 
     // Log the values of schoolId and createdBy
@@ -613,6 +613,26 @@ export const createCustomer = async (req, res) => {
     if (!createdBy) {
       console.log('No user id found for createdBy:', req.user);
       return res.status(400).json({ success: false, message: 'No user id found for createdBy' });
+    }
+
+    // Decrypt data if it's encrypted
+    if (customerData.encryptedData) {
+      try {
+        const CryptoJS = require('crypto-js');
+        const ENCRYPTION_KEY = process.env.API_ENCRYPTION_KEY || 'c95fe0b21339143a5e9bda7fd12415e8';
+        
+        const bytes = CryptoJS.AES.decrypt(customerData.encryptedData, ENCRYPTION_KEY);
+        const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
+        customerData = JSON.parse(decryptedString);
+        
+        console.log('Decrypted customerData:', customerData);
+      } catch (decryptError) {
+        console.error('Decryption failed:', decryptError);
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Failed to decrypt customer data' 
+        });
+      }
     }
 
     // Log the data being validated
