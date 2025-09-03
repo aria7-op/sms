@@ -635,7 +635,7 @@ export const markOutTime = async (req, res) => {
     // Validate required fields
     if (!studentId || !date) {
       console.log('❌ Missing required fields');
-      return createErrorResponse(res, 'Missing required fields: studentId, date', 400);
+      return createErrorResponse(res, 400, 'Missing required fields: studentId, date');
     }
 
     const currentTime = new Date();
@@ -678,7 +678,7 @@ export const markOutTime = async (req, res) => {
 
     if (!student) {
       console.log('❌ Student not found with ID:', studentId);
-      return createErrorResponse(res, `Student with ID ${studentId} not found`, 404);
+      return createErrorResponse(res, 404, `Student with ID ${studentId} not found`);
     }
 
     console.log('✅ Student found:', {
@@ -691,7 +691,7 @@ export const markOutTime = async (req, res) => {
     const attendance = await prisma.attendance.findFirst({
       where: {
         studentId: student.id,
-        classId: student.class.id,
+        classId: student.class?.id || null,
         subjectId: subjectId ? BigInt(subjectId) : null,
         date: attendanceDate,
         schoolId: BigInt(schoolId),
@@ -700,7 +700,7 @@ export const markOutTime = async (req, res) => {
     });
 
     if (!attendance) {
-      return createErrorResponse(res, 'No attendance record found for this student, class, and date', 404);
+      return createErrorResponse(res, 404, 'No attendance record found for this student, class, and date');
     }
 
     // Update with out-time
@@ -766,7 +766,7 @@ export const markOutTime = async (req, res) => {
     return createSuccessResponse(res, 'Out-time marked successfully', serializedAttendance);
   } catch (error) {
     console.error('Error in markOutTime:', error);
-    return createErrorResponse(res, 'Failed to mark out-time', 500);
+    return createErrorResponse(res, 500, 'Failed to mark out-time');
   }
 };
 
