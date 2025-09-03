@@ -785,13 +785,58 @@ class StudentController {
         }
       }
 
+      // Build prisma update payload: map scalar fields and relations
+      const prismaUpdateData = {
+        updatedBy: req.user.id,
+        updatedAt: new Date()
+      };
+
+      // Allowed scalar fields (non-relations)
+      const scalarFields = [
+        'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality',
+        'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode',
+        'previousSchool', 'tazkiraNo',
+        'originAddress', 'originCity', 'originState', 'originProvince', 'originCountry', 'originPostalCode',
+        'currentAddress', 'currentCity', 'currentState', 'currentProvince', 'currentCountry', 'currentPostalCode',
+        'status', 'priority'
+      ];
+      for (const key of Object.keys(filteredUpdateData)) {
+        if (scalarFields.includes(key)) {
+          prismaUpdateData[key] = filteredUpdateData[key];
+        }
+      }
+
+      // Relations: class, section, parent
+      if (Object.prototype.hasOwnProperty.call(filteredUpdateData, 'classId')) {
+        const val = filteredUpdateData.classId;
+        if (val === null) {
+          prismaUpdateData.class = { disconnect: true };
+        } else if (val !== undefined) {
+          prismaUpdateData.class = { connect: { id: val } };
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(filteredUpdateData, 'sectionId')) {
+        const val = filteredUpdateData.sectionId;
+        if (val === null) {
+          prismaUpdateData.section = { disconnect: true };
+        } else if (val !== undefined) {
+          prismaUpdateData.section = { connect: { id: val } };
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(filteredUpdateData, 'parentId')) {
+        const val = filteredUpdateData.parentId;
+        if (val === null) {
+          prismaUpdateData.parent = { disconnect: true };
+        } else if (val !== undefined) {
+          prismaUpdateData.parent = { connect: { id: val } };
+        }
+      }
+
       // Update student
       const updatedStudent = await prisma.student.update({
         where: { id: parseInt(id) },
         data: {
-          ...filteredUpdateData,
-          updatedBy: req.user.id,
-          updatedAt: new Date(),
+          ...prismaUpdateData,
           // Handle user updates if provided
           ...(user && {
             user: {
