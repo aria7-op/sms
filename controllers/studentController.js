@@ -60,6 +60,9 @@ function convertBigInts(obj) {
   if (obj === null || obj === undefined) {
     return obj;
   }
+  if (obj instanceof Date) {
+    return obj.toISOString();
+  }
   if (typeof obj === 'bigint') {
     return obj.toString();
   }
@@ -838,14 +841,16 @@ class StudentController {
         }
       });
 
-      // Update the event with the final student data (without stringifying metadata)
+      // Update the event with the final student data (store as string in metadata)
       await prisma.studentEvent.update({
         where: { id: event.id },
-        data: { 
-          metadata: { 
-            ...event.metadata, 
-            updatedStudentData: convertBigInts(updatedStudent),
-            updatedFields: Object.keys(filteredUpdateData)
+        data: {
+          metadata: {
+            set: JSON.stringify({
+              ...event.metadata,
+              updatedStudentData: convertBigInts(updatedStudent),
+              updatedFields: Object.keys(filteredUpdateData)
+            })
           }
         }
       });
