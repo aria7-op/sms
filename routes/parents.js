@@ -146,7 +146,6 @@ router.get('/children', authenticateToken, authorizePermissions(['parent:read'])
           select: {
             firstName: true,
             lastName: true,
-            email: true,
             phone: true
           }
         },
@@ -165,7 +164,7 @@ router.get('/children', authenticateToken, authorizePermissions(['parent:read'])
       attendance: 0,
       averageGrade: 0,
       recentActivity: '',
-      email: s.user?.email || '',
+      email: '',
       phoneNumber: s.user?.phone || '',
       rollNumber: s.rollNo ? String(s.rollNo) : '',
       subjects: [],
