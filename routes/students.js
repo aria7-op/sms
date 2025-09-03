@@ -558,6 +558,35 @@ router.get('/:id/grades',
 );
 
 /**
+ * @route   GET /api/students/:id/academic-progress
+ * @desc    Get student academic progress (alias to grades by student)
+ * @access  Private (All authenticated users)
+ * @params  {id} - Student ID
+ * @permissions student:read or grade:read (PARENT bypass)
+ */
+router.get('/:id/academic-progress',
+  authenticateToken,
+  (req, res, next) => {
+    // Allow PARENT users to bypass permission check - they'll be validated in authorizeStudentAccess
+    if (req.user.role === 'PARENT') {
+      return next();
+    }
+    // For other roles, require student:read or grade:read
+    return authorizePermissions(['student:read'])(req, res, (err) => {
+      if (err) return next(err);
+      return authorizePermissions(['grade:read'])(req, res, next);
+    });
+  },
+  validateParams(idSchema),
+  authorizeStudentAccess('id'),
+  (req, res, next) => {
+    // Reuse grades by student for academic progress
+    req.params.studentId = req.params.id;
+    return gradeController.getGradesByStudent(req, res, next);
+  }
+);
+
+/**
  * @route   GET /api/students/:id/fees/history
  * @desc    Get student payment history
  * @access  Private (All authenticated users)
