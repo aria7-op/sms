@@ -599,7 +599,7 @@ export const getCustomerById = async (req, res) => {
 export const createCustomer = async (req, res) => {
   console.log('createCustomer controller called');
   try {
-    let customerData = req.body;
+    const customerData = req.body;
     const { schoolId, id: createdBy } = req.user;
 
     // Log the values of schoolId and createdBy
@@ -613,38 +613,6 @@ export const createCustomer = async (req, res) => {
     if (!createdBy) {
       console.log('No user id found for createdBy:', req.user);
       return res.status(400).json({ success: false, message: 'No user id found for createdBy' });
-    }
-
-    // Decrypt data if it's encrypted
-    if (customerData.encryptedData) {
-      try {
-        const CryptoJS = require('crypto-js');
-        // Use the same key as frontend (32 characters, no extra 'a')
-        const ENCRYPTION_KEY = 'c95fe0b21339143a5e9bda7fd12415e8';
-        
-        console.log('Attempting decryption with key length:', ENCRYPTION_KEY.length);
-        console.log('Encrypted data length:', customerData.encryptedData.length);
-        
-        const bytes = CryptoJS.AES.decrypt(customerData.encryptedData, ENCRYPTION_KEY);
-        const decryptedString = bytes.toString(CryptoJS.enc.Utf8);
-        
-        if (!decryptedString) {
-          throw new Error('Decryption resulted in empty string - wrong key or corrupted data');
-        }
-        
-        customerData = JSON.parse(decryptedString);
-        console.log('Successfully decrypted customerData:', customerData);
-      } catch (decryptError) {
-        console.error('Decryption failed:', decryptError);
-        console.error('Error details:', {
-          message: decryptError.message,
-          stack: decryptError.stack
-        });
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Failed to decrypt customer data: ' + decryptError.message 
-        });
-      }
     }
 
     // Log the data being validated
