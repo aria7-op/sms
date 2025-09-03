@@ -416,6 +416,11 @@ export const getAllCustomers = async (req, res) => {
       console.log('Order by clause:', orderByClause);
       console.log('Is pagination requested:', isPaginationRequested);
       
+      // Debug: Check what customers exist in the database
+      const debugQuery = `SELECT id, name, schoolId, deletedAt, createdAt FROM customers LIMIT 5`;
+      const debugResult = await fallbackQuery(debugQuery, []);
+      console.log('Debug - All customers in DB:', debugResult);
+      
       try {
         customers = await fallbackQuery(sqlQuery, sqlParams);
         const countResult = await fallbackQuery(
