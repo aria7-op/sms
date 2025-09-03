@@ -79,12 +79,22 @@ export const register = async (req, res) => {
   // Generate username from name
   const username = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
   
+  // Split name into firstName and lastName
+  const nameParts = name.trim().split(' ');
+  const firstName = nameParts[0] || 'Admin';
+  const lastName = nameParts.slice(1).join(' ') || 'User';
+  
   // Prepare user data
   const userData = {
-    name,
     username,
+    firstName,
+    lastName,
     password: hashedPassword,
-    role: mappedRole
+    role: mappedRole,
+    status: 'ACTIVE',
+    timezone: 'Asia/Kabul',
+    locale: 'en-AF',
+    createdByOwnerId: BigInt(created_by_owner_id)
   };
   
   // Only add email if provided
@@ -95,8 +105,6 @@ export const register = async (req, res) => {
   // Add optional fields for non-SUPER_ADMIN users
   if (mappedRole !== 'SUPER_ADMIN') {
     userData.schoolId = BigInt(schoolId);
-    userData.created_by_owner_id = BigInt(created_by_owner_id);
-    userData.relational_id = BigInt(relational_id);
   }
 
   const user = await prisma.user.create({
