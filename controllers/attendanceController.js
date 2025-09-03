@@ -403,10 +403,7 @@ export const markInTime = async (req, res) => {
     // Validate required fields
     if (!studentId || !date) {
       console.log('❌ Missing required fields');
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: studentId, date'
-      });
+      return createErrorResponse(res, 400, 'Missing required fields: studentId, date');
     }
 
     const currentTime = new Date();
@@ -451,10 +448,7 @@ export const markInTime = async (req, res) => {
 
     if (!student) {
       console.log('❌ Student not found with ID:', studentId);
-      return res.status(404).json({
-        success: false,
-        error: `Student with ID ${studentId} not found`
-      });
+      return createErrorResponse(res, 404, `Student with ID ${studentId} not found`);
     }
 
     console.log('✅ Student found:', {
@@ -468,7 +462,7 @@ export const markInTime = async (req, res) => {
     let attendance = await prisma.attendance.findFirst({
       where: {
         studentId: student.id,
-        classId: student.class.id,
+        classId: student.class?.id || null,
         subjectId: subjectId ? BigInt(subjectId) : null,
         date: attendanceDate,
         schoolId: BigInt(schoolId),
@@ -496,7 +490,7 @@ export const markInTime = async (req, res) => {
           status: 'PRESENT',
           inTime: currentTime,
           studentId: student.id,
-          classId: student.class.id,
+          classId: student.class?.id || null,
           subjectId: subjectId ? BigInt(subjectId) : null,
           schoolId: BigInt(schoolId),
           createdBy: BigInt(createdBy)
