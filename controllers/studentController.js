@@ -516,7 +516,7 @@ class StudentController {
       console.log('Step 3: Extracting query parameters...');
       const { 
         page = 1, 
-        limit = 10, 
+        limit = 100, 
         search = '', 
         classId, 
         sectionId, 
