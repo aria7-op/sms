@@ -188,8 +188,7 @@ export const getAllCustomers = async (req, res) => {
         { phone: { contains: search, mode: 'insensitive' } },
         { mobile: { contains: search, mode: 'insensitive' } },
         { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } }
+        { lastName: { contains: search, mode: 'insensitive' } }
       ];
     }
     
@@ -339,11 +338,10 @@ export const getAllCustomers = async (req, res) => {
       if (search) {
         searchConditions = `AND (
           phone LIKE ? OR 
-          name LIKE ? OR 
-          email LIKE ?
+          name LIKE ?
         )`;
         const searchPattern = `%${search}%`;
-        searchParams = [searchPattern, searchPattern, searchPattern];
+        searchParams = [searchPattern, searchPattern];
       }
       
       // Build ORDER BY clause properly
@@ -366,7 +364,6 @@ export const getAllCustomers = async (req, res) => {
           COALESCE(uuid, '') as uuid, 
           COALESCE(name, '') as name, 
           COALESCE(serialNumber, '') as serialNumber, 
-          COALESCE(email, '') as email, 
           COALESCE(phone, '') as phone, 
           COALESCE(gender, '') as gender, 
           COALESCE(source, '') as source, 
@@ -3175,7 +3172,6 @@ export const getUnconvertedCustomers = async (req, res) => {
     if (search) {
       whereClause.OR = [
         { name: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search, mode: 'insensitive' } }
       ];
     }
