@@ -1313,8 +1313,7 @@ class PaymentController {
           where: { studentId: BigInt(studentId), schoolId: BigInt(schoolId), deletedAt: null },
           include: {
             feeStructure: { select: { id: true, uuid: true, name: true } },
-            items: { include: { feeItem: true } },
-            refunds: true
+            items: { include: { feeItem: true } }
           },
           orderBy: { paymentDate: 'desc' },
           skip: parseInt(skip),
