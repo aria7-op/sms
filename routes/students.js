@@ -1,6 +1,8 @@
 import express from 'express';
 import { z } from 'zod';
 import studentController from '../controllers/studentController.js';
+import gradeController from '../controllers/gradeController.js';
+import paymentController from '../controllers/paymentController.js';
 import { 
   studentCacheMiddleware, 
   studentListCacheMiddleware,
@@ -516,10 +518,66 @@ router.get('/:id/dashboard',
  */
 router.get('/:id/attendance',
   authenticateToken,
-  authorizePermissions(['student:read']),
+  authorizePermissions(['student:read', 'student:read_children']),
   validateParams(idSchema),
   authorizeStudentAccess('id'),
   studentController.getStudentAttendance.bind(studentController)
+);
+
+/**
+ * @route   GET /api/students/:id/grades
+ * @desc    Get student grades (alias to grades by student)
+ * @access  Private (All authenticated users)
+ * @params  {id} - Student ID
+ * @permissions grade:read or grade:read_children
+ */
+router.get('/:id/grades',
+  authenticateToken,
+  authorizePermissions(['grade:read', 'grade:read_children']),
+  validateParams(idSchema),
+  authorizeStudentAccess('id'),
+  (req, res, next) => {
+    // Proxy to gradeController.getGradesByStudent expecting param studentId
+    req.params.studentId = req.params.id;
+    return gradeController.getGradesByStudent(req, res, next);
+  }
+);
+
+/**
+ * @route   GET /api/students/:id/fees/history
+ * @desc    Get student payment history
+ * @access  Private (All authenticated users)
+ * @params  {id} - Student ID
+ * @permissions payment:read
+ */
+router.get('/:id/fees/history',
+  authenticateToken,
+  authorizePermissions(['payment:read']),
+  validateParams(idSchema),
+  authorizeStudentAccess('id'),
+  (req, res, next) => {
+    // Proxy to paymentController.getStudentPayments expecting param studentId
+    req.params.studentId = req.params.id;
+    return paymentController.getStudentPayments(req, res, next);
+  }
+);
+
+/**
+ * @route   GET /api/students/:id/exams/upcoming
+ * @desc    Get upcoming exams for a student
+ * @access  Private (All authenticated users)
+ * @params  {id} - Student ID
+ * @permissions exam:read
+ */
+router.get('/:id/exams/upcoming',
+  authenticateToken,
+  authorizePermissions(['exam:read']),
+  validateParams(idSchema),
+  authorizeStudentAccess('id'),
+  async (req, res) => {
+    // Minimal implementation placeholder; integrate with exam timetable if available
+    return res.json({ success: true, data: [] });
+  }
 );
 
 /**
