@@ -528,7 +528,14 @@ class StudentController {
       
       // Validate and sanitize pagination parameters
       const pageNum = Math.max(1, parseInt(page) || 1);
-      const limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
+      let limitNum;
+      
+      // Handle special cases for limit
+      if (limit === 'all' || limit === 'unlimited') {
+        limitNum = undefined; // No limit - fetch all
+      } else {
+        limitNum = Math.max(1, Math.min(100, parseInt(limit) || 10));
+      }
       
       console.log('Query parameters extracted:', { page: pageNum, limit: limitNum, search, classId, sectionId, status, include, sortBy, sortOrder });
 
@@ -554,10 +561,14 @@ class StudentController {
           deletedAt: null
         },
         include: includeQuery,
-        orderBy: { [sortBy]: sortOrder },
-        skip: (pageNum - 1) * limitNum,
-        take: limitNum
+        orderBy: { [sortBy]: sortOrder }
       };
+      
+      // Only add pagination if limit is specified
+      if (limitNum !== undefined) {
+        finalQuery.skip = (pageNum - 1) * limitNum;
+        finalQuery.take = limitNum;
+      }
       
       // Convert BigInt values to strings for logging
       const logQuery = JSON.parse(JSON.stringify(finalQuery, (key, value) => {
@@ -593,18 +604,32 @@ class StudentController {
       console.log('Step 8: Query completed. Found students:', students.length, 'Total count:', totalCount);
       
       // Calculate pagination metadata
-      const totalPages = Math.ceil(totalCount / limitNum);
-      const hasNextPage = pageNum < totalPages;
-      const hasPrevPage = pageNum > 1;
-      
-      const pagination = {
-        currentPage: pageNum,
-        totalPages,
-        totalCount,
-        limit: limitNum,
-        hasNextPage,
-        hasPrevPage
-      };
+      let pagination;
+      if (limitNum !== undefined) {
+        // Normal pagination
+        const totalPages = Math.ceil(totalCount / limitNum);
+        const hasNextPage = pageNum < totalPages;
+        const hasPrevPage = pageNum > 1;
+        
+        pagination = {
+          currentPage: pageNum,
+          totalPages,
+          totalCount,
+          limit: limitNum,
+          hasNextPage,
+          hasPrevPage
+        };
+      } else {
+        // No pagination - all results
+        pagination = {
+          currentPage: 1,
+          totalPages: 1,
+          totalCount: students.length,
+          limit: 'all',
+          hasNextPage: false,
+          hasPrevPage: false
+        };
+      }
       
       console.log('Step 9: Pagination metadata:', pagination);  
       console.log('=== getStudents END ===');
