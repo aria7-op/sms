@@ -884,17 +884,20 @@ export const updateCustomer = async (req, res) => {
     console.log('[updateCustomer] Notifications triggered');
 
     logger.info(`Customer updated: ${id}`);
-    // Deeply convert all BigInts in the response
-    const safeEvent = event?.data ? convertBigInts(event.data) : convertBigInts(event);
+    
+    // Convert all BigInt values to strings for JSON response
+    const convertedCustomer = convertBigInts(customer);
+    const convertedEvent = convertBigInts(event);
+    
     const responseObj = {
       success: true,
       message: 'Customer updated successfully',
-      data: convertBigInts(customer),
-      event: safeEvent
+      data: convertedCustomer,
+      event: convertedEvent
     };
-    console.log('[updateCustomer] Final response:', JSON.stringify(responseObj, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2));
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify(responseObj, (key, value) => typeof value === 'bigint' ? value.toString() : value));
+    
+    console.log('[updateCustomer] Final response prepared');
+    res.json(responseObj);
   } catch (error) {
     console.error('[updateCustomer] ERROR:', error);
     console.error('[updateCustomer] Error stack:', error.stack);
