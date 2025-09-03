@@ -712,7 +712,7 @@ class StudentController {
   async updateStudent(req, res) {
     try {
       const { id } = req.params;
-      const { user, ...updateData } = req.body;
+      const { user, parent, ...updateData } = req.body;
 
       // Validate student ID format
       if (!/^[0-9]+$/.test(id)) {
@@ -725,6 +725,13 @@ class StudentController {
           id: parseInt(id),
           schoolId: BigInt(req.user.schoolId),
           deletedAt: null
+        },
+        include: {
+          parent: {
+            include: {
+              user: true
+            }
+          }
         }
       });
 
@@ -735,6 +742,71 @@ class StudentController {
       // Validate class access if class is being updated
       if (updateData.classId && updateData.classId !== existingStudent.classId) {
         await validateClassAccess(req.user, updateData.classId, req.user.schoolId);
+      }
+
+      // Handle parent data update if provided
+      if (parent && existingStudent.parent) {
+        console.log('🔍 Updating existing parent data...');
+        console.log('🔍 Parent data:', JSON.stringify(parent, null, 2));
+        console.log('🔍 Existing parent ID:', existingStudent.parent.id);
+        
+        try {
+          // Update parent user data if provided
+          if (parent.user) {
+            console.log('🔍 Updating parent user data...');
+            
+            // Extract address fields and move to metadata
+            const { address, city, state, country, postalCode, ...userDataWithoutAddress } = parent.user;
+            
+            // Create metadata object with address information (only include defined values)
+            const userMetadata = {};
+            if (address || city || state || country || postalCode) {
+              userMetadata.address = {};
+              if (address) userMetadata.address.street = address;
+              if (city) userMetadata.address.city = city;
+              if (state) userMetadata.address.state = state;
+              if (country) userMetadata.address.country = country;
+              if (postalCode) userMetadata.address.postalCode = postalCode;
+            }
+            
+            // Update parent user
+            await prisma.user.update({
+              where: { id: existingStudent.parent.user.id },
+              data: {
+                ...userDataWithoutAddress,
+                // Store address in metadata as JSON string
+                metadata: Object.keys(userMetadata).length > 0 ? JSON.stringify(userMetadata) : null,
+                updatedBy: req.user.id,
+                updatedAt: new Date()
+              }
+            });
+            console.log('🔍 Parent user updated successfully');
+          }
+          
+          // Update parent record data if provided (non-user fields)
+          const parentFields = { ...parent };
+          delete parentFields.user; // Remove user data as it's handled separately
+          
+          if (Object.keys(parentFields).length > 0) {
+            console.log('🔍 Updating parent record data...');
+            await prisma.parent.update({
+              where: { id: existingStudent.parent.id },
+              data: {
+                ...parentFields,
+                updatedBy: req.user.id,
+                updatedAt: new Date()
+              }
+            });
+            console.log('🔍 Parent record updated successfully');
+          }
+          
+        } catch (parentError) {
+          console.error('❌ Error updating parent:', parentError);
+          return createErrorResponse(res, 500, `Failed to update parent: ${parentError.message}`);
+        }
+      } else if (parent && !existingStudent.parent) {
+        console.log('🔍 Parent data provided but student has no existing parent');
+        return createErrorResponse(res, 400, 'Student has no existing parent to update. Use parentId to connect to an existing parent.');
       }
 
       // EVENT-FIRST WORKFLOW: Log event before updating student
