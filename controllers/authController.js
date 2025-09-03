@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import staffStore from '../store/staffStore.js';
@@ -64,19 +64,29 @@ export const register = async (req, res) => {
   const mappedRole = roleMap[role];
   if (!mappedRole) return res.status(400).json({ error: 'Invalid role value' });
 
-  // Check if email already exists
-  const existingUser = await prisma.user.findUnique({ where: { email } });
-  if (existingUser) return res.status(400).json({ error: 'Email already in use' });
+  // Check if email already exists (only if email is provided and email column exists)
+  if (email) {
+    try {
+      const existingUser = await prisma.user.findFirst({ where: { email } });
+      if (existingUser) return res.status(400).json({ error: 'Email already in use' });
+    } catch (_) {
+      // email field not present; skip uniqueness check
+    }
+  }
 
   const hashedPassword = await bcrypt.hash(password, 10);
   
   // Prepare user data
   const userData = {
     name,
-    email,
     password: hashedPassword,
     role: mappedRole
   };
+  
+  // Only add email if provided
+  if (email) {
+    userData.email = email;
+  }
 
   // Add optional fields for non-SUPER_ADMIN users
   if (mappedRole !== 'SUPER_ADMIN') {
