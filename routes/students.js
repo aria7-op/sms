@@ -514,11 +514,18 @@ router.get('/:id/dashboard',
  * @desc    Get student attendance records
  * @access  Private (All authenticated users)
  * @params  {id} - Student ID
- * @permissions student:read
+ * @permissions student:read or student:read_children
  */
 router.get('/:id/attendance',
   authenticateToken,
-  authorizePermissions(['student:read', 'student:read_children']),
+  (req, res, next) => {
+    // Allow PARENT users to bypass permission check - they'll be validated in authorizeStudentAccess
+    if (req.user.role === 'PARENT') {
+      return next();
+    }
+    // For other roles, check permissions
+    return authorizePermissions(['student:read'])(req, res, next);
+  },
   validateParams(idSchema),
   authorizeStudentAccess('id'),
   studentController.getStudentAttendance.bind(studentController)
@@ -533,7 +540,14 @@ router.get('/:id/attendance',
  */
 router.get('/:id/grades',
   authenticateToken,
-  authorizePermissions(['grade:read', 'grade:read_children']),
+  (req, res, next) => {
+    // Allow PARENT users to bypass permission check - they'll be validated in authorizeStudentAccess
+    if (req.user.role === 'PARENT') {
+      return next();
+    }
+    // For other roles, check permissions
+    return authorizePermissions(['grade:read'])(req, res, next);
+  },
   validateParams(idSchema),
   authorizeStudentAccess('id'),
   (req, res, next) => {
@@ -552,7 +566,14 @@ router.get('/:id/grades',
  */
 router.get('/:id/fees/history',
   authenticateToken,
-  authorizePermissions(['payment:read']),
+  (req, res, next) => {
+    // Allow PARENT users to bypass permission check - they'll be validated in authorizeStudentAccess
+    if (req.user.role === 'PARENT') {
+      return next();
+    }
+    // For other roles, check permissions
+    return authorizePermissions(['payment:read'])(req, res, next);
+  },
   validateParams(idSchema),
   authorizeStudentAccess('id'),
   (req, res, next) => {
@@ -571,7 +592,14 @@ router.get('/:id/fees/history',
  */
 router.get('/:id/exams/upcoming',
   authenticateToken,
-  authorizePermissions(['exam:read']),
+  (req, res, next) => {
+    // Allow PARENT users to bypass permission check - they'll be validated in authorizeStudentAccess
+    if (req.user.role === 'PARENT') {
+      return next();
+    }
+    // For other roles, check permissions
+    return authorizePermissions(['exam:read'])(req, res, next);
+  },
   validateParams(idSchema),
   authorizeStudentAccess('id'),
   async (req, res) => {
