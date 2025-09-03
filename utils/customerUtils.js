@@ -17,7 +17,9 @@ export const CustomerCreateSchema = z.object({
   totalSpent: z.number().optional(),
   orderCount: z.number().optional(),
   type: z.string().optional(),
-  referredTo: z.enum(['OWNER', 'ADMIN', 'FINANCE', 'ACADEMIC', 'SUPPORT', 'OTHER']).optional(),
+  referredTo: z.string().optional().transform(val => val ? val.toUpperCase() : val).pipe(
+    z.enum(['OWNER', 'ADMIN', 'FINANCE', 'ACADEMIC', 'SUPPORT', 'OTHER']).optional()
+  ),
   referredById: BigIntLike.optional(),
   schoolId: BigIntLike.optional(),
   ownerId: BigIntLike.optional(),
