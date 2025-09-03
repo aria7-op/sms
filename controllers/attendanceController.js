@@ -112,8 +112,7 @@ export const getAllAttendances = async (req, res) => {
               user: {
                 select: {
                   firstName: true,
-                  lastName: true,
-                  email: true
+                  lastName: true
                 }
               }
             }
@@ -208,8 +207,7 @@ export const getAttendanceById = async (req, res) => {
             user: {
               select: {
                 firstName: true,
-                lastName: true,
-                email: true
+                lastName: true
               }
             }
           }
@@ -522,6 +520,12 @@ export const markInTime = async (req, res) => {
     try {
       console.log('🔍 Starting SMS process for student ID:', studentId);
       console.log('📱 About to call SMS service...');
+      console.log('📱 Student data:', {
+        hasStudent: !!student,
+        hasUser: !!student?.user,
+        hasPhone: !!student?.user?.phone,
+        phone: student?.user?.phone
+      });
       
       // Class information already available from student lookup
       const classInfo = student.class;
@@ -604,11 +608,7 @@ export const markInTime = async (req, res) => {
     console.log('✅ Response sent successfully');
   } catch (error) {
     console.error('Error in markInTime:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to mark in-time',
-      message: error.message
-    });
+    return createErrorResponse(res, 500, 'Failed to mark in-time');
   }
 };
 
@@ -710,6 +710,12 @@ export const markOutTime = async (req, res) => {
     try {
       console.log('🔍 Starting SMS process for student ID:', studentId);
       console.log('📱 About to call SMS service...');
+      console.log('📱 Student data:', {
+        hasStudent: !!student,
+        hasUser: !!student?.user,
+        hasPhone: !!student?.user?.phone,
+        phone: student?.user?.phone
+      });
       
       if (student && student.user && student.user.phone) {
         // Send SMS notification asynchronously (don't wait for it)
