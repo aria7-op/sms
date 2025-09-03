@@ -111,7 +111,7 @@ router.get('/', /*authenticateToken, authorizePermissions(['parent:read']),*/ as
  * @access  Private (Parent)
  * @permissions parent:read
  */
-router.get('/children', /*authenticateToken, authorizePermissions(['parent:read']),*/ async (req, res) => {
+router.get('/children', authenticateToken, authorizePermissions(['parent:read']), async (req, res) => {
   try {
     const schoolId = (req.user && req.user.schoolId) ? req.user.schoolId : 1;
     const userId = (req.user && req.user.id) ? req.user.id : null;
@@ -184,7 +184,7 @@ router.get('/children', /*authenticateToken, authorizePermissions(['parent:read'
  * @desc    Get notifications for the authenticated parent
  * @access  Private (Parent)
  */
-router.get('/notifications', /*authenticateToken, authorizePermissions(['parent:read']),*/ async (req, res) => {
+router.get('/notifications', authenticateToken, authorizePermissions(['parent:read']), async (req, res) => {
   try {
     // Placeholder implementation
     return res.json({ success: true, data: [] });
@@ -199,7 +199,7 @@ router.get('/notifications', /*authenticateToken, authorizePermissions(['parent:
  * @desc    Get dashboard summary for the authenticated parent
  * @access  Private (Parent)
  */
-router.get('/dashboard', /*authenticateToken, authorizePermissions(['parent:read']),*/ async (req, res) => {
+router.get('/dashboard', authenticateToken, authorizePermissions(['parent:read']), async (req, res) => {
   try {
     const schoolId = (req.user && req.user.schoolId) ? req.user.schoolId : 1;
     const userId = (req.user && req.user.id) ? req.user.id : null;
