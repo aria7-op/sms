@@ -684,7 +684,7 @@ class StudentController {
   async updateStudent(req, res) {
     try {
       const { id } = req.params;
-      const updateData = req.body;
+      const { user, ...updateData } = req.body;
 
       // Get existing student
       const existingStudent = await prisma.student.findFirst({
@@ -726,7 +726,13 @@ class StudentController {
         where: { id: parseInt(id) },
         data: {
           ...updateData,
-          updatedBy: req.user.id
+          updatedBy: req.user.id,
+          // Handle user updates if provided
+          ...(user && {
+            user: {
+              update: user
+            }
+          })
         },
         include: {
           user: {
