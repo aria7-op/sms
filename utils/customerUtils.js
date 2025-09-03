@@ -4,7 +4,6 @@ const BigIntLike = z.union([z.bigint(), z.number(), z.string()]);
 
 export const CustomerCreateSchema = z.object({
   name: z.string().optional(),
-  email: z.string().optional(),
   phone: z.string().optional(),
   gender: z.string().optional(),
   source: z.string().optional(),
