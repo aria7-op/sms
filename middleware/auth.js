@@ -1,28 +1,8 @@
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '../generated/prisma/index.js';
+import { PrismaClient } from '../generated/prisma/client.js';
 import { default as ownersStore } from '../store/ownersStore.js';
 
-// Initialize Prisma client with error handling
-let prisma;
-try {
-  prisma = new PrismaClient({
-    log: ['error', 'warn'],
-    errorFormat: 'pretty',
-  });
-  console.log('✅ Prisma client initialized successfully in auth middleware');
-  
-  // Test the connection
-  prisma.$connect()
-    .then(() => {
-      console.log('✅ Prisma client connected to database successfully');
-    })
-    .catch((error) => {
-      console.error('❌ Prisma client failed to connect to database:', error);
-    });
-} catch (error) {
-  console.error('❌ Failed to initialize Prisma client in auth middleware:', error);
-  prisma = null;
-}
+const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
@@ -33,7 +13,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-i
 /**
  * Verify JWT token and attach user to request
  */
-export const authenticateToken = async (req, res, next) => {
+export const authenticateToken = (req, res, next) => {
   console.log('=== authenticateToken START ===');
   console.log('Request:', req.method, req.path);
   console.log('Request IP:', req.ip, 'Forwarded for:', req.headers['x-forwarded-for']);
@@ -62,26 +42,24 @@ export const authenticateToken = async (req, res, next) => {
     console.log('Token verified for user:', decoded.userId);
     console.log('Decoded token:', decoded);
     
-    // Check if this is an owner token or SUPER_ADMIN user
-    if (decoded.role === 'SUPER_ADMIN' && decoded.ownerId) {
-      // This is a SUPER_ADMIN user with ownerId
+    // Check if this is an owner token or user token
+    if (decoded.role === 'SUPER_ADMIN' || decoded.ownerId) {
+      // This could be an owner or a SUPER_ADMIN user
       console.log('Fetching owner from database...');
-      try {
-        const owner = await prisma.owner.findUnique({
-          where: { id: BigInt(decoded.ownerId) },
-          include: {
-            schools: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
+      prisma.owner.findUnique({
+        where: { id: BigInt(decoded.userId || decoded.id) },
+        include: {
+          schools: {
+            select: {
+              id: true,
+              name: true,
+              code: true
             }
           }
-        });
-        
+        }
+      }).then(owner => {
         if (owner) {
-          console.log('Owner found:', owner.id, owner.name);
+          console.log('Owner found:', owner.id, owner.email);
           // Set owner properties for compatibility
           req.user = {
             ...owner,
@@ -91,123 +69,85 @@ export const authenticateToken = async (req, res, next) => {
             schoolId: owner.schools.length > 0 ? owner.schools[0].id : null
           };
           console.log('=== authenticateToken END (Owner) ===');
-          return next();
+          next();
+        } else {
+          // Owner not found, check if it's a SUPER_ADMIN user
+          console.log('Owner not found, checking users table...');
+          prisma.user.findUnique({
+            where: { id: BigInt(decoded.userId || decoded.id) },
+            include: {
+              school: true,
+              createdByOwner: true,
+              teacher: true,
+              parent: true,
+              student: true,
+              staff: true
+            }
+          }).then(user => {
+            if (!user) {
+              console.log('=== authenticateToken ERROR: User not found ===');
+              return res.status(401).json({
+                success: false,
+                error: 'Access denied',
+                message: 'User not found'
+              });
+            }
+
+            console.log('User found:', user.id, user.email);
+            req.user = user;
+            console.log('=== authenticateToken END (User) ===');
+            next();
+          }).catch(error => {
+            console.error('=== authenticateToken DATABASE ERROR ===', error);
+            return res.status(500).json({
+              success: false,
+              error: 'Authentication error',
+              message: 'Database error during authentication'
+            });
+          });
         }
-      } catch (error) {
-        console.error('=== authenticateToken OWNER DATABASE ERROR ===', error);
+      }).catch(error => {
+        console.error('=== authenticateToken DATABASE ERROR ===', error);
         return res.status(500).json({
           success: false,
           error: 'Authentication error',
-          message: 'Database error during owner authentication'
+          message: 'Database error during authentication'
         });
-      }
-    }
-    
-    // For all other cases (including TEACHER, SCHOOL_ADMIN, etc.), fetch user from users table
-    console.log('Fetching user from database...');
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: BigInt(decoded.userId) },
-        select: {
-          id: true,
-          uuid: true,
-          username: true,
-          phone: true,
-          phoneVerified: true,
-          password: true,
-          salt: true,
-          firstName: true,
-          middleName: true,
-          lastName: true,
-          displayName: true,
-          gender: true,
-          birthDate: true,
-          avatar: true,
-          coverImage: true,
-          bio: true,
-          role: true,
-          status: true,
-          lastLogin: true,
-          lastIp: true,
-          timezone: true,
-          locale: true,
-          metadata: true,
-          schoolId: true,
-          createdByOwnerId: true,
-          createdBy: true,
-          updatedBy: true,
-          createdAt: true,
-          updatedAt: true,
-          deletedAt: true,
-          school: {
-            select: {
-              id: true,
-              name: true,
-              code: true
-            }
-          },
-          createdByOwner: {
-            select: {
-              id: true,
-              name: true
-            }
-          },
-          teacher: {
-            select: {
-              id: true,
-              employeeId: true
-            }
-          },
-          parent: {
-            select: {
-              id: true,
-              uuid: true,
-              occupation: true,
-              education: true
-            }
-          },
-          student: {
-            select: {
-              id: true,
-              admissionNo: true
-            }
-          },
-          staff: {
-            select: {
-              id: true,
-              employeeId: true
-            }
-          }
-        }
       });
-      
-      if (!user) {
-        console.log('=== authenticateToken ERROR: User not found ===');
-        return res.status(401).json({
-          success: false,
-          error: 'Access denied',
-          message: 'User not found'
-        });
-      }
+    } else {
+      // This is a regular user token
+      console.log('Fetching user from database...');
+      prisma.user.findUnique({
+        where: { id: BigInt(decoded.userId || decoded.id) },
+        include: {
+          school: true,
+          createdByOwner: true,
+          teacher: true,
+          parent: true,
+          student: true,
+          staff: true
+        }
+      }).then(user => {
+        if (!user) {
+          console.log('=== authenticateToken ERROR: User not found ===');
+          return res.status(401).json({
+            success: false,
+            error: 'Access denied',
+            message: 'User not found'
+          });
+        }
 
-      console.log('User found:', user.id, user.username);
-      
-      // Ensure schoolId is properly set
-      req.user = {
-        ...user,
-        schoolId: user.schoolId || (user.school ? user.school.id : null),
-        role: decoded.role || user.role
-      };
-      
-      console.log('=== authenticateToken END (User) ===');
-      console.log('req.user set with schoolId:', req.user.schoolId);
-      return next();
-    } catch (error) {
-      console.error('=== authenticateToken USER DATABASE ERROR ===', error);
-      return res.status(500).json({
-        success: false,
-        error: 'Authentication error',
-        message: 'Database error during user authentication'
+        console.log('User found:', user.id, user.email);
+        req.user = user;
+        console.log('=== authenticateToken END (User) ===');
+        next();
+      }).catch(error => {
+        console.error('=== authenticateToken DATABASE ERROR ===', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Authentication error',
+          message: 'Database error during authentication'
+        });
       });
     }
   } catch (error) {
@@ -564,19 +504,13 @@ export function getUserPermissions(role) {
       'school:read', 'user:read', 'class:read', 'subject:read',
       'student:read', 'staff:read', 'parent:read',
       
-      // Student management permissions
-      'student:create', 'student:update',
-      
-      // Class management permissions
-      'class:create', 'class:update',
-      
+      // Teacher management permissions (enable full access to teacher routes)
+      'teacher:read', 'teacher:create', 'teacher:update', 'teacher:delete', 'teacher:export', 'teacher:analytics',
+
       // Academic permissions
       'attendance:create', 'attendance:read', 'attendance:update',
       'grade:create', 'grade:read', 'grade:update',
       'assignment:create', 'assignment:read', 'assignment:update', 'assignment:delete',
-      
-      // Exam and timetable permissions
-      'exam:read', 'exam_timetable:read', 'timetable:read',
       
       // Limited analytics
       'school:stats', 'user:stats'
@@ -604,11 +538,6 @@ export function getUserPermissions(role) {
       // Read permissions (children's data)
       'school:read', 'student:read_children', 'attendance:read_children',
       'grade:read_children', 'assignment:read_children', 'parent:read',
-      
-      // Base permissions for parent functionality
-      'notification:read', 'notification:update', 'message:read', 'message:create',
-      'announcement:read', 'document:read', 'report:read', 'fee:read',
-      'payment:read', 'exam:read', 'timetable:read',
       
       // Limited actions
       'user:update_own'
@@ -769,18 +698,8 @@ export const auditLog = (action, entityType) => {
               action,
               entityType,
               entityId: responseData.data?.id || 0,
-              oldData: req.method === 'PUT' || req.method === 'PATCH' ? JSON.stringify(req.body, (key, value) => {
-                if (typeof value === 'bigint') {
-                  return value.toString();
-                }
-                return value;
-              }) : null,
-              newData: responseData.data ? JSON.stringify(responseData.data, (key, value) => {
-                if (typeof value === 'bigint') {
-                  return value.toString();
-                }
-                return value;
-              }) : null,
+              oldData: req.method === 'PUT' || req.method === 'PATCH' ? req.body : null,
+              newData: responseData.data,
               ipAddress: req.ip,
               userAgent: req.get('User-Agent'),
               ownerId: req.user.type === 'owner' ? req.user.id : null,
@@ -1032,101 +951,34 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
         });
       }
 
-      // Debug: Check if prisma client is available
-      if (!prisma) {
-        console.error('❌ Prisma client is undefined in authorizeStudentAccess, attempting to reinitialize...');
-        try {
-          prisma = new PrismaClient({
-            log: ['error', 'warn'],
-            errorFormat: 'pretty',
-          });
-          console.log('✅ Prisma client reinitialized successfully');
-        } catch (reinitError) {
-          console.error('❌ Failed to reinitialize Prisma client:', reinitError);
-          return res.status(500).json({
-            success: false,
-            error: 'Database connection error',
-            message: 'Database client not available.',
-            meta: {
-              timestamp: new Date().toISOString(),
-              statusCode: 500
-            }
-          });
-        }
-      }
-      
-      // Test database connectivity
-      try {
-        console.log('🔍 Testing database connectivity...');
-        await prisma.$queryRaw`SELECT 1 as test`;
-        console.log('✅ Database connectivity test passed');
-      } catch (connectivityError) {
-        console.error('❌ Database connectivity test failed:', connectivityError);
-        return res.status(500).json({
-          success: false,
-          error: 'Database connectivity error',
-          message: 'Cannot connect to database.',
-          meta: {
-            timestamp: new Date().toISOString(),
-            statusCode: 500,
-            error: connectivityError.message
-          }
-        });
-      }
-
       // Super admins can access any student
       if (req.user.role === 'SUPER_ADMIN') {
         return next();
       }
 
       // Check if student exists and belongs to user's school
-      console.log('🔍 Checking student access for ID:', studentId, 'School ID:', req.user.schoolId);
-      console.log('🔍 Prisma client status:', prisma ? 'Available' : 'Not available');
-      console.log('🔍 Prisma client type:', typeof prisma);
-      
-      let student;
-      try {
-        console.log('🔍 About to execute Prisma query...');
-        student = await prisma.student.findFirst({
-          where: {
-            id: parseInt(studentId),
-            schoolId: req.user.schoolId,
-            deletedAt: null
-          },
-          select: {
-            id: true,
-            schoolId: true,
-            classId: true,
-            userId: true
-          }
-        });
-        
-        console.log('🔍 Student query result:', student);
-        
-        if (!student) {
-          return res.status(404).json({
-            success: false,
-            error: 'Student not found',
-            message: 'Student not found or you do not have access to this student.',
-            meta: {
-              timestamp: new Date().toISOString(),
-              statusCode: 404
-            }
-          });
+      const student = await prisma.student.findFirst({
+        where: {
+          id: parseInt(studentId),
+          schoolId: req.user.schoolId,
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          schoolId: true,
+          classId: true,
+          userId: true
         }
-      } catch (dbError) {
-        console.error('❌ Database error in authorizeStudentAccess:', dbError);
-        console.error('❌ Error stack:', dbError.stack);
-        console.error('❌ Error name:', dbError.name);
-        console.error('❌ Error message:', dbError.message);
-        return res.status(500).json({
+      });
+
+      if (!student) {
+        return res.status(404).json({
           success: false,
-          error: 'Database error',
-          message: 'Failed to verify student access due to database error.',
+          error: 'Student not found',
+          message: 'Student not found or you do not have access to this student.',
           meta: {
             timestamp: new Date().toISOString(),
-            statusCode: 500,
-            error: dbError.message
+            statusCode: 404
           }
         });
       }
@@ -1138,25 +990,19 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
 
       // Teachers can access students in their classes
       if (req.user.role === 'TEACHER') {
-        console.log('🔍 Teacher access check for student:', student.id);
-        
-        // Teachers should have access to all students in their school
-        // This is more permissive and aligns with typical school management needs
-        if (student.schoolId === req.user.schoolId) {
-          console.log('✅ Teacher has access to student in same school');
-          return next();
-        }
-        
-        console.log('❌ Teacher denied access to student - different school');
-        return res.status(403).json({
-          success: false,
-          error: 'Access denied',
-          message: 'Teacher does not have permission to access this student.',
-          meta: {
-            timestamp: new Date().toISOString(),
-            statusCode: 403
+        // Check if teacher is assigned to the student's class
+        if (student.classId) {
+          const teacherClass = await prisma.teacherClass.findFirst({
+            where: {
+              teacherId: req.user.id,
+              classId: student.classId
+            }
+          });
+
+          if (teacherClass) {
+            return next();
           }
-        });
+        }
       }
 
       // Students can access their own profile
@@ -1166,63 +1012,31 @@ export const authorizeStudentAccess = (paramKey = 'id') => {
 
       // Parents can access their children
       if (req.user.role === 'PARENT') {
-        console.log('🔍 Checking parent access for user:', req.user.id);
-        console.log('🔍 Prisma client status in parent check:', prisma ? 'Available' : 'Not available');
-        
-        try {
-          const parent = await prisma.parent.findFirst({
+        const parent = await prisma.parent.findFirst({
+          where: {
+            userId: req.user.id,
+            schoolId: req.user.schoolId
+          },
+          select: { id: true }
+        });
+
+        if (parent) {
+          const parentStudent = await prisma.student.findFirst({
             where: {
-              userId: req.user.id,
-              schoolId: req.user.schoolId
+              id: parseInt(studentId),
+              parentId: parent.id,
+              schoolId: req.user.schoolId,
+              deletedAt: null
             },
             select: { id: true }
           });
 
-          console.log('🔍 Parent query result:', parent);
-
-          if (parent) {
-            const parentStudent = await prisma.student.findFirst({
-              where: {
-                id: parseInt(studentId),
-                parentId: parent.id,
-                schoolId: req.user.schoolId,
-                deletedAt: null
-              },
-              select: { id: true }
-            });
-
-            console.log('🔍 Parent student query result:', parentStudent);
-
-            if (parentStudent) {
-              return next();
-            }
+          if (parentStudent) {
+            return next();
           }
-        } catch (parentError) {
-          console.error('❌ Error checking parent access:', parentError);
-          console.error('❌ Error details:', {
-            message: parentError.message,
-            stack: parentError.stack,
-            userId: req.user.id,
-            schoolId: req.user.schoolId
-          });
-          
-          // If there's a database error, deny access for security
-          return res.status(500).json({
-            success: false,
-            error: 'Database error during authorization',
-            message: 'Failed to verify parent access.',
-            meta: {
-              timestamp: new Date().toISOString(),
-              statusCode: 500,
-              error: parentError.message
-            }
-          });
         }
       }
 
-      console.log('🔍 Access denied - no matching permissions found');
-      console.log('🔍 Final Prisma client status:', prisma ? 'Available' : 'Not available');
-      
       return res.status(403).json({
         success: false,
         error: 'Access denied',
@@ -1416,99 +1230,6 @@ export const authorize = (allowedRoles = [], requiredPermissions = [], options =
   };
 };
 
-/**
- * Hybrid authorization that checks both roles and permissions
- * Useful for endpoints that need to support both role-based and permission-based access
- */
-export const authorizeRolesOrPermissions = (allowedRoles, requiredPermissions) => {
-  return (req, res, next) => {
-    console.log('=== authorizeRolesOrPermissions START ===');
-    console.log('Allowed roles:', allowedRoles);
-    console.log('Required permissions:', requiredPermissions);
-    console.log('User role:', req.user?.role);
-    
-    try {
-      if (!req.user) {
-        console.log('=== authorizeRolesOrPermissions ERROR: No user ===');
-        return res.status(401).json({
-          success: false,
-          error: 'Authentication required',
-          message: 'Please login to access this resource.',
-          meta: {
-            timestamp: new Date().toISOString(),
-            statusCode: 401
-          }
-        });
-      }
-
-      // Super admins (owners) have all access
-      if (req.user.role === 'SUPER_ADMIN') {
-        console.log('=== authorizeRolesOrPermissions END: SUPER_ADMIN access granted ===');
-        return next();
-      }
-
-      // Check role-based access first
-      if (allowedRoles && allowedRoles.includes(req.user.role)) {
-        console.log('=== authorizeRolesOrPermissions END: Role-based access granted ===');
-        return next();
-      }
-
-      // If role check fails, check permissions
-      if (requiredPermissions && requiredPermissions.length > 0) {
-        const userPermissions = getUserPermissions(req.user.role);
-        console.log('User permissions:', userPermissions);
-        
-        for (const permission of requiredPermissions) {
-          if (!userPermissions.includes(permission)) {
-            console.log('=== authorizeRolesOrPermissions ERROR: Permission denied ===');
-            return res.status(403).json({
-              success: false,
-              error: 'Insufficient permissions',
-              message: `You don't have permission to perform this action. Required permission: ${permission}`,
-              meta: {
-                timestamp: new Date().toISOString(),
-                statusCode: 403,
-                userRole: req.user.role,
-                requiredPermissions,
-                userPermissions
-              }
-            });
-          }
-        }
-        
-        console.log('=== authorizeRolesOrPermissions END: Permission-based access granted ===');
-        return next();
-      }
-
-      // If neither role nor permission check passes
-      console.log('=== authorizeRolesOrPermissions ERROR: Access denied ===');
-      return res.status(403).json({
-        success: false,
-        error: 'Insufficient permissions',
-        message: `You don't have permission to perform this action. Required roles: ${allowedRoles?.join(', ') || 'None'}, Required permissions: ${requiredPermissions?.join(', ') || 'None'}`,
-        meta: {
-          timestamp: new Date().toISOString(),
-          statusCode: 403,
-          userRole: req.user.role,
-          requiredRoles: allowedRoles,
-          requiredPermissions
-        }
-      });
-    } catch (error) {
-      console.error('=== authorizeRolesOrPermissions ERROR ===', error);
-      return res.status(500).json({
-        success: false,
-        error: 'Authorization check failed',
-        message: 'Authorization service error. Please try again.',
-        meta: {
-          timestamp: new Date().toISOString(),
-          statusCode: 500
-        }
-      });
-    }
-  };
-};
-
 export default {
   authenticateToken,
   authenticate, // Add the alias to default export
@@ -1526,6 +1247,5 @@ export default {
   authorizeSubjectAccess,
   authorizeTeacherAccess,
   authorizeStudentAccess,
-  authorizeStaffAccess,
-  authorizeRolesOrPermissions
+  authorizeStaffAccess
 };
