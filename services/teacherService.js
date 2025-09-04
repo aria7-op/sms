@@ -260,7 +260,6 @@ class TeacherService {
             uuid: true,
             firstName: true,
             lastName: true,
-            email: true,
             phone: true,
             status: true,
             createdAt: true
