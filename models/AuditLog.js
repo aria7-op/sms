@@ -1,5 +1,5 @@
 // models/AuditLog.js
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 const prisma = new PrismaClient();
 
 class AuditLog {
@@ -126,7 +126,7 @@ class AuditLog {
                     include: {
                         owner: { select: { id: true, name: true } },
                         school: { select: { id: true, name: true } },
-                        user: { select: { id: true, name: true, email: true } },
+                        user: { select: { id: true, name: true, username: true } },
                         customer: { select: { id: true, name: true } }
                     },
                     orderBy: { [sortBy]: sortOrder },
