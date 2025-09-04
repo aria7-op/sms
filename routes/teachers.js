@@ -62,13 +62,13 @@ router.use(roleBasedLimiter(defaultRoleLimits));
 /**
  * @route   POST /api/teachers
  * @desc    Create a new teacher
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
+ * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
  * @body    TeacherCreateSchema
  * @permissions teacher:create
  */
 router.post('/',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
+  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['teacher:create']),
   teacherCreateLimiter,
   validateBody(TeacherCreateSchema),
@@ -111,7 +111,7 @@ router.get('/:id',
 /**
  * @route   PUT /api/teachers/:id
  * @desc    Update teacher
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
+ * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
  * @params  {id} - Teacher ID
  * @body    TeacherUpdateSchema
  * @permissions teacher:update
@@ -119,7 +119,7 @@ router.get('/:id',
 router.put('/:id',
   validateIdParam('id'),
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
+  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['teacher:update']),
   validateBody(TeacherUpdateSchema),
   authorizeTeacherAccess('id'),
@@ -130,14 +130,14 @@ router.put('/:id',
 /**
  * @route   DELETE /api/teachers/:id
  * @desc    Delete teacher (soft delete)
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
+ * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
  * @params  {id} - Teacher ID
  * @permissions teacher:delete
  */
 router.delete('/:id',
   validateIdParam('id'),
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
+  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['teacher:delete']),
   authorizeTeacherAccess('id'),
   auditLog('DELETE', 'Teacher'),
@@ -147,13 +147,13 @@ router.delete('/:id',
 /**
  * @route   PATCH /api/teachers/:id/restore
  * @desc    Restore deleted teacher
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
+ * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
  * @params  {id} - Teacher ID
  * @permissions teacher:restore
  */
 router.patch('/:id/restore',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
+  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['teacher:restore']),
   validateParams(idSchema),
   authorizeTeacherAccess('id'),
@@ -226,13 +226,13 @@ router.get('/:id/performance',
 /**
  * @route   POST /api/teachers/bulk/create
  * @desc    Bulk create teachers
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
+ * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
  * @body    {teachers: TeacherCreateSchema[]}
  * @permissions teacher:create
  */
 router.post('/bulk/create',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
+  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['teacher:create']),
   bulkLimiter,
   auditLog('BULK_CREATE', 'Teacher'),
@@ -242,13 +242,13 @@ router.post('/bulk/create',
 /**
  * @route   PUT /api/teachers/bulk/update
  * @desc    Bulk update teachers
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
+ * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
  * @body    {updates: TeacherUpdateSchema[]}
  * @permissions teacher:update
  */
 router.put('/bulk/update',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
+  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['teacher:update']),
   bulkLimiter,
   auditLog('BULK_UPDATE', 'Teacher'),
@@ -258,13 +258,13 @@ router.put('/bulk/update',
 /**
  * @route   DELETE /api/teachers/bulk/delete
  * @desc    Bulk delete teachers
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
+ * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
  * @body    {teacherIds: number[]}
  * @permissions teacher:delete
  */
 router.delete('/bulk/delete',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
+  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['teacher:delete']),
   bulkLimiter,
   auditLog('BULK_DELETE', 'Teacher'),
@@ -297,14 +297,14 @@ router.get('/search',
 /**
  * @route   GET /api/teachers/export
  * @desc    Export teachers data
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
+ * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
  * @query   {format} - Export format (json, csv)
  * @query   {...TeacherSearchSchema} - Filters for export
  * @permissions teacher:export
  */
 router.get('/export',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
+  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['teacher:export']),
   exportLimiter,
   teacherController.exportTeachers.bind(teacherController)
@@ -313,13 +313,13 @@ router.get('/export',
 /**
  * @route   POST /api/teachers/import
  * @desc    Import teachers data
- * @access  Private (SUPER_ADMIN)
+ * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
  * @body    {teachers: TeacherCreateSchema[], user: User}
  * @permissions teacher:import
  */
 router.post('/import',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN']),
+  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['teacher:import']),
   bulkLimiter,
   auditLog('IMPORT', 'Teacher'),
@@ -333,14 +333,14 @@ router.post('/import',
 /**
  * @route   GET /api/teachers/suggestions/code
  * @desc    Generate teacher code suggestions
- * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN)
+ * @access  Private (SUPER_ADMIN, SCHOOL_ADMIN, TEACHER)
  * @query   {name} - Teacher name for code generation
  * @query   {schoolId} - School ID
  * @permissions teacher:create
  */
 router.get('/suggestions/code',
   authenticateToken,
-  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN']),
+  authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['teacher:create']),
   teacherController.generateCodeSuggestions.bind(teacherController)
 );
