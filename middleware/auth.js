@@ -565,7 +565,10 @@ export function getUserPermissions(role) {
       'student:read', 'staff:read', 'parent:read',
       
       // Teacher management permissions (enable full access to teacher routes)
-      'teacher:read', 'teacher:create', 'teacher:update', 'teacher:delete', 'teacher:export', 'teacher:analytics',
+      'teacher:read', 'teacher:create', 'teacher:update', 'teacher:delete', 'teacher:restore',
+      'teacher:bulk_create', 'teacher:bulk_update', 'teacher:bulk_delete',
+      'teacher:export', 'teacher:import', 'teacher:analytics', 'teacher:stats',
+      'teacher:search', 'teacher:performance',
 
       // Student management permissions
       'student:create', 'student:update',
