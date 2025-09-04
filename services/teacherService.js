@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaClient } from '../generated/prisma/index.js';
 import { 
   generateTeacherCode, 
   validateTeacherConstraints, 
@@ -289,10 +289,31 @@ class TeacherService {
 
       // Get teachers
       console.log('🔍 Getting teachers...');
+      // Build a safe orderBy compatible with Prisma schema
+      const normalizedSortOrder = (typeof sortOrder === 'string' && sortOrder.toLowerCase() === 'asc') ? 'asc' : 'desc';
+      let orderByClause;
+      if (sortBy === 'name') {
+        // Sort by user's firstName then lastName
+        orderByClause = [
+          { user: { firstName: normalizedSortOrder } },
+          { user: { lastName: normalizedSortOrder } }
+        ];
+      } else if (
+        ['id', 'uuid', 'userId', 'employeeId', 'departmentId', 'joiningDate', 'experience', 'salary', 'isClassTeacher', 'schoolId', 'createdBy', 'updatedBy', 'createdAt', 'updatedAt', 'deletedAt'].includes(sortBy)
+      ) {
+        orderByClause = { [sortBy]: normalizedSortOrder };
+      } else if (sortBy === 'department') {
+        // Example mapping if UI sends 'department'
+        orderByClause = { departmentId: normalizedSortOrder };
+      } else {
+        // Default fallback
+        orderByClause = { createdAt: 'desc' };
+      }
+
       const teachers = await prisma.teacher.findMany({
         where,
         include: includeQuery,
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: orderByClause,
         skip: (parseInt(page) - 1) * parseInt(limit),
         take: parseInt(limit)
       });
