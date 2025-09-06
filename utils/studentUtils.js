@@ -273,92 +273,119 @@ export const buildStudentSearchQuery = (filters) => {
   // Search in student and user fields
   if (filters.search) {
     const searchTerm = filters.search.trim();
+    console.log('🔍 Building search query for term:', searchTerm);
     
     // Check if search term is a number (for ID search)
     const isNumeric = !isNaN(searchTerm) && !isNaN(parseFloat(searchTerm));
+    console.log('🔍 Is numeric search term:', isNumeric);
     
-    query.OR = [
-      {
-        admissionNo: {
-          contains: searchTerm
+    // If it's a numeric search, prioritize ID-based search
+    if (isNumeric) {
+      const numericId = parseInt(searchTerm);
+      console.log('🔍 Searching for student with ID:', numericId);
+      
+      // Direct ID search - this should find the exact student
+      query.OR = [
+        {
+          id: numericId
+        },
+        {
+          userId: numericId
+        },
+        {
+          admissionNo: {
+            contains: searchTerm
+          }
+        },
+        {
+          rollNo: {
+            contains: searchTerm
+          }
         }
-      },
-      {
-        rollNo: {
-          contains: searchTerm
+      ];
+    } else {
+      // Text-based search
+      const searchConditions = [];
+      
+      // Direct field searches
+      searchConditions.push(
+        {
+          admissionNo: {
+            contains: searchTerm
+          }
+        },
+        {
+          rollNo: {
+            contains: searchTerm
+          }
         }
-      },
-      {
+      );
+      
+      // User field searches
+      searchConditions.push({
         user: {
           OR: [
             {
               firstName: {
-                contains: searchTerm,
+                contains: searchTerm
               }
             },
             {
               lastName: {
-                contains: searchTerm,
+                contains: searchTerm
               }
             },
             {
               displayName: {
-                contains: searchTerm,
+                contains: searchTerm
               }
             },
             {
               username: {
-                contains: searchTerm,
+                contains: searchTerm
               }
             },
             {
               phone: {
-                contains: searchTerm,
+                contains: searchTerm
               }
             }
           ]
         }
-      },
-      {
+      });
+      
+      // Parent field searches
+      searchConditions.push({
         parent: {
           user: {
             OR: [
               {
                 firstName: {
-                  contains: searchTerm,
+                  contains: searchTerm
                 }
               },
               {
                 lastName: {
-                  contains: searchTerm,
+                  contains: searchTerm
                 }
               },
               {
                 displayName: {
-                  contains: searchTerm,
+                  contains: searchTerm
                 }
               },
               {
                 phone: {
-                  contains: searchTerm,
+                  contains: searchTerm
                 }
               }
             ]
           }
         }
-      }
-    ];
-    
-    // Add ID search if the search term is numeric
-    if (isNumeric) {
-      query.OR.push(
-        {
-          id: parseInt(searchTerm)
-        },
-        {
-          userId: parseInt(searchTerm)
-        }
-      );
+      });
+      
+      // Use OR for all search conditions
+      query.OR = searchConditions;
     }
   }
 
@@ -419,6 +446,7 @@ export const buildStudentSearchQuery = (filters) => {
     }
   }
 
+  console.log('🔍 Final search query built:', JSON.stringify(query, null, 2));
   return query;
 };
 
