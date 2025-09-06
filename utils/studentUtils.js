@@ -312,11 +312,6 @@ export const buildStudentSearchQuery = (filters) => {
               }
             },
             {
-              email: {
-                contains: searchTerm,
-              }
-            },
-            {
               phone: {
                 contains: searchTerm,
               }
