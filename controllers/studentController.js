@@ -570,14 +570,14 @@ class StudentController {
       // Check if this is an ID search - if so, don't paginate to get exact result
       const isIdSearch = search && !isNaN(search) && !isNaN(parseFloat(search));
       
-      // Only add pagination if limit is specified and it's not an ID search
-      if (limitNum !== undefined && !isIdSearch) {
+      // For any search, remove pagination to ensure we get all matching results
+      if (search) {
+        console.log('🔍 Search detected - removing pagination to get all matching results');
+        // Don't add skip/take for searches to ensure we get all results
+      } else if (limitNum !== undefined) {
+        // Only add pagination if no search and limit is specified
         finalQuery.skip = (pageNum - 1) * limitNum;
         finalQuery.take = limitNum;
-      } else if (isIdSearch) {
-        console.log('🔍 ID search detected - removing pagination to get exact result');
-        // For ID search, limit to 1 result since we want the exact match
-        finalQuery.take = 1;
       }
       
       // Convert BigInt values to strings for logging
@@ -594,24 +594,104 @@ class StudentController {
       // Add timeout to prevent hanging queries
       const queryTimeout = 30000; // 30 seconds
       
-      // Execute both count and data queries in parallel for better performance
-      const [students, totalCount] = await Promise.race([
-        Promise.all([
-          prisma.student.findMany(finalQuery),
-          prisma.student.count({
+      let students, totalCount;
+      
+      try {
+        // Execute both count and data queries in parallel for better performance
+        [students, totalCount] = await Promise.race([
+          Promise.all([
+            prisma.student.findMany(finalQuery),
+            prisma.student.count({
+              where: {
+                ...searchQuery,
+                schoolId: BigInt(schoolId),
+                deletedAt: null
+              }
+            })
+          ]),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Query timeout after 30 seconds')), queryTimeout)
+          )
+        ]);
+        
+        console.log('🔍 Prisma query executed successfully');
+      } catch (error) {
+        console.error('🔍 Prisma query failed:', error.message);
+        
+        // If search failed, try a simpler approach
+        if (search) {
+          console.log('🔍 Trying fallback search approach...');
+          try {
+            // Try a simpler search without complex OR conditions
+            const simpleQuery = {
+              where: {
+                schoolId: BigInt(schoolId),
+                deletedAt: null,
+                OR: [
+                  { id: isNaN(search) ? undefined : parseInt(search) },
+                  { userId: isNaN(search) ? undefined : parseInt(search) },
+                  { admissionNo: { contains: search } },
+                  { rollNo: { contains: search } }
+                ].filter(condition => Object.values(condition)[0] !== undefined)
+              },
+              include: includeQuery,
+              orderBy: { [sortBy]: sortOrder }
+            };
+            
+            students = await prisma.student.findMany(simpleQuery);
+            totalCount = students.length;
+            console.log('🔍 Fallback search found:', students.length, 'results');
+          } catch (fallbackError) {
+            console.error('🔍 Fallback search also failed:', fallbackError.message);
+            throw error; // Throw original error
+          }
+        } else {
+          throw error; // Re-throw if not a search
+        }
+      }
+
+      console.log('Step 8: Query completed. Found students:', students.length, 'Total count:', totalCount);
+      
+      // Debug: Check if there are any students in the database at all
+      if (students.length === 0 && search) {
+        console.log('🔍 No students found for search. Checking if any students exist in database...');
+        try {
+          const totalStudentsInDb = await prisma.student.count({
             where: {
-              ...searchQuery,
               schoolId: BigInt(schoolId),
               deletedAt: null
             }
-          })
-        ]),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Query timeout after 30 seconds')), queryTimeout)
-        )
-      ]);
-
-      console.log('Step 8: Query completed. Found students:', students.length, 'Total count:', totalCount);
+          });
+          console.log('🔍 Total students in database for this school:', totalStudentsInDb);
+          
+          if (totalStudentsInDb > 0) {
+            // Get a sample student to see the data structure
+            const sampleStudent = await prisma.student.findFirst({
+              where: {
+                schoolId: BigInt(schoolId),
+                deletedAt: null
+              },
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    username: true,
+                    phone: true
+                  }
+                }
+              }
+            });
+            console.log('🔍 Sample student data:', JSON.stringify(sampleStudent, (key, value) => {
+              if (typeof value === 'bigint') return value.toString();
+              return value;
+            }, 2));
+          }
+        } catch (debugError) {
+          console.error('🔍 Error checking database:', debugError.message);
+        }
+      }
       
       // Debug: Log search results for debugging
       if (search) {
@@ -644,16 +724,16 @@ class StudentController {
       
       // Calculate pagination metadata
       let pagination;
-      if (isIdSearch) {
-        // ID search - no pagination, just return the result
+      if (search) {
+        // Any search - no pagination, return all matching results
         pagination = {
           currentPage: 1,
           totalPages: 1,
           totalCount: students.length,
-          limit: 1,
+          limit: 'search',
           hasNextPage: false,
           hasPrevPage: false,
-          isIdSearch: true
+          isSearch: true
         };
       } else if (limitNum !== undefined) {
         // Normal pagination
