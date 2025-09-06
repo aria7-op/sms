@@ -273,56 +273,78 @@ export const buildStudentSearchQuery = (filters) => {
   // Search in student and user fields
   if (filters.search) {
     const searchTerm = filters.search.trim();
-    console.log('🔍 Building search query for term:', searchTerm);
+    console.log('🔍 Building comprehensive search query for term:', searchTerm);
     
     // Check if search term is a number (for ID search)
     const isNumeric = !isNaN(searchTerm) && !isNaN(parseFloat(searchTerm));
     console.log('🔍 Is numeric search term:', isNumeric);
     
-    // If it's a numeric search, prioritize ID-based search
+    // Build comprehensive search conditions
+    const searchConditions = [];
+    
+    // 1. Direct student field searches
+    searchConditions.push(
+      {
+        admissionNo: {
+          contains: searchTerm
+        }
+      },
+      {
+        rollNo: {
+          contains: searchTerm
+        }
+      }
+    );
+    
+    // 2. Student ID searches (if numeric)
     if (isNumeric) {
       const numericId = parseInt(searchTerm);
-      console.log('🔍 Searching for student with ID:', numericId);
-      
-      // Direct ID search - this should find the exact student
-      query.OR = [
+      searchConditions.push(
         {
           id: numericId
         },
         {
           userId: numericId
-        },
-        {
-          admissionNo: {
-            contains: searchTerm
-          }
-        },
-        {
-          rollNo: {
-            contains: searchTerm
-          }
-        }
-      ];
-    } else {
-      // Text-based search
-      const searchConditions = [];
-      
-      // Direct field searches
-      searchConditions.push(
-        {
-          admissionNo: {
-            contains: searchTerm
-          }
-        },
-        {
-          rollNo: {
-            contains: searchTerm
-          }
         }
       );
-      
-      // User field searches
-      searchConditions.push({
+    }
+    
+    // 3. User field searches (student's user data)
+    searchConditions.push({
+      user: {
+        OR: [
+          {
+            firstName: {
+              contains: searchTerm
+            }
+          },
+          {
+            lastName: {
+              contains: searchTerm
+            }
+          },
+          {
+            displayName: {
+              contains: searchTerm
+            }
+          },
+          {
+            username: {
+              contains: searchTerm
+            }
+          },
+          {
+            phone: {
+              contains: searchTerm
+            }
+          }
+        ]
+      }
+    });
+    
+    // 4. Parent field searches
+    searchConditions.push({
+      parent: {
         user: {
           OR: [
             {
@@ -341,52 +363,26 @@ export const buildStudentSearchQuery = (filters) => {
               }
             },
             {
-              username: {
-                contains: searchTerm
-              }
-            },
-            {
               phone: {
                 contains: searchTerm
               }
             }
           ]
         }
-      });
-      
-      // Parent field searches
+      }
+    });
+    
+    // 5. Additional parent ID search (if numeric)
+    if (isNumeric) {
+      const numericId = parseInt(searchTerm);
       searchConditions.push({
-        parent: {
-          user: {
-            OR: [
-              {
-                firstName: {
-                  contains: searchTerm
-                }
-              },
-              {
-                lastName: {
-                  contains: searchTerm
-                }
-              },
-              {
-                displayName: {
-                  contains: searchTerm
-                }
-              },
-              {
-                phone: {
-                  contains: searchTerm
-                }
-              }
-            ]
-          }
-        }
+        parentId: numericId
       });
-      
-      // Use OR for all search conditions
-      query.OR = searchConditions;
     }
+    
+    // Use OR for all search conditions
+    query.OR = searchConditions;
+    console.log('🔍 Total search conditions:', searchConditions.length);
   }
 
   // Filter by class
