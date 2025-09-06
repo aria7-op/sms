@@ -60,16 +60,11 @@ function convertBigInts(obj) {
   if (obj === null || obj === undefined) {
     return obj;
   }
+  if (obj instanceof Date) {
+    return obj.toISOString();
+  }
   if (typeof obj === 'bigint') {
     return obj.toString();
-  }
-  // Robust Date detection (handles cross-realm Date objects)
-  const isDateObject = (value) => (
-    value instanceof Date || Object.prototype.toString.call(value) === '[object Date]'
-  );
-  if (isDateObject(obj)) {
-    const d = new Date(obj);
-    return isNaN(d.getTime()) ? null : d.toISOString();
   }
   if (Array.isArray(obj)) {
     return obj.map(convertBigInts);
@@ -77,7 +72,7 @@ function convertBigInts(obj) {
   if (typeof obj === 'object') {
     const newObj = {};
     for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      if (obj.hasOwnProperty(key)) {
         newObj[key] = convertBigInts(obj[key]);
       }
     }
@@ -440,7 +435,7 @@ class StudentController {
       const studentEventService = new StudentEventService();
       const event = await studentEventService.createStudentEnrollmentEvent(
         student,
-        req.user.id,
+        req.user ? req.user.id : (studentOwnerId ?? BigInt(1)),
         schoolId
       );
 
@@ -469,7 +464,7 @@ class StudentController {
         'student',
         student.id,
         student,
-        req.user,
+        req.user || { id: studentOwnerId ?? BigInt(1) },
         {
           auditDetails: {
             studentId: student.id.toString(),
@@ -717,14 +712,26 @@ class StudentController {
   async updateStudent(req, res) {
     try {
       const { id } = req.params;
-      const { user, ...updateData } = req.body;
+      const { user, parent, ...updateData } = req.body;
 
-      // Get existing student
+      // Validate student ID format
+      if (!/^[0-9]+$/.test(id)) {
+        return createErrorResponse(res, 400, 'Invalid student ID');
+      }
+
+      // Get existing student with proper school validation
       const existingStudent = await prisma.student.findFirst({
         where: {
           id: parseInt(id),
-          schoolId: req.user.schoolId,
+          schoolId: BigInt(req.user.schoolId),
           deletedAt: null
+        },
+        include: {
+          parent: {
+            include: {
+              user: true
+            }
+          }
         }
       });
 
@@ -735,6 +742,71 @@ class StudentController {
       // Validate class access if class is being updated
       if (updateData.classId && updateData.classId !== existingStudent.classId) {
         await validateClassAccess(req.user, updateData.classId, req.user.schoolId);
+      }
+
+      // Handle parent data update if provided
+      if (parent && existingStudent.parent) {
+        console.log('🔍 Updating existing parent data...');
+        console.log('🔍 Parent data:', JSON.stringify(parent, null, 2));
+        console.log('🔍 Existing parent ID:', existingStudent.parent.id);
+        
+        try {
+          // Update parent user data if provided
+          if (parent.user) {
+            console.log('🔍 Updating parent user data...');
+            
+            // Extract address fields and move to metadata
+            const { address, city, state, country, postalCode, ...userDataWithoutAddress } = parent.user;
+            
+            // Create metadata object with address information (only include defined values)
+            const userMetadata = {};
+            if (address || city || state || country || postalCode) {
+              userMetadata.address = {};
+              if (address) userMetadata.address.street = address;
+              if (city) userMetadata.address.city = city;
+              if (state) userMetadata.address.state = state;
+              if (country) userMetadata.address.country = country;
+              if (postalCode) userMetadata.address.postalCode = postalCode;
+            }
+            
+            // Update parent user
+            await prisma.user.update({
+              where: { id: existingStudent.parent.user.id },
+              data: {
+                ...userDataWithoutAddress,
+                // Store address in metadata as JSON string
+                metadata: Object.keys(userMetadata).length > 0 ? JSON.stringify(userMetadata) : null,
+                updatedBy: req.user.id,
+                updatedAt: new Date()
+              }
+            });
+            console.log('🔍 Parent user updated successfully');
+          }
+          
+          // Update parent record data if provided (non-user fields)
+          const parentFields = { ...parent };
+          delete parentFields.user; // Remove user data as it's handled separately
+          
+          if (Object.keys(parentFields).length > 0) {
+            console.log('🔍 Updating parent record data...');
+            await prisma.parent.update({
+              where: { id: existingStudent.parent.id },
+              data: {
+                ...parentFields,
+                updatedBy: req.user.id,
+                updatedAt: new Date()
+              }
+            });
+            console.log('🔍 Parent record updated successfully');
+          }
+          
+        } catch (parentError) {
+          console.error('❌ Error updating parent:', parentError);
+          return createErrorResponse(res, 500, `Failed to update parent: ${parentError.message}`);
+        }
+      } else if (parent && !existingStudent.parent) {
+        console.log('🔍 Parent data provided but student has no existing parent');
+        return createErrorResponse(res, 400, 'Student has no existing parent to update. Use parentId to connect to an existing parent.');
       }
 
       // EVENT-FIRST WORKFLOW: Log event before updating student
@@ -754,16 +826,102 @@ class StudentController {
         req.user.schoolId
       );
 
+      // Prepare update data with proper field filtering
+      const validStudentFields = [
+        'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality', 
+        'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode', 
+        'previousSchool', 'classId', 'sectionId', 'parentId', 'status', 'priority'
+      ];
+      
+      const filteredUpdateData = {};
+      for (const key of Object.keys(updateData)) {
+        if (validStudentFields.includes(key)) {
+          // Handle BigInt fields
+          if (key === 'classId' || key === 'sectionId' || key === 'parentId') {
+            if (updateData[key] && updateData[key] !== 'null' && updateData[key] !== 'undefined') {
+              try {
+                filteredUpdateData[key] = BigInt(updateData[key]);
+              } catch (error) {
+                console.warn(`Invalid ${key} value: ${updateData[key]}, skipping...`);
+                continue;
+              }
+            }
+          } else if (key === 'admissionDate') {
+            // Handle date fields
+            if (updateData[key]) {
+              filteredUpdateData[key] = new Date(updateData[key]);
+            }
+          } else {
+            filteredUpdateData[key] = updateData[key];
+          }
+        }
+      }
+
+      // Build prisma update payload: map scalar fields and relations
+      const prismaUpdateData = {
+        updatedBy: req.user.id,
+        updatedAt: new Date()
+      };
+
+      // Allowed scalar fields (non-relations)
+      const scalarFields = [
+        'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality',
+        'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode',
+        'previousSchool', 'tazkiraNo',
+        'originAddress', 'originCity', 'originState', 'originProvince', 'originCountry', 'originPostalCode',
+        'currentAddress', 'currentCity', 'currentState', 'currentProvince', 'currentCountry', 'currentPostalCode',
+        'status', 'priority'
+      ];
+      for (const key of Object.keys(filteredUpdateData)) {
+        if (scalarFields.includes(key)) {
+          // Special handling for date fields
+          if (key === 'admissionDate' && filteredUpdateData[key]) {
+            prismaUpdateData[key] = new Date(filteredUpdateData[key]);
+          } else {
+            prismaUpdateData[key] = filteredUpdateData[key];
+          }
+        }
+      }
+
+      // Relations: class, section, parent
+      if (Object.prototype.hasOwnProperty.call(filteredUpdateData, 'classId')) {
+        const val = filteredUpdateData.classId;
+        if (val === null) {
+          prismaUpdateData.class = { disconnect: true };
+        } else if (val !== undefined) {
+          prismaUpdateData.class = { connect: { id: val } };
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(filteredUpdateData, 'sectionId')) {
+        const val = filteredUpdateData.sectionId;
+        if (val === null) {
+          prismaUpdateData.section = { disconnect: true };
+        } else if (val !== undefined) {
+          prismaUpdateData.section = { connect: { id: val } };
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(filteredUpdateData, 'parentId')) {
+        const val = filteredUpdateData.parentId;
+        if (val === null) {
+          prismaUpdateData.parent = { disconnect: true };
+        } else if (val !== undefined) {
+          prismaUpdateData.parent = { connect: { id: val } };
+        }
+      }
+
       // Update student
       const updatedStudent = await prisma.student.update({
         where: { id: parseInt(id) },
         data: {
-          ...updateData,
-          updatedBy: req.user.id,
+          ...prismaUpdateData,
           // Handle user updates if provided
           ...(user && {
             user: {
-              update: user
+              update: {
+                ...user,
+                updatedBy: req.user.id,
+                updatedAt: new Date()
+              }
             }
           })
         },
@@ -805,15 +963,17 @@ class StudentController {
         }
       });
 
-      // Update the event with the final student data
+      // Update the event with the final student data (store as string in metadata)
       await prisma.studentEvent.update({
         where: { id: event.id },
-        data: { 
-          metadata: JSON.stringify({ 
-            ...event.metadata, 
-            updatedStudentData: convertBigInts(updatedStudent),
-            updatedFields: Object.keys(updateData)
-          })
+        data: {
+          metadata: {
+            set: JSON.stringify({
+              ...event.metadata,
+              updatedStudentData: convertBigInts(updatedStudent),
+              updatedFields: Object.keys(filteredUpdateData)
+            })
+          }
         }
       });
 
@@ -827,7 +987,7 @@ class StudentController {
         'Student',
         {
           studentId: updatedStudent.id.toString(),
-          updatedFields: Object.keys(updateData)
+          updatedFields: Object.keys(filteredUpdateData)
         }
       );
 
@@ -847,9 +1007,13 @@ class StudentController {
         req.user
       );
 
+      // Convert BigInt values for response
+      const convertedStudent = convertBigInts(updatedStudent);
+      const convertedEvent = convertBigInts(event);
+
       return createSuccessResponse(res, 200, 'Student updated successfully', {
-        student: updatedStudent,
-        event
+        student: convertedStudent,
+        event: convertedEvent
       });
     } catch (error) {
       return handlePrismaError(res, error, 'updateStudent');
