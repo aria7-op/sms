@@ -214,7 +214,7 @@ class StudentController {
       
       if (studentData.parent && studentData.parent.user) {
         console.log('🔍 Creating parent with user data...');
-        console.log('🔍 Parent data:', JSON.stringify(studentData.parent, null, 2));
+        console.log('🔍 Parent data:', JSON.stringify(convertBigInts(studentData.parent), null, 2));
         if (req.user) {
           console.log('🔍 Current user:', {
             id: req.user.id,
@@ -228,7 +228,7 @@ class StudentController {
         }
         
         try {
-          console.log('🔍 Creating parent with data:', JSON.stringify(studentData.parent, null, 2));
+          console.log('🔍 Creating parent with data:', JSON.stringify(convertBigInts(studentData.parent), null, 2));
           
           // Determine the correct owner ID for parent creation
           let parentOwnerId;
@@ -265,7 +265,7 @@ class StudentController {
             parentOwnerId,
             schoolId
           );
-          console.log('🔍 Parent created successfully:', JSON.stringify(parent, null, 2));
+          console.log('🔍 Parent created successfully:', JSON.stringify(convertBigInts(parent), null, 2));
           console.log('🔍 Parent object keys:', Object.keys(parent));
           console.log('🔍 Parent ID type:', typeof parent.id);
           console.log('🔍 Parent ID value:', parent.id);
@@ -877,7 +877,7 @@ class StudentController {
       // Handle parent data update if provided
       if (parent && existingStudent.parent) {
         console.log('🔍 Updating existing parent data...');
-        console.log('🔍 Parent data:', JSON.stringify(parent, null, 2));
+        console.log('🔍 Parent data:', JSON.stringify(convertBigInts(parent), null, 2));
         console.log('🔍 Existing parent ID:', existingStudent.parent.id);
         
         try {
@@ -1046,7 +1046,7 @@ class StudentController {
       let userUpdateData = null;
       if (user) {
         console.log('🔍 Updating student user data...');
-        console.log('🔍 User data:', JSON.stringify(user, null, 2));
+        console.log('🔍 User data:', JSON.stringify(convertBigInts(user), null, 2));
         
         try {
           // Extract address fields and move to metadata
@@ -1079,7 +1079,7 @@ class StudentController {
             updatedAt: new Date()
           };
           
-          console.log('🔍 Processed user update data:', JSON.stringify(userUpdateData, null, 2));
+          console.log('🔍 Processed user update data:', JSON.stringify(convertBigInts(userUpdateData), null, 2));
         } catch (userDataError) {
           console.error('❌ Error processing user data:', userDataError);
           return createErrorResponse(res, 500, `Failed to process user data: ${userDataError.message}`);
