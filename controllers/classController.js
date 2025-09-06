@@ -3974,7 +3974,7 @@
     try {
       const { classId, studentIds } = req.body;
       
-      if (!classId || isNaN(classId)) {
+      if (classId === null || classId === undefined || classId === '' || isNaN(Number(classId))) {
         return res.status(400).json(formatResponse(false, null, 'Valid class ID is required'));
       }
       
