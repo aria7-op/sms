@@ -838,7 +838,10 @@ class StudentController {
         if (validStudentFields.includes(key)) {
           // Handle BigInt fields
           if (key === 'classId' || key === 'sectionId' || key === 'parentId') {
-            if (updateData[key] && updateData[key] !== 'null' && updateData[key] !== 'undefined') {
+            if (updateData[key] === null || updateData[key] === 'null') {
+              // Allow null values to pass through for disconnection
+              filteredUpdateData[key] = null;
+            } else if (updateData[key] && updateData[key] !== 'undefined') {
               try {
                 filteredUpdateData[key] = BigInt(updateData[key]);
               } catch (error) {
