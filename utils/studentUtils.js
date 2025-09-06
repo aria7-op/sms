@@ -275,6 +275,10 @@ export const buildStudentSearchQuery = (filters) => {
   // Search in student and user fields
   if (filters.search) {
     const searchTerm = filters.search.trim();
+    
+    // Check if search term is a number (for ID search)
+    const isNumeric = !isNaN(searchTerm) && !isNaN(parseFloat(searchTerm));
+    
     query.OR = [
       {
         admissionNo: {
@@ -303,11 +307,23 @@ export const buildStudentSearchQuery = (filters) => {
               username: {
                 contains: searchTerm
               }
+            },
+            {
+              phone: {
+                contains: searchTerm
+              }
             }
           ]
         }
       }
     ];
+    
+    // Add ID search if the search term is numeric
+    if (isNumeric) {
+      query.OR.push({
+        id: parseInt(searchTerm)
+      });
+    }
   }
 
   // Filter by class
