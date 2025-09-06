@@ -1281,4 +1281,4 @@ function getPerformanceGrade(score) {
   if (score >= 40) return 'C';
   if (score >= 30) return 'D';
   return 'F';
-} 
+}
