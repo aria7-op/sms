@@ -280,14 +280,12 @@ export const buildStudentSearchQuery = (filters) => {
     query.OR = [
       {
         admissionNo: {
-          contains: searchTerm,
-          mode: 'insensitive'
+          contains: searchTerm
         }
       },
       {
         rollNo: {
-          contains: searchTerm,
-          mode: 'insensitive'
+          contains: searchTerm
         }
       },
       {
@@ -296,37 +294,31 @@ export const buildStudentSearchQuery = (filters) => {
             {
               firstName: {
                 contains: searchTerm,
-                mode: 'insensitive'
               }
             },
             {
               lastName: {
                 contains: searchTerm,
-                mode: 'insensitive'
               }
             },
             {
               displayName: {
                 contains: searchTerm,
-                mode: 'insensitive'
               }
             },
             {
               username: {
                 contains: searchTerm,
-                mode: 'insensitive'
               }
             },
             {
               email: {
                 contains: searchTerm,
-                mode: 'insensitive'
               }
             },
             {
               phone: {
                 contains: searchTerm,
-                mode: 'insensitive'
               }
             }
           ]
@@ -339,25 +331,21 @@ export const buildStudentSearchQuery = (filters) => {
               {
                 firstName: {
                   contains: searchTerm,
-                  mode: 'insensitive'
                 }
               },
               {
                 lastName: {
                   contains: searchTerm,
-                  mode: 'insensitive'
                 }
               },
               {
                 displayName: {
                   contains: searchTerm,
-                  mode: 'insensitive'
                 }
               },
               {
                 phone: {
                   contains: searchTerm,
-                  mode: 'insensitive'
                 }
               }
             ]
