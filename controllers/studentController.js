@@ -2119,14 +2119,25 @@ class StudentController {
       };
 
       if (search) {
+        const searchTerm = search.trim();
+        const isNumeric = !isNaN(searchTerm) && !isNaN(parseFloat(searchTerm));
+        
         whereClause.OR = [
           { user: { firstName: { contains: search, mode: 'insensitive' } } },
           { user: { lastName: { contains: search, mode: 'insensitive' } } },
           { user: { displayName: { contains: search, mode: 'insensitive' } } },
           { user: { username: { contains: search, mode: 'insensitive' } } },
+          { user: { phone: { contains: search, mode: 'insensitive' } } },
           { admissionNo: { contains: search, mode: 'insensitive' } },
           { rollNo: { contains: search, mode: 'insensitive' } }
         ];
+        
+        // Add ID search if the search term is numeric
+        if (isNumeric) {
+          whereClause.OR.push({
+            id: parseInt(searchTerm)
+          });
+        }
       }
 
       const [students, total] = await Promise.all([
