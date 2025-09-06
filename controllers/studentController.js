@@ -651,7 +651,10 @@ class StudentController {
       console.log('Step 9: Pagination metadata:', pagination);  
       console.log('=== getStudents END ===');
       
-      return createSuccessResponse(res, 200, 'Students fetched successfully', students, {
+      // Convert BigInt values to strings for JSON serialization
+      const convertedStudents = convertBigInts(students);
+      
+      return createSuccessResponse(res, 200, 'Students fetched successfully', convertedStudents, {
         pagination
       });
     } catch (error) {
@@ -926,22 +929,64 @@ class StudentController {
         }
       }
 
-      // Update student
-      const updatedStudent = await prisma.student.update({
-        where: { id: parseInt(id) },
-        data: {
-          ...prismaUpdateData,
-          // Handle user updates if provided
-          ...(user && {
-            user: {
-              update: {
-                ...user,
-                updatedBy: req.user.id,
-                updatedAt: new Date()
-              }
+      // Handle user updates if provided
+      let userUpdateData = null;
+      if (user) {
+        console.log('🔍 Updating student user data...');
+        console.log('🔍 User data:', JSON.stringify(user, null, 2));
+        
+        try {
+          // Extract address fields and move to metadata
+          const { address, city, state, country, postalCode, ...userDataWithoutAddress } = user;
+          
+          // Create metadata object with address information (only include defined values)
+          const userMetadata = {};
+          if (address || city || state || country || postalCode) {
+            userMetadata.address = {};
+            if (address) userMetadata.address.street = address;
+            if (city) userMetadata.address.city = city;
+            if (state) userMetadata.address.state = state;
+            if (country) userMetadata.address.country = country;
+            if (postalCode) userMetadata.address.postalCode = postalCode;
+          }
+          
+          // Filter out any undefined or null values that might cause issues
+          const filteredUserData = {};
+          Object.keys(userDataWithoutAddress).forEach(key => {
+            if (userDataWithoutAddress[key] !== undefined && userDataWithoutAddress[key] !== null) {
+              filteredUserData[key] = userDataWithoutAddress[key];
             }
-          })
-        },
+          });
+          
+          userUpdateData = {
+            ...filteredUserData,
+            // Store address in metadata as JSON string
+            metadata: Object.keys(userMetadata).length > 0 ? JSON.stringify(userMetadata) : null,
+            updatedBy: req.user.id,
+            updatedAt: new Date()
+          };
+          
+          console.log('🔍 Processed user update data:', JSON.stringify(userUpdateData, null, 2));
+        } catch (userDataError) {
+          console.error('❌ Error processing user data:', userDataError);
+          return createErrorResponse(res, 500, `Failed to process user data: ${userDataError.message}`);
+        }
+      }
+
+      // Update student
+      let updatedStudent;
+      try {
+        updatedStudent = await prisma.student.update({
+          where: { id: parseInt(id) },
+          data: {
+            ...prismaUpdateData,
+            // Handle user updates if provided
+            ...(userUpdateData && {
+              user: {
+                update: userUpdateData
+              }
+            })
+          },
         include: {
           user: {
             select: {
@@ -979,6 +1024,10 @@ class StudentController {
           }
         }
       });
+      } catch (updateError) {
+        console.error('❌ Error updating student:', updateError);
+        return createErrorResponse(res, 500, `Failed to update student: ${updateError.message}`);
+      }
 
       // Update the event with the final student data (store as string in metadata)
       await prisma.studentEvent.update({
