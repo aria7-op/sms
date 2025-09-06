@@ -492,7 +492,7 @@ router.post('/:id/add-students',
   authorizeRoles(['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER']),
   authorizePermissions(['class:update', 'student:update']),
   validateRequest(z.object({
-    classId: z.number().int().positive().nullable().optional(),
+    classId: z.union([z.number().int().positive(), z.null()]).optional(),
     studentIds: z.array(z.number().int().positive()).min(1, 'At least one student ID is required')
   }), 'body'),
   classController.addStudentsToClass
