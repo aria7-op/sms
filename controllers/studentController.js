@@ -606,6 +606,15 @@ class StudentController {
 
       console.log('Step 8: Query completed. Found students:', students.length, 'Total count:', totalCount);
       
+      // Debug: Log parent data to see what's being returned
+      if (students.length > 0) {
+        console.log('🔍 First student parent data:', JSON.stringify(students[0].parent, null, 2));
+        if (students[0].parent?.user) {
+          console.log('🔍 Parent user fields:', Object.keys(students[0].parent.user));
+          console.log('🔍 Parent username value:', students[0].parent.user.username);
+        }
+      }
+      
       // Calculate pagination metadata
       let pagination;
       if (limitNum !== undefined) {
