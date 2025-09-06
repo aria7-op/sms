@@ -846,7 +846,7 @@ class StudentController {
       // Prepare update data with proper field filtering
       const validStudentFields = [
         'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality', 
-        'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode', 
+        'religion', 'caste',  'bankAccountNo', 'bankName', 'ifscCode', 
         'previousSchool', 'classId', 'sectionId', 'parentId', 'status', 'priority'
       ];
       
@@ -886,7 +886,7 @@ class StudentController {
       // Allowed scalar fields (non-relations)
       const scalarFields = [
         'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality',
-        'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode',
+        'religion', 'caste',  'bankAccountNo', 'bankName', 'ifscCode',
         'previousSchool', 'tazkiraNo',
         'originAddress', 'originCity', 'originState', 'originProvince', 'originCountry', 'originPostalCode',
         'currentAddress', 'currentCity', 'currentState', 'currentProvince', 'currentCountry', 'currentPostalCode',
