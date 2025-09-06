@@ -170,8 +170,9 @@ export const getAllCustomers = async (req, res) => {
     }
 
     // Build where clause - simple filter without datetime constraints
+    // Ensure schoolId is properly formatted for Prisma
     const whereClause = { 
-      schoolId: BigInt(schoolId)
+      schoolId: typeof schoolId === 'bigint' ? schoolId : BigInt(schoolId)
     };
     
     // Convert BigInt values to strings for logging
@@ -267,7 +268,6 @@ export const getAllCustomers = async (req, res) => {
         uuid: true,
         name: true,
         serialNumber: true,
-        email: true,
         phone: true,
         gender: true,
         source: true,
@@ -276,17 +276,12 @@ export const getAllCustomers = async (req, res) => {
         referredTo: true,
         referredById: true,
         metadata: true,
-        ownerId: true,
-        schoolId: true,
-        createdBy: true,
-        updatedBy: true,
-        userId: true,
         totalSpent: true,
         orderCount: true,
         type: true,
-        pipelineStageId: true,
         rermark: true,
         priority: true
+        // Exclude BigInt fields that cause serialization issues: ownerId, schoolId, createdBy, updatedBy, userId, pipelineStageId
         // Exclude createdAt and updatedAt to avoid datetime issues
       },
       include: includeClause
@@ -313,15 +308,15 @@ export const getAllCustomers = async (req, res) => {
     let customers, total;
     let cleanedCustomers;
     
-    // Convert BigInt schoolId to string for SQL and ensure proper types
-    const schoolIdStr = schoolId.toString();
+          // Convert schoolId to string for SQL and ensure proper types
+      const schoolIdStr = schoolId.toString();
     
     try {
       // Try Prisma first
-      console.log('Attempting Prisma query with options:', JSON.stringify(queryOptions, null, 2));
+      console.log('Attempting Prisma query...');
       [customers, total] = await Promise.all([
         prisma.customer.findMany(queryOptions),
-        prisma.customer.count({ where: whereClause })
+        prisma.customer.count({ where: { schoolId: schoolId } })
       ]);
       console.log('✅ Prisma query successful, found customers:', customers?.length || 0);
     } catch (prismaError) {
@@ -3056,7 +3051,7 @@ export const convertCustomerToStudent = async (req, res) => {
     // Filter out invalid fields and only use valid Student model fields
     const validStudentFields = [
       'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality', 
-      'religion', 'caste', 'aadharNo', 'bankAccountNo', 'bankName', 'ifscCode', 
+      'religion', 'caste',  'bankAccountNo', 'bankName', 'ifscCode', 
       'previousSchool', 'classId', 'sectionId', 'parentId'
     ];
     
