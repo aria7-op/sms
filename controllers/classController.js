@@ -3974,7 +3974,92 @@
     try {
       const { classId, studentIds } = req.body;
       
-      if (classId === null || classId === undefined || classId === '' || isNaN(Number(classId))) {
+        // Handle null classId (unassign students from any class)
+        if (classId === null || classId === undefined) {
+          // Unassign students from any class
+          console.log(`🔄 Unassigning ${studentIds.length} students from any class`);
+          
+          const results = {
+            added: [],
+            failed: [],
+            summary: {
+              total: studentIds.length,
+              added: 0,
+              failed: 0,
+            }
+          };
+          
+          for (const studentId of studentIds) {
+            try {
+              const updatedStudent = await prisma.student.update({
+                where: { id: Number(studentId) },
+                data: {
+                  classId: null,
+                  updatedBy: req.user.id,
+                  updatedAt: new Date()
+                },
+                include: {
+                  user: {
+                    select: {
+                      id: true,
+                      uuid: true,
+                      firstName: true,
+                      lastName: true,
+                      phone: true,
+                      status: true
+                    }
+                  },
+                  class: {
+                    select: {
+                      id: true,
+                      name: true,
+                      code: true
+                    }
+                  },
+                  section: {
+                    select: {
+                      id: true,
+                      name: true
+                    }
+                  },
+                  parent: {
+                    select: {
+                      id: true,
+                      user: {
+                        select: {
+                          firstName: true,
+                          lastName: true
+                        }
+                      }
+                    }
+                  }
+                }
+              });
+              
+              results.added.push(updatedStudent);
+              results.summary.added++;
+              console.log(`✅ Successfully unassigned student ${studentId} from any class`);
+            } catch (error) {
+              console.error(`❌ Failed to unassign student ${studentId}:`, error.message);
+              results.failed.push({
+                studentId,
+                error: error.message
+              });
+              results.summary.failed++;
+            }
+          }
+          
+          // Invalidate cache
+          await classCache.invalidateClassCache();
+          
+          console.log(`🎯 Final results: ${results.summary.added} students unassigned, ${results.summary.failed} failed`);
+          
+          return res.json(formatResponse(true, convertBigInts(results), 
+            `Successfully unassigned ${results.summary.added} students from any class`));
+        }
+        
+        // Validate classId if provided
+        if (classId === '' || isNaN(Number(classId))) {
         return res.status(400).json(formatResponse(false, null, 'Valid class ID is required'));
       }
       
