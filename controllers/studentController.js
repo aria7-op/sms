@@ -567,10 +567,17 @@ class StudentController {
         orderBy: { [sortBy]: sortOrder }
       };
       
-      // Only add pagination if limit is specified
-      if (limitNum !== undefined) {
+      // Check if this is an ID search - if so, don't paginate to get exact result
+      const isIdSearch = search && !isNaN(search) && !isNaN(parseFloat(search));
+      
+      // Only add pagination if limit is specified and it's not an ID search
+      if (limitNum !== undefined && !isIdSearch) {
         finalQuery.skip = (pageNum - 1) * limitNum;
         finalQuery.take = limitNum;
+      } else if (isIdSearch) {
+        console.log('🔍 ID search detected - removing pagination to get exact result');
+        // For ID search, limit to 1 result since we want the exact match
+        finalQuery.take = 1;
       }
       
       // Convert BigInt values to strings for logging
@@ -606,6 +613,21 @@ class StudentController {
 
       console.log('Step 8: Query completed. Found students:', students.length, 'Total count:', totalCount);
       
+      // Debug: Log search results for debugging
+      if (search) {
+        console.log('🔍 Search results for term "' + search + '":');
+        students.forEach((student, index) => {
+          console.log(`🔍 Student ${index + 1}:`, {
+            id: student.id,
+            admissionNo: student.admissionNo,
+            rollNo: student.rollNo,
+            name: student.user ? `${student.user.firstName} ${student.user.lastName}` : 'No user data',
+            username: student.user?.username,
+            phone: student.user?.phone
+          });
+        });
+      }
+      
       // Debug: Log parent data to see what's being returned
       if (students.length > 0) {
         console.log('🔍 First student parent data:', JSON.stringify(students[0].parent, (key, value) => {
@@ -622,7 +644,18 @@ class StudentController {
       
       // Calculate pagination metadata
       let pagination;
-      if (limitNum !== undefined) {
+      if (isIdSearch) {
+        // ID search - no pagination, just return the result
+        pagination = {
+          currentPage: 1,
+          totalPages: 1,
+          totalCount: students.length,
+          limit: 1,
+          hasNextPage: false,
+          hasPrevPage: false,
+          isIdSearch: true
+        };
+      } else if (limitNum !== undefined) {
         // Normal pagination
         const totalPages = Math.ceil(totalCount / limitNum);
         const hasNextPage = pageNum < totalPages;
