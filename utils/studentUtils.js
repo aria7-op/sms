@@ -300,7 +300,7 @@ export const buildStudentSearchQuery = (filters) => {
               }
             },
             {
-              email: {
+              username: {
                 contains: searchTerm
               }
             }
@@ -585,7 +585,7 @@ export const generateStudentStats = async (studentId) => {
         admissionNo: student.admissionNo,
         rollNo: student.rollNo,
         name: `${student.user.firstName} ${student.user.lastName}`,
-        email: student.user.email,
+        username: student.user.username,
         status: student.user.status
       },
       class: student.class ? {
@@ -600,7 +600,7 @@ export const generateStudentStats = async (studentId) => {
       parent: student.parent ? {
         id: student.parent.id,
         name: `${student.parent.user.firstName} ${student.parent.user.lastName}`,
-        email: student.parent.user.email
+        username: student.parent.user.username
       } : null,
       attendance: {
         total: totalAttendanceDays,
