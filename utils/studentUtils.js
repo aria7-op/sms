@@ -75,9 +75,9 @@ export const StudentCreateSchema = z.object({
 export const StudentUpdateSchema = z.object({
   admissionNo: z.string().optional(),
   rollNo: z.string().max(20).optional(),
-  classId: z.number().int().positive().optional(),
-  sectionId: z.number().int().positive().optional(),
-  parentId: z.number().int().positive().optional(),
+  classId: z.union([z.number().int().positive(), z.null()]).optional(),
+  sectionId: z.union([z.number().int().positive(), z.null()]).optional(),
+  parentId: z.union([z.number().int().positive(), z.null()]).optional(),
   admissionDate: z.string().optional(),
   bloodGroup: z.string().max(5).optional(),
   nationality: z.string().max(50).optional(),
