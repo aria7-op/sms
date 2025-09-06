@@ -282,12 +282,14 @@ export const buildStudentSearchQuery = (filters) => {
     query.OR = [
       {
         admissionNo: {
-          contains: searchTerm
+          contains: searchTerm,
+          mode: 'insensitive'
         }
       },
       {
         rollNo: {
-          contains: searchTerm
+          contains: searchTerm,
+          mode: 'insensitive'
         }
       },
       {
@@ -295,25 +297,73 @@ export const buildStudentSearchQuery = (filters) => {
           OR: [
             {
               firstName: {
-                contains: searchTerm
+                contains: searchTerm,
+                mode: 'insensitive'
               }
             },
             {
               lastName: {
-                contains: searchTerm
+                contains: searchTerm,
+                mode: 'insensitive'
+              }
+            },
+            {
+              displayName: {
+                contains: searchTerm,
+                mode: 'insensitive'
               }
             },
             {
               username: {
-                contains: searchTerm
+                contains: searchTerm,
+                mode: 'insensitive'
+              }
+            },
+            {
+              email: {
+                contains: searchTerm,
+                mode: 'insensitive'
               }
             },
             {
               phone: {
-                contains: searchTerm
+                contains: searchTerm,
+                mode: 'insensitive'
               }
             }
           ]
+        }
+      },
+      {
+        parent: {
+          user: {
+            OR: [
+              {
+                firstName: {
+                  contains: searchTerm,
+                  mode: 'insensitive'
+                }
+              },
+              {
+                lastName: {
+                  contains: searchTerm,
+                  mode: 'insensitive'
+                }
+              },
+              {
+                displayName: {
+                  contains: searchTerm,
+                  mode: 'insensitive'
+                }
+              },
+              {
+                phone: {
+                  contains: searchTerm,
+                  mode: 'insensitive'
+                }
+              }
+            ]
+          }
         }
       }
     ];
