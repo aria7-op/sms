@@ -416,6 +416,7 @@ export const buildStudentIncludeQuery = (include = []) => {
         user: {
           select: {
             id: true,
+            username: true,
             firstName: true,
             lastName: true,
             phone: true
@@ -478,6 +479,7 @@ export const buildStudentIncludeQuery = (include = []) => {
           user: {
             select: {
               id: true,
+              username: true,
               firstName: true,
               lastName: true,
               phone: true
