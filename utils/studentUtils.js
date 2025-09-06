@@ -370,9 +370,14 @@ export const buildStudentSearchQuery = (filters) => {
     
     // Add ID search if the search term is numeric
     if (isNumeric) {
-      query.OR.push({
-        id: parseInt(searchTerm)
-      });
+      query.OR.push(
+        {
+          id: parseInt(searchTerm)
+        },
+        {
+          userId: parseInt(searchTerm)
+        }
+      );
     }
   }
 
@@ -393,10 +398,18 @@ export const buildStudentSearchQuery = (filters) => {
 
   // Filter by status
   if (filters.status) {
-    query.user = {
-      ...query.user,
-      status: filters.status
-    };
+    if (query.user) {
+      // If user filter already exists (from search), add status to it
+      query.user = {
+        ...query.user,
+        status: filters.status
+      };
+    } else {
+      // If no user filter exists, create one for status
+      query.user = {
+        status: filters.status
+      };
+    }
   }
 
   // Filter by blood group
