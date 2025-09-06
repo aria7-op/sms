@@ -2118,7 +2118,7 @@ class StudentController {
           { user: { firstName: { contains: search, mode: 'insensitive' } } },
           { user: { lastName: { contains: search, mode: 'insensitive' } } },
           { user: { displayName: { contains: search, mode: 'insensitive' } } },
-          { user: { email: { contains: search, mode: 'insensitive' } } },
+          { user: { username: { contains: search, mode: 'insensitive' } } },
           { admissionNo: { contains: search, mode: 'insensitive' } },
           { rollNo: { contains: search, mode: 'insensitive' } }
         ];
