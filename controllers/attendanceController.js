@@ -435,6 +435,18 @@ export const markInTime = async (req, res) => {
             phone: true
           }
         },
+        parent: {
+          select: {
+            id: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                phone: true
+              }
+            }
+          }
+        },
         class: {
           select: {
             id: true,
@@ -530,17 +542,19 @@ export const markInTime = async (req, res) => {
       // Class information already available from student lookup
       const classInfo = student.class;
 
-      if (student && student.user && student.user.phone) {
+      const recipientPhone = student?.parent?.user?.phone || student?.user?.phone || null;
+      if (student && recipientPhone) {
         console.log('👤 Student found:', {
           name: `${student.user.firstName} ${student.user.lastName}`,
-          phone: student.user.phone
+          phone: recipientPhone,
+          parentPhoneUsed: !!student?.parent?.user?.phone
         });
         console.log('📚 Class info:', classInfo);
         
         // Send SMS notification asynchronously (don't wait for it)
         console.log('📱 Calling SMS service with data:', {
           studentName: `${student.user.firstName} ${student.user.lastName}`,
-          phone: student.user.phone,
+          phone: recipientPhone,
           inTime: currentTime,
           date: attendanceDate,
           className: classInfo?.name || 'Unknown Class',
@@ -555,7 +569,7 @@ export const markInTime = async (req, res) => {
           const smsResult = await smsService.sendAttendanceSMS(
             {
               name: `${student.user.firstName} ${student.user.lastName}`,
-              phone: student.user.phone
+              phone: recipientPhone
             },
             {
               inTime: currentTime,
@@ -572,7 +586,7 @@ export const markInTime = async (req, res) => {
           if (smsResult && smsResult.success) {
             console.log('✅ SMS sent successfully for student:', student.user.firstName, {
               campaignId: smsResult.campaignId,
-              phone: student.user.phone,
+              phone: recipientPhone,
               time: currentTime,
               fullResponse: smsResult
             });
@@ -661,6 +675,18 @@ export const markOutTime = async (req, res) => {
             phone: true
           }
         },
+        parent: {
+          select: {
+            id: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                phone: true
+              }
+            }
+          }
+        },
         class: {
           select: {
             id: true,
@@ -717,12 +743,13 @@ export const markOutTime = async (req, res) => {
         phone: student?.user?.phone
       });
       
-      if (student && student.user && student.user.phone) {
+      const recipientPhone = student?.parent?.user?.phone || student?.user?.phone || null;
+      if (student && recipientPhone) {
         // Send SMS notification asynchronously (don't wait for it)
         smsService.sendAttendanceSMS(
           {
             name: `${student.user.firstName} ${student.user.lastName}`,
-            phone: student.user.phone
+            phone: recipientPhone
           },
           {
             outTime: currentTime,
@@ -735,7 +762,7 @@ export const markOutTime = async (req, res) => {
           if (smsResult && smsResult.success) {
             console.log('📱 SMS sent successfully for student:', student.user.firstName, {
               campaignId: smsResult.campaignId,
-              phone: student.user.phone,
+              phone: recipientPhone,
               time: currentTime
             });
           }
