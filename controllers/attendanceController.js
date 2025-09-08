@@ -32,26 +32,25 @@ const getAfghanistanTime = () => {
 // TIMEZONE HELPERS
 // ======================
 
-// Parse an input date/time string as Afghanistan local time and return a UTC Date
-// Accepts: ISO-like strings with or without time (e.g., '2025-09-08', '2025-09-08 08:15', '2025-09-08T08:15:00')
+// Robustly parse 'YYYY-M-D HH:mm:ss' or 'YYYY-MM-DD HH:mm:ss' (or with 'T') as Afghanistan local and return UTC Date
 const parseAfghanistanLocalToUTC = (input) => {
   if (!input) return null;
-  const normalized = String(input).replace(' ', 'T');
-  // If input has no time, default to 00:00:00
-  const withTime = /T\d{2}:\d{2}/.test(normalized) ? normalized : `${normalized}T00:00:00`;
-  const local = new Date(withTime);
-  // Derive Afghanistan wall-clock components using Intl timeZone
-  const afLocal = new Date(local.toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE }));
-  const y = afLocal.getFullYear();
-  const m = afLocal.getMonth(); // 0-based
-  const d = afLocal.getDate();
-  const hh = afLocal.getHours();
-  const mm = afLocal.getMinutes();
-  const ss = afLocal.getSeconds();
-  const ms = afLocal.getMilliseconds();
-  // Compute UTC by subtracting the fixed Kabul offset
-  const utcMillis = Date.UTC(y, m, d, hh, mm, ss, ms) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
-  return new Date(utcMillis);
+  const str = String(input).trim();
+  const [datePart, timePartRaw] = str.split(/[T ]/);
+  if (!datePart) return null;
+  const [yStr, mStr, dStr] = datePart.split('-');
+  const [hStr = '00', minStr = '00', sStr = '00'] = (timePartRaw || '').split(':');
+  const year = Number(yStr);
+  const monthIndex = Number(mStr) - 1; // 0-based
+  const day = Number(dStr);
+  const hour = Number(hStr);
+  const minute = Number(minStr);
+  const second = Number(sStr);
+  if ([year, monthIndex, day, hour, minute, second].some((n) => Number.isNaN(n))) return null;
+  // Build UTC from Afghanistan local by subtracting fixed offset
+  const utcMillis = Date.UTC(year, monthIndex, day, hour, minute, second, 0) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
+  const dt = new Date(utcMillis);
+  return Number.isNaN(dt.getTime()) ? null : dt;
 };
 
 // Given a UTC Date, format as Afghanistan-local ISO-like string 'YYYY-MM-DDTHH:mm:ss'
@@ -71,15 +70,15 @@ const formatAfghanistanLocalISO = (date) => {
 
 // Get Afghanistan day range (start/end) in UTC for a given input (Date or string)
 const getAfghanistanDayRangeUTC = (input) => {
-  const dateUTC = parseAfghanistanLocalToUTC(input);
-  if (!dateUTC) return { startOfDayUTC: null, endOfDayUTC: null };
-  // Reconstruct Afghanistan date parts from input, then compute UTC start/end by subtracting offset
-  const afLocal = new Date(new Date(String(input).replace(' ', 'T')).toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE }));
-  const y = afLocal.getFullYear();
-  const m = afLocal.getMonth();
-  const d = afLocal.getDate();
-  const startUTCms = Date.UTC(y, m, d, 0, 0, 0, 0) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
-  const endUTCms = Date.UTC(y, m, d, 23, 59, 59, 999) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
+  const str = String(input || '').trim();
+  const [datePart] = str.split(/[T ]/);
+  const [yStr, mStr, dStr] = (datePart || '').split('-');
+  const year = Number(yStr);
+  const monthIndex = Number(mStr) - 1;
+  const day = Number(dStr);
+  if ([year, monthIndex, day].some((n) => Number.isNaN(n))) return { startOfDayUTC: null, endOfDayUTC: null };
+  const startUTCms = Date.UTC(year, monthIndex, day, 0, 0, 0, 0) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
+  const endUTCms = Date.UTC(year, monthIndex, day, 23, 59, 59, 999) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
   return { startOfDayUTC: new Date(startUTCms), endOfDayUTC: new Date(endUTCms) };
 };
 
