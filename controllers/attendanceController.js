@@ -8,6 +8,8 @@ import smsService from '../services/smsService.js';
 
 // Afghanistan timezone (UTC+4:30)
 const AFGHANISTAN_TIMEZONE = 'Asia/Kabul';
+// Fixed offset in minutes for Asia/Kabul (no DST)
+const AFGHANISTAN_UTC_OFFSET_MIN = 270; // 4 hours 30 minutes
 
 // Attendance time windows (in Afghanistan time)
 const ATTENDANCE_TIMES = {
@@ -24,6 +26,61 @@ const ATTENDANCE_TIMES = {
 const getAfghanistanTime = () => {
   const now = new Date();
   return new Date(now.toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE }));
+};
+
+// ======================
+// TIMEZONE HELPERS
+// ======================
+
+// Parse an input date/time string as Afghanistan local time and return a UTC Date
+// Accepts: ISO-like strings with or without time (e.g., '2025-09-08', '2025-09-08 08:15', '2025-09-08T08:15:00')
+const parseAfghanistanLocalToUTC = (input) => {
+  if (!input) return null;
+  const normalized = String(input).replace(' ', 'T');
+  // If input has no time, default to 00:00:00
+  const withTime = /T\d{2}:\d{2}/.test(normalized) ? normalized : `${normalized}T00:00:00`;
+  const local = new Date(withTime);
+  // Derive Afghanistan wall-clock components using Intl timeZone
+  const afLocal = new Date(local.toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE }));
+  const y = afLocal.getFullYear();
+  const m = afLocal.getMonth(); // 0-based
+  const d = afLocal.getDate();
+  const hh = afLocal.getHours();
+  const mm = afLocal.getMinutes();
+  const ss = afLocal.getSeconds();
+  const ms = afLocal.getMilliseconds();
+  // Compute UTC by subtracting the fixed Kabul offset
+  const utcMillis = Date.UTC(y, m, d, hh, mm, ss, ms) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
+  return new Date(utcMillis);
+};
+
+// Given a UTC Date, format as Afghanistan-local ISO-like string 'YYYY-MM-DDTHH:mm:ss'
+const formatAfghanistanLocalISO = (date) => {
+  if (!date) return null;
+  const afMillis = date.getTime() + (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
+  const af = new Date(afMillis);
+  const pad = (n) => String(n).padStart(2, '0');
+  const yyyy = af.getUTCFullYear();
+  const mm = pad(af.getUTCMonth() + 1);
+  const dd = pad(af.getUTCDate());
+  const HH = pad(af.getUTCHours());
+  const MM = pad(af.getUTCMinutes());
+  const SS = pad(af.getUTCSeconds());
+  return `${yyyy}-${mm}-${dd}T${HH}:${MM}:${SS}`;
+};
+
+// Get Afghanistan day range (start/end) in UTC for a given input (Date or string)
+const getAfghanistanDayRangeUTC = (input) => {
+  const dateUTC = parseAfghanistanLocalToUTC(input);
+  if (!dateUTC) return { startOfDayUTC: null, endOfDayUTC: null };
+  // Reconstruct Afghanistan date parts from input, then compute UTC start/end by subtracting offset
+  const afLocal = new Date(new Date(String(input).replace(' ', 'T')).toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE }));
+  const y = afLocal.getFullYear();
+  const m = afLocal.getMonth();
+  const d = afLocal.getDate();
+  const startUTCms = Date.UTC(y, m, d, 0, 0, 0, 0) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
+  const endUTCms = Date.UTC(y, m, d, 23, 59, 59, 999) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
+  return { startOfDayUTC: new Date(startUTCms), endOfDayUTC: new Date(endUTCms) };
 };
 
 /**
@@ -95,12 +152,10 @@ export const getAllAttendances = async (req, res) => {
     if (studentId) where.studentId = BigInt(studentId);
     if (classId) where.classId = BigInt(classId);
     if (date) {
-      const d = new Date(date);
-      const startOfDay = new Date(d);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(d);
-      endOfDay.setHours(23, 59, 59, 999);
-      where.date = { gte: startOfDay, lte: endOfDay };
+      const { startOfDayUTC, endOfDayUTC } = getAfghanistanDayRangeUTC(date);
+      if (startOfDayUTC && endOfDayUTC) {
+        where.date = { gte: startOfDayUTC, lte: endOfDayUTC };
+      }
     }
     if (status) where.status = status;
 
@@ -170,7 +225,11 @@ export const getAllAttendances = async (req, res) => {
       subject: attendance.subject ? {
         ...attendance.subject,
         id: Number(attendance.subject.id)
-      } : null
+      } : null,
+      // Times formatted in Afghanistan local time
+      date: attendance.date ? formatAfghanistanLocalISO(attendance.date) : null,
+      inTime: attendance.inTime ? formatAfghanistanLocalISO(attendance.inTime) : null,
+      outTime: attendance.outTime ? formatAfghanistanLocalISO(attendance.outTime) : null
     }));
 
     res.json({
@@ -240,7 +299,14 @@ export const getAttendanceById = async (req, res) => {
       return createErrorResponse(res, 'Attendance not found', 404);
     }
 
-    return createSuccessResponse(res, 'Attendance retrieved successfully', attendance);
+    const formatted = {
+      ...attendance,
+      date: attendance.date ? formatAfghanistanLocalISO(attendance.date) : null,
+      inTime: attendance.inTime ? formatAfghanistanLocalISO(attendance.inTime) : null,
+      outTime: attendance.outTime ? formatAfghanistanLocalISO(attendance.outTime) : null
+    };
+
+    return createSuccessResponse(res, 'Attendance retrieved successfully', formatted);
   } catch (error) {
     console.error('Error in getAttendanceById:', error);
     return createErrorResponse(res, 'Failed to retrieve attendance', 500);
@@ -291,13 +357,13 @@ export const createAttendance = async (req, res) => {
       return createErrorResponse(res, 'Attendance record already exists for this student, class, and date', 409);
     }
 
-    // Create attendance record
+    // Create attendance record (store UTC based on Afghanistan local input)
   const attendance = await prisma.attendance.create({
       data: {
-        date: parsedDate,
+        date: parseAfghanistanLocalToUTC(parsedDate),
         status,
-        inTime: inTime ? new Date(String(inTime).replace(' ', 'T')) : null,
-        outTime: outTime ? new Date(String(outTime).replace(' ', 'T')) : null,
+        inTime: inTime ? parseAfghanistanLocalToUTC(inTime) : null,
+        outTime: outTime ? parseAfghanistanLocalToUTC(outTime) : null,
         remarks,
         studentId: BigInt(studentId),
         classId: BigInt(classId),
@@ -327,7 +393,15 @@ export const createAttendance = async (req, res) => {
       }
     });
 
-    return createSuccessResponse(res, 'Attendance created successfully', attendance, 201);
+    // Format times as Afghanistan local in response
+    const responseAttendance = {
+      ...attendance,
+      date: attendance.date ? formatAfghanistanLocalISO(attendance.date) : null,
+      inTime: attendance.inTime ? formatAfghanistanLocalISO(attendance.inTime) : null,
+      outTime: attendance.outTime ? formatAfghanistanLocalISO(attendance.outTime) : null
+    };
+
+    return createSuccessResponse(res, 'Attendance created successfully', responseAttendance, 201);
   } catch (error) {
     console.error('Error in createAttendance:', error);
     return createErrorResponse(res, 'Failed to create attendance', 500);
@@ -358,13 +432,13 @@ export const updateAttendance = async (req, res) => {
       return createErrorResponse(res, 'Attendance not found', 404);
     }
 
-    // Update attendance (normalize times if provided)
+    // Update attendance (normalize times if provided; store UTC)
   const attendance = await prisma.attendance.update({
       where: { id: BigInt(id) },
       data: {
         status,
-        inTime: inTime ? new Date(String(inTime).replace(' ', 'T')) : undefined,
-        outTime: outTime ? new Date(String(outTime).replace(' ', 'T')) : undefined,
+        inTime: inTime ? parseAfghanistanLocalToUTC(inTime) : undefined,
+        outTime: outTime ? parseAfghanistanLocalToUTC(outTime) : undefined,
         remarks,
         updatedBy: BigInt(updatedBy)
       },
@@ -390,7 +464,13 @@ export const updateAttendance = async (req, res) => {
       }
     });
 
-    return createSuccessResponse(res, 'Attendance updated successfully', attendance);
+    const responseAttendance = {
+      ...attendance,
+      date: attendance.date ? formatAfghanistanLocalISO(attendance.date) : null,
+      inTime: attendance.inTime ? formatAfghanistanLocalISO(attendance.inTime) : null,
+      outTime: attendance.outTime ? formatAfghanistanLocalISO(attendance.outTime) : null
+    };
+    return createSuccessResponse(res, 'Attendance updated successfully', responseAttendance);
   } catch (error) {
     console.error('Error in updateAttendance:', error);
     return createErrorResponse(res, 'Failed to update attendance', 500);
@@ -416,11 +496,8 @@ export const markInTime = async (req, res) => {
     }
 
     const currentTime = new Date();
-    const attendanceDate = new Date(date); // full datetime from request
-    const startOfDay = new Date(attendanceDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(attendanceDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    const attendanceDateUTC = parseAfghanistanLocalToUTC(date); // store in UTC
+    const { startOfDayUTC: startOfDay, endOfDayUTC: endOfDay } = getAfghanistanDayRangeUTC(date);
     const schoolId = 1; // Default school ID for testing
     const createdBy = 1; // Default user ID for testing
 
@@ -501,7 +578,7 @@ export const markInTime = async (req, res) => {
       attendance = await prisma.attendance.update({
         where: { id: attendance.id },
         data: {
-          inTime: attendanceDate,
+          inTime: attendanceDateUTC,
           status: 'PRESENT'
         }
       });
@@ -511,9 +588,9 @@ export const markInTime = async (req, res) => {
       // Create new record using provided timestamp for both date and inTime
       attendance = await prisma.attendance.create({
         data: {
-          date: attendanceDate, // store full datetime
+          date: attendanceDateUTC, // UTC based on Afghanistan local
           status: 'PRESENT',
-          inTime: attendanceDate,
+          inTime: attendanceDateUTC,
           studentId: student.id,
           classId: student.class?.id || null,
           subjectId: subjectId ? BigInt(subjectId) : null,
@@ -535,9 +612,9 @@ export const markInTime = async (req, res) => {
       schoolId: attendance.schoolId ? Number(attendance.schoolId) : null,
       createdBy: attendance.createdBy ? Number(attendance.createdBy) : null,
       updatedBy: attendance.updatedBy ? Number(attendance.updatedBy) : null,
-      date: attendance.date ? attendance.date.toISOString() : null,
-      inTime: attendance.inTime ? attendance.inTime.toISOString() : null,
-      outTime: attendance.outTime ? attendance.outTime.toISOString() : null,
+      date: attendance.date ? formatAfghanistanLocalISO(attendance.date) : null,
+      inTime: attendance.inTime ? formatAfghanistanLocalISO(attendance.inTime) : null,
+      outTime: attendance.outTime ? formatAfghanistanLocalISO(attendance.outTime) : null,
       createdAt: attendance.createdAt ? attendance.createdAt.toISOString() : null,
       updatedAt: attendance.updatedAt ? attendance.updatedAt.toISOString() : null
     };
@@ -570,8 +647,8 @@ export const markInTime = async (req, res) => {
         console.log('📱 Calling SMS service with data:', {
           studentName: `${student.user.firstName} ${student.user.lastName}`,
           phone: recipientPhone,
-          inTime: attendanceDate,
-          date: attendanceDate,
+          inTime: formatAfghanistanLocalISO(attendanceDateUTC),
+          date: formatAfghanistanLocalISO(attendanceDateUTC),
           className: classInfo?.name || 'Unknown Class',
           status: 'PRESENT',
           campaignId: 'inTime'
@@ -587,8 +664,8 @@ export const markInTime = async (req, res) => {
               phone: recipientPhone
             },
             {
-              inTime: attendanceDate,
-              date: attendanceDate,
+              inTime: formatAfghanistanLocalISO(attendanceDateUTC),
+              date: formatAfghanistanLocalISO(attendanceDateUTC),
               className: classInfo?.name || 'Unknown Class',
               status: 'PRESENT'
             },
@@ -662,11 +739,8 @@ export const markOutTime = async (req, res) => {
     }
 
     const currentTime = new Date();
-    const attendanceDate = new Date(date); // full datetime from request
-    const startOfDay = new Date(attendanceDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(attendanceDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    const attendanceDateUTC = parseAfghanistanLocalToUTC(date); // store in UTC
+    const { startOfDayUTC: startOfDay, endOfDayUTC: endOfDay } = getAfghanistanDayRangeUTC(date);
 
     // Time window check removed - attendance can be marked at any time
     console.log('✅ Time window restrictions removed - attendance can be marked at any time');
@@ -746,7 +820,7 @@ export const markOutTime = async (req, res) => {
     const updatedAttendance = await prisma.attendance.update({
       where: { id: attendance.id },
       data: {
-        outTime: attendanceDate,
+        outTime: attendanceDateUTC,
         updatedBy: BigInt(updatedBy)
       }
     });
@@ -771,8 +845,8 @@ export const markOutTime = async (req, res) => {
             phone: recipientPhone
           },
           {
-            outTime: attendanceDate,
-            date: attendanceDate,
+            outTime: formatAfghanistanLocalISO(attendanceDateUTC),
+            date: formatAfghanistanLocalISO(attendanceDateUTC),
             className: student.class?.name || 'Unknown Class',
             status: 'DEPARTED'
           },
@@ -937,7 +1011,7 @@ export const getClassAttendanceSummary = async (req, res) => {
     const attendanceRecords = await prisma.attendance.findMany({
       where: {
         classId: BigInt(classId),
-        date: new Date(date),
+        ...(date ? (() => { const { startOfDayUTC, endOfDayUTC } = getAfghanistanDayRangeUTC(date); return { date: { gte: startOfDayUTC, lte: endOfDayUTC } }; })() : {}),
         schoolId: BigInt(schoolId),
         deletedAt: null
       },
@@ -1023,8 +1097,8 @@ export const getClassAttendanceSummary = async (req, res) => {
         studentName: `${student.user.firstName} ${student.user.lastName}`,
         rollNo: student.rollNo || '',
         status: attendance?.status || 'ABSENT',
-        inTime: attendance?.inTime ? attendance.inTime.toISOString() : null,
-        outTime: attendance?.outTime ? attendance.outTime.toISOString() : null
+        inTime: attendance?.inTime ? formatAfghanistanLocalISO(attendance.inTime) : null,
+        outTime: attendance?.outTime ? formatAfghanistanLocalISO(attendance.outTime) : null
       };
     });
 
@@ -1076,7 +1150,10 @@ export const getAttendanceSummary = async (req, res) => {
     };
 
     if (classId) where.classId = BigInt(classId);
-    if (date) where.date = new Date(date);
+    if (date) {
+      const { startOfDayUTC, endOfDayUTC } = getAfghanistanDayRangeUTC(date);
+      where.date = { gte: startOfDayUTC, lte: endOfDayUTC };
+    }
 
     const attendances = await prisma.attendance.findMany({
       where,
@@ -1167,7 +1244,7 @@ export const getAttendanceStats = async (req, res) => {
     });
 
     // Calculate basic statistics
-    const totalDays = new Set(attendances.map(r => r.date.toISOString().split('T')[0])).size;
+    const totalDays = new Set(attendances.map(r => (r.date ? formatAfghanistanLocalISO(r.date).split('T')[0] : ''))).size;
     const totalPresent = attendances.filter(r => r.status === 'PRESENT').length;
     const totalAbsent = attendances.filter(r => r.status === 'ABSENT').length;
     const totalLate = attendances.filter(r => r.status === 'LATE').length;
@@ -1186,7 +1263,7 @@ export const getAttendanceStats = async (req, res) => {
     // Daily attendance trends
     const dailyTrends = {};
     attendances.forEach(record => {
-      const date = record.date.toISOString().split('T')[0];
+      const date = record.date ? formatAfghanistanLocalISO(record.date).split('T')[0] : '';
       if (!dailyTrends[date]) {
         dailyTrends[date] = { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
       }
@@ -1201,7 +1278,7 @@ export const getAttendanceStats = async (req, res) => {
     // Weekly patterns
     const weeklyPatterns = {};
     attendances.forEach(record => {
-      const date = new Date(record.date);
+      const date = record.date ? new Date(record.date) : new Date();
       const weekStart = new Date(date);
       weekStart.setDate(date.getDate() - date.getDay());
       const weekKey = weekStart.toISOString().split('T')[0];
@@ -1220,7 +1297,7 @@ export const getAttendanceStats = async (req, res) => {
     // Monthly trends
     const monthlyTrends = {};
     attendances.forEach(record => {
-      const date = new Date(record.date);
+      const date = record.date ? new Date(record.date) : new Date();
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       
       if (!monthlyTrends[monthKey]) {
@@ -1812,16 +1889,18 @@ export const getMonthlyAttendanceMatrix = async (req, res) => {
     // Fill in actual attendance data - SIMPLIFIED
     attendanceRecords.forEach((record) => {
       const studentId = record.studentId.toString();
-      const dateStr = record.date.toISOString().split('T')[0];
+      const dateStr = record.date ? formatAfghanistanLocalISO(record.date).split('T')[0] : null;
       
       console.log(`🔍 Processing attendance record: Student ${studentId}, Date ${dateStr}, Status ${record.status}`);
       
       if (monthlyMatrix[studentId]) {
-        monthlyMatrix[studentId].dailyAttendance[dateStr] = {
-          status: record.status,
-          inTime: record.inTime ? record.inTime.toISOString() : null,
-          outTime: record.outTime ? record.outTime.toISOString() : null
-        };
+        if (dateStr) {
+          monthlyMatrix[studentId].dailyAttendance[dateStr] = {
+            status: record.status,
+            inTime: record.inTime ? formatAfghanistanLocalISO(record.inTime) : null,
+            outTime: record.outTime ? formatAfghanistanLocalISO(record.outTime) : null
+          };
+        }
         console.log(`✅ Updated matrix for student ${studentId} on ${dateStr}`);
       } else {
         console.log(`❌ Student ${studentId} not found in matrix`);
@@ -1939,13 +2018,13 @@ export const exportAttendanceData = async (req, res) => {
     // Prepare data for export
     const exportData = filteredAttendances
       .map(attendance => ({
-        date: attendance.date.toISOString().split('T')[0],
+        date: attendance.date ? formatAfghanistanLocalISO(attendance.date).split('T')[0] : '',
         studentName: `${attendance.student.user.firstName} ${attendance.student.user.lastName}`,
         rollNo: attendance.student.rollNo || 'N/A',
         className: attendance.class.name,
         status: attendance.status,
-        inTime: attendance.inTime ? attendance.inTime.toISOString().split('T')[1].substring(0, 5) : '--',
-        outTime: attendance.outTime ? attendance.outTime.toISOString().split('T')[1].substring(0, 5) : '--',
+        inTime: attendance.inTime ? formatAfghanistanLocalISO(attendance.inTime).split('T')[1].substring(0, 5) : '--',
+        outTime: attendance.outTime ? formatAfghanistanLocalISO(attendance.outTime).split('T')[1].substring(0, 5) : '--',
         remarks: attendance.remarks || ''
       }));
 
@@ -2752,4 +2831,3 @@ export const exportAttendanceData = async (req, res) => {
     markIncompleteAttendanceAsAbsent,
     getAttendanceTimeStatus
   };
-
