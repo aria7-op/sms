@@ -493,23 +493,23 @@ export const markInTime = async (req, res) => {
 
     if (attendance) {
       console.log('📝 Updating existing attendance record:', attendance.id);
-      // Update existing record with in-time
+      // Update existing record with in-time based on provided timestamp
       attendance = await prisma.attendance.update({
         where: { id: attendance.id },
         data: {
-          inTime: currentTime,
+          inTime: attendanceDate,
           status: 'PRESENT'
         }
       });
       console.log('✅ Attendance record updated successfully');
     } else {
       console.log('🆕 Creating new attendance record...');
-      // Create new record
+      // Create new record using provided timestamp for both date and inTime
       attendance = await prisma.attendance.create({
         data: {
           date: attendanceDate, // store full datetime
           status: 'PRESENT',
-          inTime: currentTime,
+          inTime: attendanceDate,
           studentId: student.id,
           classId: student.class?.id || null,
           subjectId: subjectId ? BigInt(subjectId) : null,
@@ -566,7 +566,7 @@ export const markInTime = async (req, res) => {
         console.log('📱 Calling SMS service with data:', {
           studentName: `${student.user.firstName} ${student.user.lastName}`,
           phone: recipientPhone,
-          inTime: currentTime,
+          inTime: attendanceDate,
           date: attendanceDate,
           className: classInfo?.name || 'Unknown Class',
           status: 'PRESENT',
@@ -583,7 +583,7 @@ export const markInTime = async (req, res) => {
               phone: recipientPhone
             },
             {
-              inTime: currentTime,
+              inTime: attendanceDate,
               date: attendanceDate,
               className: classInfo?.name || 'Unknown Class',
               status: 'PRESENT'
@@ -598,7 +598,7 @@ export const markInTime = async (req, res) => {
             console.log('✅ SMS sent successfully for student:', student.user.firstName, {
               campaignId: smsResult.campaignId,
               phone: recipientPhone,
-              time: currentTime,
+              time: attendanceDate,
               fullResponse: smsResult
             });
           } else if (smsResult === null) {
@@ -742,7 +742,7 @@ export const markOutTime = async (req, res) => {
     const updatedAttendance = await prisma.attendance.update({
       where: { id: attendance.id },
       data: {
-        outTime: currentTime,
+        outTime: attendanceDate,
         updatedBy: BigInt(updatedBy)
       }
     });
@@ -767,7 +767,7 @@ export const markOutTime = async (req, res) => {
             phone: recipientPhone
           },
           {
-            outTime: currentTime,
+            outTime: attendanceDate,
             date: attendanceDate,
             className: student.class?.name || 'Unknown Class',
             status: 'DEPARTED'
@@ -778,7 +778,7 @@ export const markOutTime = async (req, res) => {
             console.log('📱 SMS sent successfully for student:', student.user.firstName, {
               campaignId: smsResult.campaignId,
               phone: recipientPhone,
-              time: currentTime
+              time: attendanceDate
             });
           }
         }).catch(smsError => {
@@ -2748,3 +2748,4 @@ export const exportAttendanceData = async (req, res) => {
     markIncompleteAttendanceAsAbsent,
     getAttendanceTimeStatus
   };
+
