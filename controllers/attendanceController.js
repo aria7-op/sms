@@ -679,7 +679,7 @@ export const markInTime = async (req, res) => {
             console.log('✅ SMS sent successfully for student:', student.user.firstName, {
               campaignId: smsResult.campaignId,
               phone: recipientPhone,
-              time: attendanceDate,
+              time: formatAfghanistanLocalISO(attendanceDateUTC),
               fullResponse: smsResult
             });
           } else if (smsResult === null) {
@@ -856,7 +856,7 @@ export const markOutTime = async (req, res) => {
             console.log('📱 SMS sent successfully for student:', student.user.firstName, {
               campaignId: smsResult.campaignId,
               phone: recipientPhone,
-              time: attendanceDate
+              time: formatAfghanistanLocalISO(attendanceDateUTC)
             });
           }
         }).catch(smsError => {
