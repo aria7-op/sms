@@ -419,11 +419,11 @@ export const markInTime = async (req, res) => {
     console.log('🌍 Current Afghanistan time:', getFormattedAfghanTime());
     console.log('✅ Mark-in time window is open');
 
-    // First, find the student by ID
-    console.log('🔍 Finding student by ID:', studentId);
-    const student = await prisma.student.findUnique({
+    // First, find the student by userId (match against users table)
+    console.log('🔍 Finding student by userId (from users table):', studentId);
+    const student = await prisma.student.findFirst({
       where: {
-        id: BigInt(studentId),
+        userId: BigInt(studentId),
         schoolId: BigInt(schoolId),
         deletedAt: null
       },
@@ -445,8 +445,8 @@ export const markInTime = async (req, res) => {
     });
 
     if (!student) {
-      console.log('❌ Student not found with ID:', studentId);
-      return createErrorResponse(res, 404, `Student with ID ${studentId} not found`);
+      console.log('❌ Student not found with userId:', studentId);
+      return createErrorResponse(res, 404, `Student with userId ${studentId} not found`);
     }
 
     console.log('✅ Student found:', {
@@ -645,11 +645,11 @@ export const markOutTime = async (req, res) => {
     console.log('🌍 Current Afghanistan time:', getFormattedAfghanTime());
     console.log('✅ Mark-out time window is open');
 
-    // First, find the student by ID
-    console.log('🔍 Finding student by ID:', studentId);
-    const student = await prisma.student.findUnique({
+    // First, find the student by userId (match against users table)
+    console.log('🔍 Finding student by userId (from users table):', studentId);
+    const student = await prisma.student.findFirst({
       where: {
-        id: BigInt(studentId),
+        userId: BigInt(studentId),
         schoolId: BigInt(schoolId),
         deletedAt: null
       },
@@ -671,8 +671,8 @@ export const markOutTime = async (req, res) => {
     });
 
     if (!student) {
-      console.log('❌ Student not found with ID:', studentId);
-      return createErrorResponse(res, 404, `Student with ID ${studentId} not found`);
+      console.log('❌ Student not found with userId:', studentId);
+      return createErrorResponse(res, 404, `Student with userId ${studentId} not found`);
     }
 
     console.log('✅ Student found:', {
