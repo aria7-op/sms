@@ -272,12 +272,16 @@ export const createAttendance = async (req, res) => {
     }
 
     // Check if attendance already exists for this student, class, subject, and date
+    // Normalize incoming datetime and match by day range
+    const parsedDate = new Date(String(date).replace(' ', 'T'));
+    const cStart = new Date(parsedDate); cStart.setHours(0,0,0,0);
+    const cEnd = new Date(parsedDate);   cEnd.setHours(23,59,59,999);
     const existingAttendance = await prisma.attendance.findFirst({
       where: {
         studentId: BigInt(studentId),
         classId: BigInt(classId),
         subjectId: subjectId ? BigInt(subjectId) : null,
-        date: new Date(date),
+        date: { gte: cStart, lte: cEnd },
         schoolId: BigInt(schoolId),
         deletedAt: null
       }
@@ -290,10 +294,10 @@ export const createAttendance = async (req, res) => {
     // Create attendance record
   const attendance = await prisma.attendance.create({
       data: {
-        date: new Date(date),
+        date: parsedDate,
         status,
-        inTime: inTime ? new Date(inTime) : null,
-        outTime: outTime ? new Date(outTime) : null,
+        inTime: inTime ? new Date(String(inTime).replace(' ', 'T')) : null,
+        outTime: outTime ? new Date(String(outTime).replace(' ', 'T')) : null,
         remarks,
         studentId: BigInt(studentId),
         classId: BigInt(classId),
@@ -354,13 +358,13 @@ export const updateAttendance = async (req, res) => {
       return createErrorResponse(res, 'Attendance not found', 404);
     }
 
-    // Update attendance
+    // Update attendance (normalize times if provided)
   const attendance = await prisma.attendance.update({
       where: { id: BigInt(id) },
       data: {
         status,
-        inTime: inTime ? new Date(inTime) : null,
-        outTime: outTime ? new Date(outTime) : null,
+        inTime: inTime ? new Date(String(inTime).replace(' ', 'T')) : undefined,
+        outTime: outTime ? new Date(String(outTime).replace(' ', 'T')) : undefined,
         remarks,
         updatedBy: BigInt(updatedBy)
       },
