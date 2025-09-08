@@ -97,11 +97,15 @@ export const markIncompleteAttendanceAsAbsent = async (schoolId = 1) => {
     for (const student of students) {
       try {
         // Check if student has complete attendance record for today (both inTime and outTime)
+        const startOfDay = new Date(today);
+        startOfDay.setHours(0,0,0,0);
+        const endOfDay = new Date(today);
+        endOfDay.setHours(23,59,59,999);
         const existingAttendance = await prisma.attendance.findFirst({
           where: {
             studentId: student.id,
             classId: student.classId,
-            date: today,
+            date: { gte: startOfDay, lte: endOfDay },
             schoolId: BigInt(schoolId),
             deletedAt: null
           }
@@ -130,7 +134,7 @@ export const markIncompleteAttendanceAsAbsent = async (schoolId = 1) => {
           // No attendance record exists for today - create absent record
           await prisma.attendance.create({
             data: {
-              date: today,
+              date: today, // full datetime
               status: 'ABSENT',
               studentId: student.id,
               classId: student.classId,
