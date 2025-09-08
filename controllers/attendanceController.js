@@ -505,7 +505,7 @@ export const markInTime = async (req, res) => {
     console.log('✅ Time window restrictions removed - attendance can be marked at any time');
 
     console.log('⏰ Current time:', currentTime);
-    console.log('📅 Attendance date:', attendanceDate);
+    console.log('📅 Attendance date (UTC stored, Kabul local shown):', formatAfghanistanLocalISO(attendanceDateUTC));
     console.log('🏫 School ID:', schoolId);
     console.log('👤 Created by:', createdBy);
     console.log('🌍 Current Afghanistan time:', getFormattedAfghanTime());
@@ -746,7 +746,7 @@ export const markOutTime = async (req, res) => {
     console.log('✅ Time window restrictions removed - attendance can be marked at any time');
 
     console.log('⏰ Current time:', currentTime);
-    console.log('📅 Attendance date:', attendanceDate);
+    console.log('📅 Attendance date (UTC stored, Kabul local shown):', formatAfghanistanLocalISO(attendanceDateUTC));
     console.log('🏫 School ID:', schoolId);
     console.log('👤 Updated by:', updatedBy);
     console.log('🌍 Current Afghanistan time:', getFormattedAfghanTime());
@@ -2831,3 +2831,4 @@ export const exportAttendanceData = async (req, res) => {
     markIncompleteAttendanceAsAbsent,
     getAttendanceTimeStatus
   };
+
