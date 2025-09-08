@@ -5,6 +5,7 @@ const prisma = new PrismaClient();
 
 // Afghanistan timezone (UTC+4:30)
 const AFGHANISTAN_TIMEZONE = 'Asia/Kabul';
+const AFGHANISTAN_UTC_OFFSET_MIN = 270; // 4 hours 30 minutes
 
 // Attendance time windows (in Afghanistan time)
 const ATTENDANCE_TIMES = {
@@ -17,6 +18,55 @@ const ATTENDANCE_TIMES = {
 const getAfghanistanTime = () => {
   const now = new Date();
   return new Date(now.toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE }));
+};
+
+// ======================
+// TIMEZONE HELPERS
+// ======================
+
+// Parse an input date/time string or Date as Afghanistan local and return UTC Date
+const parseAfghanistanLocalToUTC = (input) => {
+  if (!input) return null;
+  const normalized = String(input).replace(' ', 'T');
+  const withTime = /T\d{2}:\d{2}/.test(normalized) ? normalized : `${normalized}T00:00:00`;
+  const local = new Date(withTime);
+  const afLocal = new Date(local.toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE }));
+  const y = afLocal.getFullYear();
+  const m = afLocal.getMonth();
+  const d = afLocal.getDate();
+  const hh = afLocal.getHours();
+  const mm = afLocal.getMinutes();
+  const ss = afLocal.getSeconds();
+  const ms = afLocal.getMilliseconds();
+  const utcMillis = Date.UTC(y, m, d, hh, mm, ss, ms) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
+  return new Date(utcMillis);
+};
+
+// Given UTC Date, format as Afghanistan-local ISO-like string
+const formatAfghanistanLocalISO = (date) => {
+  if (!date) return null;
+  const afMillis = date.getTime() + (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
+  const af = new Date(afMillis);
+  const pad = (n) => String(n).padStart(2, '0');
+  const yyyy = af.getUTCFullYear();
+  const mm = pad(af.getUTCMonth() + 1);
+  const dd = pad(af.getUTCDate());
+  const HH = pad(af.getUTCHours());
+  const MM = pad(af.getUTCMinutes());
+  const SS = pad(af.getUTCSeconds());
+  return `${yyyy}-${mm}-${dd}T${HH}:${MM}:${SS}`;
+};
+
+// Get Afghanistan day range in UTC for a given input (Date or string)
+const getAfghanistanDayRangeUTC = (input) => {
+  const base = input ? new Date(String(input).replace(' ', 'T')) : new Date();
+  const afLocal = new Date(base.toLocaleString('en-US', { timeZone: AFGHANISTAN_TIMEZONE }));
+  const y = afLocal.getFullYear();
+  const m = afLocal.getMonth();
+  const d = afLocal.getDate();
+  const startUTCms = Date.UTC(y, m, d, 0, 0, 0, 0) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
+  const endUTCms = Date.UTC(y, m, d, 23, 59, 59, 999) - (AFGHANISTAN_UTC_OFFSET_MIN * 60 * 1000);
+  return { startOfDayUTC: new Date(startUTCms), endOfDayUTC: new Date(endUTCms) };
 };
 
 /**
@@ -55,10 +105,11 @@ export const markIncompleteAttendanceAsAbsent = async (schoolId = 1) => {
     console.log('🤖 Auto-marking students with incomplete attendance as absent...');
     
     const afghanTime = getFormattedAfghanTime();
-    const today = new Date();
+    // Work with Afghanistan-local "today" boundaries
+    const { startOfDayUTC, endOfDayUTC } = getAfghanistanDayRangeUTC(new Date());
     
     console.log('🌍 Current Afghanistan time:', afghanTime);
-    console.log('📅 Processing date:', today.toISOString());
+    console.log('📅 Processing range:', startOfDayUTC.toISOString(), 'to', endOfDayUTC.toISOString());
     console.log('🏫 School ID:', schoolId);
 
     // Get all active students for the school
@@ -97,15 +148,11 @@ export const markIncompleteAttendanceAsAbsent = async (schoolId = 1) => {
     for (const student of students) {
       try {
         // Check if student has complete attendance record for today (both inTime and outTime)
-        const startOfDay = new Date(today);
-        startOfDay.setHours(0,0,0,0);
-        const endOfDay = new Date(today);
-        endOfDay.setHours(23,59,59,999);
         const existingAttendance = await prisma.attendance.findFirst({
           where: {
             studentId: student.id,
             classId: student.classId,
-            date: { gte: startOfDay, lte: endOfDay },
+            date: { gte: startOfDayUTC, lte: endOfDayUTC },
             schoolId: BigInt(schoolId),
             deletedAt: null
           }
@@ -134,7 +181,7 @@ export const markIncompleteAttendanceAsAbsent = async (schoolId = 1) => {
           // No attendance record exists for today - create absent record
           await prisma.attendance.create({
             data: {
-              date: today, // full datetime
+              date: startOfDayUTC, // store as UTC start of Afghanistan day
               status: 'ABSENT',
               studentId: student.id,
               classId: student.classId,
