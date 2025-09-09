@@ -2738,12 +2738,12 @@ class StudentController {
       const { studentId } = req.params;
       
       if (!studentId) {
-        return createErrorResponse(res, 'Student ID is required', 400);
+        return createErrorResponse(res, 400, 'Student ID is required');
       }
 
       // Check if file was uploaded
       if (!req.file) {
-        return createErrorResponse(res, 'No avatar file uploaded', 400);
+        return createErrorResponse(res, 400, 'No avatar file uploaded');
       }
 
       // Find the student
@@ -2753,7 +2753,7 @@ class StudentController {
       });
 
       if (!student) {
-        return createErrorResponse(res, 'Student not found', 404);
+        return createErrorResponse(res, 404, 'Student not found');
       }
 
       // Delete old avatar if exists
@@ -2779,7 +2779,7 @@ class StudentController {
       }, 'Avatar uploaded successfully');
     } catch (error) {
       console.error('Error uploading avatar:', error);
-      return createErrorResponse(res, 'Failed to upload avatar', 500);
+      return createErrorResponse(res, 500, 'Failed to upload avatar');
     }
   }
 
@@ -2791,7 +2791,7 @@ class StudentController {
       const { studentId } = req.params;
       
       if (!studentId) {
-        return createErrorResponse(res, 'Student ID is required', 400);
+        return createErrorResponse(res, 400, 'Student ID is required');
       }
 
       // Find the student
@@ -2801,11 +2801,11 @@ class StudentController {
       });
 
       if (!student) {
-        return createErrorResponse(res, 'Student not found', 404);
+        return createErrorResponse(res, 404, 'Student not found');
       }
 
       if (!student.user.avatar) {
-        return createErrorResponse(res, 'No avatar to delete', 400);
+        return createErrorResponse(res, 400, 'No avatar to delete');
       }
 
       // Delete avatar file
@@ -2825,7 +2825,7 @@ class StudentController {
       return createSuccessResponse(res, {}, 'Avatar deleted successfully');
     } catch (error) {
       console.error('Error deleting avatar:', error);
-      return createErrorResponse(res, 'Failed to delete avatar', 500);
+      return createErrorResponse(res, 500, 'Failed to delete avatar');
     }
   }
 }
