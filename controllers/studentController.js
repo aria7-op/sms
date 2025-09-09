@@ -382,7 +382,9 @@ class StudentController {
               createdBy: req.user ? req.user.id : (studentOwnerId ?? BigInt(1)),
               createdByOwnerId: studentOwnerId, // Use the correct owner ID
               salt: studentSalt,
-              password: studentPasswordHash
+              password: studentPasswordHash,
+              // Include Dari name if provided
+              ...(userDataWithoutAddress.dariName && { dariName: userDataWithoutAddress.dariName })
             }
           }
         },
