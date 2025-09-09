@@ -2672,6 +2672,42 @@ class StudentController {
       });
     }
   }
+
+  /**
+   * Generate student card
+   */
+  async generateStudentCard(req, res) {
+    try {
+      const { id } = req.params;
+      
+      // Validate student ID format
+      if (!/^[0-9]+$/.test(id)) {
+        return createErrorResponse(res, 400, 'Invalid student ID');
+      }
+
+      // Import the card generation service
+      const CardGenerationService = (await import('../services/cardGenerationService.js')).default;
+      
+      // Initialize the service
+      await CardGenerationService.initialize();
+      
+      // Generate the card
+      const result = await CardGenerationService.generateStudentCard(id);
+      
+      if (result.success) {
+        return createSuccessResponse(res, 200, 'Student card generated successfully', {
+          filePath: result.filePath,
+          filename: result.filename,
+          student: result.student
+        });
+      } else {
+        return createErrorResponse(res, 500, `Failed to generate student card: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error in generateStudentCard:', error);
+      return createErrorResponse(res, 500, `Failed to generate student card: ${error.message}`);
+    }
+  }
 }
 
 export default new StudentController(); 
