@@ -43,6 +43,25 @@ const upload = multer({
   }
 });
 
+// Add debugging to the upload middleware
+const uploadSingle = upload.single('avatar');
+const debugUpload = (req, res, next) => {
+  console.log('🔍 DEBUG: Multer middleware called');
+  console.log('🔍 DEBUG: Content-Type:', req.get('Content-Type'));
+  console.log('🔍 DEBUG: Method:', req.method);
+  console.log('🔍 DEBUG: URL:', req.url);
+  
+  uploadSingle(req, res, (err) => {
+    if (err) {
+      console.log('❌ DEBUG: Multer error:', err.message);
+      return next(err);
+    }
+    console.log('✅ DEBUG: Multer completed successfully');
+    console.log('🔍 DEBUG: req.file after multer:', req.file);
+    next();
+  });
+};
+
 // Middleware to handle upload errors
 const handleUploadErrors = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
@@ -81,7 +100,13 @@ const validateFilePresence = (fieldName) => (req, res, next) => {
 
 // Middleware to process uploaded file
 const processUploadedFile = (req, res, next) => {
+  console.log('🔍 DEBUG: processUploadedFile called');
+  console.log('🔍 DEBUG: req.file:', req.file);
+  console.log('🔍 DEBUG: req.files:', req.files);
+  console.log('🔍 DEBUG: req.body:', req.body);
+  
   if (req.file) {
+    console.log('✅ DEBUG: File found, processing...');
     // Add file info to request object
     req.uploadedFile = {
       path: req.file.path,
@@ -91,6 +116,8 @@ const processUploadedFile = (req, res, next) => {
       filename: req.file.filename,
       url: `/uploads/students/avatars/${req.file.filename}`
     };
+  } else {
+    console.log('❌ DEBUG: No file found in processUploadedFile');
   }
   next();
 };
