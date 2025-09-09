@@ -2737,12 +2737,20 @@ class StudentController {
     try {
       const { studentId } = req.params;
       
+      console.log('🔍 DEBUG: uploadStudentAvatar called');
+      console.log('🔍 DEBUG: studentId:', studentId);
+      console.log('🔍 DEBUG: req.file:', req.file);
+      console.log('🔍 DEBUG: req.files:', req.files);
+      console.log('🔍 DEBUG: req.body:', req.body);
+      console.log('🔍 DEBUG: Content-Type:', req.get('Content-Type'));
+      
       if (!studentId) {
         return createErrorResponse(res, 400, 'Student ID is required');
       }
 
       // Check if file was uploaded
       if (!req.file) {
+        console.log('❌ DEBUG: No file found in req.file');
         return createErrorResponse(res, 400, 'No avatar file uploaded');
       }
 
