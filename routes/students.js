@@ -330,6 +330,21 @@ router.get('/:studentId/card',
 );
 
 /**
+ * @route   GET /api/students/:studentId/card/base64
+ * @desc    Generate student card as base64 image data
+ * @access  Private (ADMIN, TEACHER, STAFF)
+ * @params  {studentId} - Student ID
+ * @permissions student:read
+ */
+router.get('/:studentId/card/base64',
+  authenticateToken,
+  authorizeRoles(['ADMIN', 'TEACHER', 'STAFF']),
+  authorizePermissions(['student:read']),
+  generalLimiter,
+  safeControllerMethod(studentController, 'generateStudentCardBase64')
+);
+
+/**
  * @route   GET /api/students/:studentId/card/count
  * @desc    Get student card print count
  * @access  Private (ADMIN, TEACHER, STAFF)
