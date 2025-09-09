@@ -2729,6 +2729,123 @@ class StudentController {
       return createErrorResponse(res, 'Failed to get card print count', 500);
     }
   }
+
+  /**
+   * Upload student avatar image
+   */
+  async uploadStudentAvatar(req, res) {
+    try {
+      const { studentId } = req.params;
+      
+      if (!studentId) {
+        return createErrorResponse(res, 'Student ID is required', 400);
+      }
+
+      // Import upload middleware
+      const { upload, handleUploadErrors, validateFilePresence, processUploadedFile } = await import('../middleware/studentUpload.js');
+      
+      // Use multer middleware
+      upload.single('avatar')(req, res, async (err) => {
+        if (err) {
+          return handleUploadErrors(err, req, res, () => {});
+        }
+
+        // Validate file presence
+        if (!req.file) {
+          return createErrorResponse(res, 'No avatar file uploaded', 400);
+        }
+
+        // Process uploaded file
+        processUploadedFile(req, res, async () => {
+          try {
+            // Find the student
+            const student = await prisma.student.findUnique({
+              where: { id: BigInt(studentId) },
+              include: { user: true }
+            });
+
+            if (!student) {
+              return createErrorResponse(res, 'Student not found', 404);
+            }
+
+            // Delete old avatar if exists
+            if (student.user.avatar) {
+              const oldAvatarPath = `uploads/students/avatars/${student.user.avatar.split('/').pop()}`;
+              try {
+                await fs.unlink(oldAvatarPath);
+              } catch (unlinkErr) {
+                console.warn('Could not delete old avatar:', unlinkErr.message);
+              }
+            }
+
+            // Update user avatar
+            const avatarUrl = `/uploads/students/avatars/${req.file.filename}`;
+            await prisma.user.update({
+              where: { id: student.userId },
+              data: { avatar: avatarUrl }
+            });
+
+            return createSuccessResponse(res, { 
+              avatar: avatarUrl,
+              filename: req.file.filename 
+            }, 'Avatar uploaded successfully');
+          } catch (error) {
+            console.error('Error uploading avatar:', error);
+            return createErrorResponse(res, 'Failed to upload avatar', 500);
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Error in uploadStudentAvatar:', error);
+      return createErrorResponse(res, 'Failed to upload avatar', 500);
+    }
+  }
+
+  /**
+   * Delete student avatar image
+   */
+  async deleteStudentAvatar(req, res) {
+    try {
+      const { studentId } = req.params;
+      
+      if (!studentId) {
+        return createErrorResponse(res, 'Student ID is required', 400);
+      }
+
+      // Find the student
+      const student = await prisma.student.findUnique({
+        where: { id: BigInt(studentId) },
+        include: { user: true }
+      });
+
+      if (!student) {
+        return createErrorResponse(res, 'Student not found', 404);
+      }
+
+      if (!student.user.avatar) {
+        return createErrorResponse(res, 'No avatar to delete', 400);
+      }
+
+      // Delete avatar file
+      const avatarPath = `uploads/students/avatars/${student.user.avatar.split('/').pop()}`;
+      try {
+        await fs.unlink(avatarPath);
+      } catch (unlinkErr) {
+        console.warn('Could not delete avatar file:', unlinkErr.message);
+      }
+
+      // Update user to remove avatar
+      await prisma.user.update({
+        where: { id: student.userId },
+        data: { avatar: null }
+      });
+
+      return createSuccessResponse(res, {}, 'Avatar deleted successfully');
+    } catch (error) {
+      console.error('Error deleting avatar:', error);
+      return createErrorResponse(res, 'Failed to delete avatar', 500);
+    }
+  }
 }
 
 export default new StudentController(); 
