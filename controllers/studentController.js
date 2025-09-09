@@ -5,6 +5,7 @@ import {
   createErrorResponse 
 } from '../utils/responseUtils.js';
 import bcrypt from 'bcryptjs';
+import fs from 'fs';
 import { 
   generateStudentCode, 
   validateStudentConstraints, 
@@ -2655,6 +2656,77 @@ class StudentController {
         message: 'Failed to fetch student conversion stats',
         error: error.message
       });
+    }
+  }
+
+  /**
+   * Generate student card
+   */
+  async generateStudentCard(req, res) {
+    try {
+      const { studentId } = req.params;
+      
+      if (!studentId) {
+        return createErrorResponse(res, 'Student ID is required', 400);
+      }
+
+      // Import card generation service
+      const cardGenerationService = (await import('../services/cardGenerationService.js')).default;
+      
+      // Initialize service if needed
+      await cardGenerationService.initialize();
+      
+      // Generate the card
+      const result = await cardGenerationService.generateStudentCard(studentId);
+      
+      if (result.success) {
+        // Send the file as response
+        res.download(result.filePath, result.filename, (err) => {
+          if (err) {
+            console.error('Error sending file:', err);
+            res.status(500).json({
+              success: false,
+              message: 'Error sending file',
+              error: err.message
+            });
+          } else {
+            // Clean up the file after sending
+            setTimeout(() => {
+              fs.unlink(result.filePath, (unlinkErr) => {
+                if (unlinkErr) console.error('Error deleting temp file:', unlinkErr);
+              });
+            }, 1000);
+          }
+        });
+      } else {
+        return createErrorResponse(res, result.error || 'Failed to generate card', 500);
+      }
+    } catch (error) {
+      console.error('Error generating student card:', error);
+      return createErrorResponse(res, 'Failed to generate student card', 500);
+    }
+  }
+
+  /**
+   * Get student card print count
+   */
+  async getStudentCardPrintCount(req, res) {
+    try {
+      const { studentId } = req.params;
+      
+      if (!studentId) {
+        return createErrorResponse(res, 'Student ID is required', 400);
+      }
+
+      // Import card generation service
+      const cardGenerationService = (await import('../services/cardGenerationService.js')).default;
+      
+      const printCount = await cardGenerationService.getCardPrintCount(studentId);
+      
+      return createSuccessResponse(res, { printCount }, 'Card print count retrieved successfully');
+    } catch (error) {
+      console.error('Error getting card print count:', error);
+      return createErrorResponse(res, 'Failed to get card print count', 500);
     }
   }
 }
