@@ -2501,7 +2501,7 @@ class StudentController {
           student: {
             select: {
               id: true,
-              user: { select: { firstName: true, lastName: true, displayName: true } }
+              user: { select: { firstName: true, lastName: true, dariName: true, displayName: true } }
             }
           }
         },
