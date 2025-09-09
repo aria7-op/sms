@@ -161,7 +161,9 @@ class ParentService {
           createdBy: Number(userId),
           createdByOwnerId: Number(userId), // userId should be the owner ID
           password: hashedPassword, // Hashed password for parent users
-          salt: salt // Salt for password verification
+          salt: salt, // Salt for password verification
+          // Include Dari name if provided
+          ...(parentData.user.dariName && { dariName: parentData.user.dariName })
         };
         
         // Add optional fields if they exist
