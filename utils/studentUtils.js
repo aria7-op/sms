@@ -464,6 +464,7 @@ export const buildStudentIncludeQuery = (include = []) => {
         uuid: true,
         firstName: true,
         lastName: true,
+        dariName: true,
         displayName: true,
         status: true,
         avatar: true
@@ -491,6 +492,7 @@ export const buildStudentIncludeQuery = (include = []) => {
             username: true,
             firstName: true,
             lastName: true,
+            dariName: true,
             phone: true
           }
         }
@@ -512,6 +514,7 @@ export const buildStudentIncludeQuery = (include = []) => {
           uuid: true,
           firstName: true,
           lastName: true,
+          dariName: true,
           displayName: true,
           phone: true,
           gender: true,
@@ -554,6 +557,7 @@ export const buildStudentIncludeQuery = (include = []) => {
               username: true,
               firstName: true,
               lastName: true,
+              dariName: true,
               phone: true
             }
           }
