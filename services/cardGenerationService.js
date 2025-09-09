@@ -3,7 +3,10 @@ import path from 'path';
 import fs from 'fs-extra';
 import { PrismaClient } from '../generated/prisma/index.js';
 
-const prisma = new PrismaClient();
+// Initialize Prisma client
+const prisma = new PrismaClient({
+  log: ['query', 'info', 'warn', 'error'],
+});
 
 class CardGenerationService {
   constructor() {
@@ -65,9 +68,23 @@ class CardGenerationService {
       
       // Get student photo if available
       let studentPhoto = null;
-      if (student.user?.profilePicture) {
+      if (student.user?.avatar) {
         try {
-          studentPhoto = await Jimp.read(student.user.profilePicture);
+          // Handle both relative and absolute URLs
+          let imagePath = student.user.avatar;
+          if (imagePath.startsWith('/uploads/')) {
+            // Convert relative path to absolute
+            imagePath = path.join(process.cwd(), 'public', imagePath);
+          } else if (imagePath.startsWith('http')) {
+            // For HTTP URLs, we'll need to download the image first
+            // For now, skip external URLs
+            console.warn('External image URLs not supported for card generation');
+            imagePath = null;
+          }
+          
+          if (imagePath && fs.existsSync(imagePath)) {
+            studentPhoto = await Jimp.read(imagePath);
+          }
         } catch (error) {
           console.warn('Could not load student photo:', error.message);
         }
