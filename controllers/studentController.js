@@ -2727,31 +2727,17 @@ class StudentController {
       const result = await CardGenerationService.generateStudentCard(actualStudentId);
       
       if (result.success) {
-        // Check if the request wants JSON response (for frontend compatibility)
-        const acceptHeader = req.headers.accept || '';
-        const wantsJson = acceptHeader.includes('application/json') || req.query.format === 'json';
+        // Always download the file directly
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
         
-        if (wantsJson) {
-          // Return JSON response with file info
-          return createSuccessResponse(res, 200, 'Student card generated successfully', {
-            filePath: result.filePath,
-            filename: result.filename,
-            student: result.student,
-            downloadUrl: `/api/students/${studentId}/card?format=file`
-          });
-        } else {
-          // Set headers for file download
-          res.setHeader('Content-Type', 'image/jpeg');
-          res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-          
-          // Send the file
-          return res.sendFile(path.resolve(result.filePath), (err) => {
-            if (err) {
-              console.error('Error sending file:', err);
-              return createErrorResponse(res, 500, 'Failed to send card file');
-            }
-          });
-        }
+        // Send the file
+        return res.sendFile(path.resolve(result.filePath), (err) => {
+          if (err) {
+            console.error('Error sending file:', err);
+            return createErrorResponse(res, 500, 'Failed to send card file');
+          }
+        });
       } else {
         return createErrorResponse(res, 500, `Failed to generate student card: ${result.error}`);
       }
