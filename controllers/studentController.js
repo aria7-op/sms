@@ -5,7 +5,6 @@ import {
   createErrorResponse 
 } from '../utils/responseUtils.js';
 import bcrypt from 'bcryptjs';
-import fs from 'fs';
 import { 
   generateStudentCode, 
   validateStudentConstraints, 
@@ -382,9 +381,7 @@ class StudentController {
               createdBy: req.user ? req.user.id : (studentOwnerId ?? BigInt(1)),
               createdByOwnerId: studentOwnerId, // Use the correct owner ID
               salt: studentSalt,
-              password: studentPasswordHash,
-              // Include Dari name if provided
-              ...(userDataWithoutAddress.dariName && { dariName: userDataWithoutAddress.dariName })
+              password: studentPasswordHash
             }
           }
         },
@@ -1055,6 +1052,10 @@ class StudentController {
           // Extract address fields and move to metadata
           const { address, city, state, country, postalCode, ...userDataWithoutAddress } = user;
           
+          console.log('🔍 DEBUG: Original user data:', JSON.stringify(user, null, 2));
+          console.log('🔍 DEBUG: userDataWithoutAddress after destructuring:', JSON.stringify(userDataWithoutAddress, null, 2));
+          console.log('🔍 DEBUG: dariName in userDataWithoutAddress:', userDataWithoutAddress.dariName);
+          
           // Create metadata object with address information (only include defined values)
           const userMetadata = {};
           if (address || city || state || country || postalCode) {
@@ -1073,6 +1074,9 @@ class StudentController {
               filteredUserData[key] = userDataWithoutAddress[key];
             }
           });
+          
+          console.log('🔍 DEBUG: filteredUserData after filtering:', JSON.stringify(filteredUserData, null, 2));
+          console.log('🔍 DEBUG: dariName in filteredUserData:', filteredUserData.dariName);
           
           userUpdateData = {
             ...filteredUserData,
@@ -2658,184 +2662,6 @@ class StudentController {
         message: 'Failed to fetch student conversion stats',
         error: error.message
       });
-    }
-  }
-
-  /**
-   * Generate student card
-   */
-  async generateStudentCard(req, res) {
-    try {
-      const { studentId } = req.params;
-      
-      if (!studentId) {
-        return createErrorResponse(res, 'Student ID is required', 400);
-      }
-
-      // Import card generation service
-      const cardGenerationService = (await import('../services/cardGenerationService.js')).default;
-      
-      // Initialize service if needed
-      await cardGenerationService.initialize();
-      
-      // Generate the card
-      const result = await cardGenerationService.generateStudentCard(studentId);
-      
-      if (result.success) {
-        // Send the file as response
-        res.download(result.filePath, result.filename, (err) => {
-          if (err) {
-            console.error('Error sending file:', err);
-            res.status(500).json({
-              success: false,
-              message: 'Error sending file',
-              error: err.message
-            });
-          } else {
-            // Clean up the file after sending
-            setTimeout(() => {
-              fs.unlink(result.filePath, (unlinkErr) => {
-                if (unlinkErr) console.error('Error deleting temp file:', unlinkErr);
-              });
-            }, 1000);
-          }
-        });
-      } else {
-        return createErrorResponse(res, result.error || 'Failed to generate card', 500);
-      }
-    } catch (error) {
-      console.error('Error generating student card:', error);
-      return createErrorResponse(res, 'Failed to generate student card', 500);
-    }
-  }
-
-  /**
-   * Get student card print count
-   */
-  async getStudentCardPrintCount(req, res) {
-    try {
-      const { studentId } = req.params;
-      
-      if (!studentId) {
-        return createErrorResponse(res, 'Student ID is required', 400);
-      }
-
-      // Import card generation service
-      const cardGenerationService = (await import('../services/cardGenerationService.js')).default;
-      
-      const printCount = await cardGenerationService.getCardPrintCount(studentId);
-      
-      return createSuccessResponse(res, { printCount }, 'Card print count retrieved successfully');
-    } catch (error) {
-      console.error('Error getting card print count:', error);
-      return createErrorResponse(res, 'Failed to get card print count', 500);
-    }
-  }
-
-  /**
-   * Upload student avatar image
-   */
-  async uploadStudentAvatar(req, res) {
-    try {
-      const { studentId } = req.params;
-      
-      console.log('🔍 DEBUG: uploadStudentAvatar called');
-      console.log('🔍 DEBUG: studentId:', studentId);
-      console.log('🔍 DEBUG: req.file:', req.file);
-      console.log('🔍 DEBUG: req.files:', req.files);
-      console.log('🔍 DEBUG: req.body:', req.body);
-      console.log('🔍 DEBUG: Content-Type:', req.get('Content-Type'));
-      
-      if (!studentId) {
-        return createErrorResponse(res, 400, 'Student ID is required');
-      }
-
-      // Check if file was uploaded
-      if (!req.file) {
-        console.log('❌ DEBUG: No file found in req.file');
-        return createErrorResponse(res, 400, 'No avatar file uploaded');
-      }
-
-      // Find the student
-      const student = await prisma.student.findUnique({
-        where: { id: BigInt(studentId) },
-        include: { user: true }
-      });
-
-      if (!student) {
-        return createErrorResponse(res, 404, 'Student not found');
-      }
-
-      // Delete old avatar if exists
-      if (student.user.avatar) {
-        const oldAvatarPath = `uploads/students/avatars/${student.user.avatar.split('/').pop()}`;
-        try {
-          await fs.unlink(oldAvatarPath);
-        } catch (unlinkErr) {
-          console.warn('Could not delete old avatar:', unlinkErr.message);
-        }
-      }
-
-      // Update user avatar
-      const avatarUrl = `/uploads/students/avatars/${req.file.filename}`;
-      await prisma.user.update({
-        where: { id: student.userId },
-        data: { avatar: avatarUrl }
-      });
-
-      return createSuccessResponse(res, { 
-        avatar: avatarUrl,
-        filename: req.file.filename 
-      }, 'Avatar uploaded successfully');
-    } catch (error) {
-      console.error('Error uploading avatar:', error);
-      return createErrorResponse(res, 500, 'Failed to upload avatar');
-    }
-  }
-
-  /**
-   * Delete student avatar image
-   */
-  async deleteStudentAvatar(req, res) {
-    try {
-      const { studentId } = req.params;
-      
-      if (!studentId) {
-        return createErrorResponse(res, 400, 'Student ID is required');
-      }
-
-      // Find the student
-      const student = await prisma.student.findUnique({
-        where: { id: BigInt(studentId) },
-        include: { user: true }
-      });
-
-      if (!student) {
-        return createErrorResponse(res, 404, 'Student not found');
-      }
-
-      if (!student.user.avatar) {
-        return createErrorResponse(res, 400, 'No avatar to delete');
-      }
-
-      // Delete avatar file
-      const avatarPath = `uploads/students/avatars/${student.user.avatar.split('/').pop()}`;
-      try {
-        await fs.unlink(avatarPath);
-      } catch (unlinkErr) {
-        console.warn('Could not delete avatar file:', unlinkErr.message);
-      }
-
-      // Update user to remove avatar
-      await prisma.user.update({
-        where: { id: student.userId },
-        data: { avatar: null }
-      });
-
-      return createSuccessResponse(res, {}, 'Avatar deleted successfully');
-    } catch (error) {
-      console.error('Error deleting avatar:', error);
-      return createErrorResponse(res, 500, 'Failed to delete avatar');
     }
   }
 }
