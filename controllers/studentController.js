@@ -899,6 +899,10 @@ class StudentController {
               if (postalCode) userMetadata.address.postalCode = postalCode;
             }
             
+            // Debug parent user data
+            console.log('🔍 DEBUG: Parent user data before update:', JSON.stringify(userDataWithoutAddress, null, 2));
+            console.log('🔍 DEBUG: Parent dariName:', userDataWithoutAddress.dariName);
+            
             // Update parent user
             await prisma.user.update({
               where: { id: existingStudent.parent.user.id },
@@ -1068,9 +1072,13 @@ class StudentController {
           }
           
           // Filter out any undefined or null values that might cause issues
+          // But preserve dariName even if it's an empty string
           const filteredUserData = {};
           Object.keys(userDataWithoutAddress).forEach(key => {
             if (userDataWithoutAddress[key] !== undefined && userDataWithoutAddress[key] !== null) {
+              filteredUserData[key] = userDataWithoutAddress[key];
+            } else if (key === 'dariName') {
+              // Preserve dariName field even if it's undefined or null
               filteredUserData[key] = userDataWithoutAddress[key];
             }
           });
