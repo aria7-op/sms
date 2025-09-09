@@ -316,10 +316,9 @@ router.get('/:id/performance',
 
 /**
  * @route   GET /api/students/:studentId/card
- * @desc    Generate student card (JSON response with file info)
+ * @desc    Generate and download student card as file
  * @access  Private (ADMIN, TEACHER, STAFF)
  * @params  {studentId} - Student ID
- * @query   {format} - 'json' for JSON response, 'file' for direct download
  * @permissions student:read
  */
 router.get('/:studentId/card',
