@@ -124,6 +124,7 @@ const processUploadedFile = (req, res, next) => {
 
 export {
   upload,
+  debugUpload,
   handleUploadErrors,
   validateFilePresence,
   processUploadedFile
