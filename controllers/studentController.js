@@ -2680,9 +2680,9 @@ class StudentController {
     try {
       const { id } = req.params;
       
-      // Validate student ID format
+      // Validate ID format (can be student ID or user ID)
       if (!/^[0-9]+$/.test(id)) {
-        return createErrorResponse(res, 400, 'Invalid student ID');
+        return createErrorResponse(res, 400, 'Invalid ID format');
       }
 
       // Import the card generation service
@@ -2691,8 +2691,39 @@ class StudentController {
       // Initialize the service
       await CardGenerationService.initialize();
       
-      // Generate the card
-      const result = await CardGenerationService.generateStudentCard(id);
+      // Check if the ID is a student ID or user ID
+      let studentId = id;
+      
+      // First, try to find student by student ID
+      let student = await prisma.student.findFirst({
+        where: {
+          id: BigInt(id),
+          schoolId: req.user.schoolId,
+          deletedAt: null
+        }
+      });
+      
+      // If not found by student ID, try to find by user ID
+      if (!student) {
+        student = await prisma.student.findFirst({
+          where: {
+            userId: BigInt(id),
+            schoolId: req.user.schoolId,
+            deletedAt: null
+          }
+        });
+        
+        if (student) {
+          studentId = student.id.toString();
+        }
+      }
+      
+      if (!student) {
+        return createErrorResponse(res, 404, 'Student not found');
+      }
+      
+      // Generate the card using the student ID
+      const result = await CardGenerationService.generateStudentCard(studentId);
       
       if (result.success) {
         return createSuccessResponse(res, 200, 'Student card generated successfully', {
