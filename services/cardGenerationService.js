@@ -30,28 +30,45 @@ class CardGenerationService {
     try {
       // Try to register common Unicode fonts that might be available on the system
       const possibleFonts = [
-        '/System/Library/Fonts/Arial Unicode MS.ttf', // macOS
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', // Linux
-        'C:/Windows/Fonts/arial.ttf', // Windows
-        'C:/Windows/Fonts/arialuni.ttf' // Windows Arial Unicode MS
+        // macOS fonts
+        '/System/Library/Fonts/Arial Unicode MS.ttf',
+        '/System/Library/Fonts/Helvetica.ttc',
+        '/Library/Fonts/Arial Unicode MS.ttf',
+        
+        // Linux fonts
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+        '/usr/share/fonts/truetype/arphic/ukai.ttc',
+        
+        // Windows fonts
+        'C:/Windows/Fonts/arial.ttf',
+        'C:/Windows/Fonts/arialuni.ttf',
+        'C:/Windows/Fonts/calibri.ttf',
+        'C:/Windows/Fonts/segoeui.ttf'
       ];
       
       for (const fontPath of possibleFonts) {
         if (fs.existsSync(fontPath)) {
-          registerFont(fontPath, { family: 'UnicodeFont' });
-          console.log('✅ DEBUG: Registered Unicode font:', fontPath);
-          this.unicodeFontFamily = 'UnicodeFont';
-          return;
+          try {
+            registerFont(fontPath, { family: 'UnicodeFont' });
+            console.log('✅ DEBUG: Registered Unicode font:', fontPath);
+            this.unicodeFontFamily = 'UnicodeFont';
+            return;
+          } catch (fontError) {
+            console.log('⚠️ DEBUG: Could not register font:', fontPath, fontError.message);
+            continue;
+          }
         }
       }
       
-      // If no specific Unicode font found, use system default
-      this.unicodeFontFamily = 'Arial, sans-serif';
-      console.log('🔍 DEBUG: Using system default font for Unicode support');
+      // If no specific Unicode font found, use system default with multiple fallbacks
+      this.unicodeFontFamily = 'Arial Unicode MS, DejaVu Sans, Noto Sans, Liberation Sans, Arial, sans-serif';
+      console.log('🔍 DEBUG: Using system default fonts for Unicode support');
       
     } catch (error) {
       console.log('⚠️ DEBUG: Could not register Unicode font, using default:', error.message);
-      this.unicodeFontFamily = 'Arial, sans-serif';
+      this.unicodeFontFamily = 'Arial Unicode MS, DejaVu Sans, Noto Sans, Liberation Sans, Arial, sans-serif';
     }
   }
 
@@ -264,38 +281,112 @@ class CardGenerationService {
   }
 
   /**
+   * Test Canvas Unicode rendering
+   */
+  async testCanvasUnicode() {
+    try {
+      console.log('🔍 DEBUG: Testing Canvas Unicode rendering...');
+      
+      const testCanvas = createCanvas(400, 100);
+      const ctx = testCanvas.getContext('2d');
+      
+      // Test with simple ASCII first
+      ctx.font = '24px Arial, sans-serif';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('Test ASCII: Hello World', 10, 30);
+      
+      // Test with Unicode
+      ctx.fillText('Test Unicode: سبحان', 10, 60);
+      
+      // Save test image
+      const testBuffer = testCanvas.toBuffer('image/png');
+      const testPath = path.join(process.cwd(), 'temp', 'unicode-test.png');
+      await fs.ensureDir(path.dirname(testPath));
+      await fs.writeFile(testPath, testBuffer);
+      
+      console.log('✅ DEBUG: Unicode test image saved to:', testPath);
+      return true;
+      
+    } catch (error) {
+      console.error('❌ DEBUG: Canvas Unicode test failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Convert Unicode text to a more compatible format
+   */
+  convertUnicodeText(text) {
+    try {
+      // Try to normalize the text
+      const normalized = text.normalize('NFC');
+      
+      // Convert to a format that might work better with fonts
+      const converted = normalized
+        .replace(/[\u0600-\u06FF]/g, (char) => {
+          // Convert Arabic/Persian characters to a readable format
+          const codePoint = char.codePointAt(0);
+          return `[U+${codePoint.toString(16).toUpperCase()}]`;
+        });
+      
+      console.log('🔍 DEBUG: Converted Unicode text:', text, '->', converted);
+      return converted;
+      
+    } catch (error) {
+      console.error('Error converting Unicode text:', error);
+      return text; // Return original if conversion fails
+    }
+  }
+
+  /**
    * Render text with Unicode support using Canvas
    */
   async renderUnicodeText(card, text, x, y, fontSize, color = '#FFFFFF') {
     try {
       console.log('🔍 DEBUG: Rendering Unicode text with Canvas:', text);
       
-      // Create a canvas for text rendering
-      const textCanvas = createCanvas(400, 100);
+      // Try Canvas first
+      const textCanvas = createCanvas(600, 200);
       const ctx = textCanvas.getContext('2d');
       
-      // Set font with Unicode support
+      ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
       ctx.font = `${fontSize}px ${this.unicodeFontFamily}`;
       ctx.fillStyle = color;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       
       // Render the text
-      ctx.fillText(text, 0, 0);
+      ctx.fillText(text, 10, 10);
       
-      // Get the text image
       const textImage = await loadImage(textCanvas.toBuffer());
-      
-      // Composite the text onto the main card
       card.composite(textImage, x, y);
       
       console.log('✅ DEBUG: Unicode text rendered successfully with Canvas');
       
-    } catch (error) {
-      console.error('Error rendering Unicode text with Canvas:', error);
-      // Fallback to Jimp rendering
-      const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
-      card.print(font, x, y, text, card.getWidth(), card.getHeight());
+    } catch (canvasError) {
+      console.error('Canvas rendering failed, trying alternative approach:', canvasError.message);
+      
+      // Alternative approach: Convert Unicode to readable format
+      try {
+        const convertedText = this.convertUnicodeText(text);
+        
+        // Use Jimp with converted text
+        const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+        card.print(font, x, y, {
+          text: convertedText,
+          alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
+          alignmentY: Jimp.VERTICAL_ALIGN_TOP
+        }, card.getWidth(), card.getHeight());
+        
+        console.log('✅ DEBUG: Unicode text rendered with conversion method');
+        
+      } catch (jimpError) {
+        console.error('All rendering methods failed:', jimpError);
+        
+        // Last resort: Use original text and hope for the best
+        const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+        card.print(font, x, y, text, card.getWidth(), card.getHeight());
+      }
     }
   }
 
