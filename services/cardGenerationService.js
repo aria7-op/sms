@@ -208,6 +208,30 @@ class CardGenerationService {
   }
 
   /**
+   * Check if text contains Unicode characters that might not be supported by default fonts
+   */
+  hasUnicodeCharacters(text) {
+    if (!text) return false;
+    // Check for non-ASCII characters (Dari/Persian, Arabic, etc.)
+    return /[^\x00-\x7F]/.test(text);
+  }
+
+  /**
+   * Get safe text for rendering (fallback to English if Unicode not supported)
+   */
+  getSafeText(primaryText, fallbackText) {
+    if (!primaryText) return fallbackText || 'N/A';
+    
+    // If primary text has Unicode characters, use fallback if available
+    if (this.hasUnicodeCharacters(primaryText)) {
+      console.log('🔍 DEBUG: Unicode detected in text:', primaryText, 'using fallback:', fallbackText);
+      return fallbackText || primaryText; // Use fallback or original if no fallback
+    }
+    
+    return primaryText;
+  }
+
+  /**
    * Add text to the card
    */
   async addTextToCard(card, student) {
@@ -233,7 +257,8 @@ class CardGenerationService {
       // Using white fonts for better visibility on dark card backgrounds
       
       // Field 1: Student name (use Dari name if available, otherwise English) - Large font
-      const studentName = student.user.dariName || `${student.user.firstName} ${student.user.lastName}`;
+      const studentEnglishName = `${student.user.firstName || ''} ${student.user.lastName || ''}`.trim();
+      const studentName = this.getSafeText(student.user.dariName, studentEnglishName);
       console.log('🔍 DEBUG: Adding student name:', studentName, 'at position:', textPositions.studentName);
       card.print(fontLarge, textPositions.studentName.x, textPositions.studentName.y, {
         text: studentName,
@@ -242,8 +267,9 @@ class CardGenerationService {
       }, cardWidth, cardHeight);
 
       // Field 2: Parent name (use Dari name if available, otherwise English) - Medium font
-      const parentName = student.parent?.user?.dariName || 
-        (student.parent?.user?.firstName ? `${student.parent.user.firstName} ${student.parent.user.lastName}` : 'N/A');
+      const parentEnglishName = student.parent?.user?.firstName ? 
+        `${student.parent.user.firstName} ${student.parent.user.lastName}` : 'N/A';
+      const parentName = this.getSafeText(student.parent?.user?.dariName, parentEnglishName);
       console.log('🔍 DEBUG: Adding parent name:', parentName, 'at position:', textPositions.parentName);
       card.print(fontMedium, textPositions.parentName.x, textPositions.parentName.y, {
         text: parentName,
