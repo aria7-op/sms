@@ -2727,6 +2727,93 @@ class StudentController {
       const result = await CardGenerationService.generateStudentCard(actualStudentId);
       
       if (result.success) {
+        // Check if the request wants JSON response (for frontend compatibility)
+        const acceptHeader = req.headers.accept || '';
+        const wantsJson = acceptHeader.includes('application/json') || req.query.format === 'json';
+        
+        if (wantsJson) {
+          // Return JSON response with file info
+          return createSuccessResponse(res, 200, 'Student card generated successfully', {
+            filePath: result.filePath,
+            filename: result.filename,
+            student: result.student,
+            downloadUrl: `/api/students/${studentId}/card?format=file`
+          });
+        } else {
+          // Set headers for file download
+          res.setHeader('Content-Type', 'image/jpeg');
+          res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+          
+          // Send the file
+          return res.sendFile(path.resolve(result.filePath), (err) => {
+            if (err) {
+              console.error('Error sending file:', err);
+              return createErrorResponse(res, 500, 'Failed to send card file');
+            }
+          });
+        }
+      } else {
+        return createErrorResponse(res, 500, `Failed to generate student card: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error in generateStudentCard:', error);
+      return createErrorResponse(res, 500, `Failed to generate student card: ${error.message}`);
+    }
+  }
+
+  /**
+   * Download student card as file
+   */
+  async downloadStudentCard(req, res) {
+    try {
+      const { studentId } = req.params;
+      
+      // Validate ID format (can be student ID or user ID)
+      if (!/^[0-9]+$/.test(studentId)) {
+        return createErrorResponse(res, 400, 'Invalid ID format');
+      }
+
+      // Import the card generation service
+      const CardGenerationService = (await import('../services/cardGenerationService.js')).default;
+      
+      // Initialize the service
+      await CardGenerationService.initialize();
+      
+      // Check if the ID is a student ID or user ID
+      let actualStudentId = studentId;
+      
+      // First, try to find student by student ID
+      let student = await prisma.student.findFirst({
+        where: {
+          id: BigInt(studentId),
+          schoolId: req.user.schoolId,
+          deletedAt: null
+        }
+      });
+      
+      // If not found by student ID, try to find by user ID
+      if (!student) {
+        student = await prisma.student.findFirst({
+          where: {
+            userId: BigInt(studentId),
+            schoolId: req.user.schoolId,
+            deletedAt: null
+          }
+        });
+        
+        if (student) {
+          actualStudentId = student.id.toString();
+        }
+      }
+      
+      if (!student) {
+        return createErrorResponse(res, 404, 'Student not found');
+      }
+      
+      // Generate the card using the student ID
+      const result = await CardGenerationService.generateStudentCard(actualStudentId);
+      
+      if (result.success) {
         // Set headers for file download
         res.setHeader('Content-Type', 'image/jpeg');
         res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
@@ -2742,7 +2829,7 @@ class StudentController {
         return createErrorResponse(res, 500, `Failed to generate student card: ${result.error}`);
       }
     } catch (error) {
-      console.error('Error in generateStudentCard:', error);
+      console.error('Error in downloadStudentCard:', error);
       return createErrorResponse(res, 500, `Failed to generate student card: ${error.message}`);
     }
   }
