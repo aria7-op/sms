@@ -310,6 +310,40 @@ router.get('/:id/performance',
 );
 
 // ======================
+// CARD GENERATION ROUTES
+// ======================
+
+/**
+ * @route   GET /api/students/:studentId/card
+ * @desc    Generate and download student card
+ * @access  Private (ADMIN, TEACHER, STAFF)
+ * @params  {studentId} - Student ID
+ * @permissions student:read
+ */
+router.get('/:studentId/card',
+  authenticateToken,
+  authorizeRoles(['ADMIN', 'TEACHER', 'STAFF']),
+  authorizePermissions(['student:read']),
+  generalLimiter,
+  safeControllerMethod(studentController, 'generateStudentCard')
+);
+
+/**
+ * @route   GET /api/students/:studentId/card/count
+ * @desc    Get student card print count
+ * @access  Private (ADMIN, TEACHER, STAFF)
+ * @params  {studentId} - Student ID
+ * @permissions student:read
+ */
+router.get('/:studentId/card/count',
+  authenticateToken,
+  authorizeRoles(['ADMIN', 'TEACHER', 'STAFF']),
+  authorizePermissions(['student:read']),
+  generalLimiter,
+  safeControllerMethod(studentController, 'getStudentCardPrintCount')
+);
+
+// ======================
 // BULK OPERATIONS
 // ======================
 
@@ -815,39 +849,6 @@ router.post('/cache/warm',
   studentController.warmCache.bind(studentController)
 );
 
-// ======================
-// CARD GENERATION ROUTES
-// ======================
-
-/**
- * @route   GET /api/students/:studentId/card
- * @desc    Generate and download student card
- * @access  Private (ADMIN, TEACHER, STAFF)
- * @params  {studentId} - Student ID
- * @permissions students:read
- */
-router.get('/:studentId/card',
-  authenticateToken,
-  authorizeRoles(['ADMIN', 'TEACHER', 'STAFF']),
-  authorizePermissions(['students:read']),
-  generalLimiter,
-  safeControllerMethod(studentController, 'generateStudentCard')
-);
-
-/**
- * @route   GET /api/students/:studentId/card/count
- * @desc    Get student card print count
- * @access  Private (ADMIN, TEACHER, STAFF)
- * @params  {studentId} - Student ID
- * @permissions students:read
- */
-router.get('/:studentId/card/count',
-  authenticateToken,
-  authorizeRoles(['ADMIN', 'TEACHER', 'STAFF']),
-  authorizePermissions(['students:read']),
-  generalLimiter,
-  safeControllerMethod(studentController, 'getStudentCardPrintCount')
-);
 
 // ======================
 // ERROR HANDLING MIDDLEWARE
