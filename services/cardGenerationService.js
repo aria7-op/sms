@@ -157,6 +157,8 @@ class CardGenerationService {
           name: `${student.user.firstName} ${student.user.lastName}`,
           parentName: student.parent?.user?.firstName ? `${student.parent.user.firstName} ${student.parent.user.lastName}` : 'N/A',
           admissionNo: student.admissionNo,
+          className: student.class?.name || 'N/A',
+          classCode: student.class?.code || '',
           class: student.class?.name || 'N/A'
         }
       };
@@ -211,43 +213,55 @@ class CardGenerationService {
   async addTextToCard(card, student) {
     try {
       const cardWidth = card.getWidth();
-    const cardHeight = card.getHeight();
-    
-    // Text positions based on HTML percentages for 1085x1764 card
-    // Field 1: Student name, Field 2: Parent name, Field 3: Student User ID
-    const textPositions = {
-      studentName: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.52) },
-      parentName: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.59) },
-      studentUserId: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.80) }
-    };
+      const cardHeight = card.getHeight();
+      
+      // Text positions based on HTML percentages for 1085x1764 card
+      // Field 1: Student name, Field 2: Parent name, Field 3: Class name & code, Field 4: Student User ID
+      const textPositions = {
+        studentName: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.52) },
+        parentName: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.59) },
+        className: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.66) },
+        studentUserId: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.80) }
+      };
 
-    // Load fonts (Jimp has limited font support, using default for now)
-    const fontLarge = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
-    const fontMedium = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK);
-    const fontSmall = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK);
+      // Load fonts with white color (Jimp has limited font support, using default for now)
+      const fontLarge = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
+      const fontMedium = await Jimp.loadFont(Jimp.FONT_SANS_24_WHITE);
+      const fontSmall = await Jimp.loadFont(Jimp.FONT_SANS_20_WHITE);
 
-    // Add the three required fields to the card
-    
-    // Field 1: Student name (from users table)
-    card.print(fontLarge, textPositions.studentName.x, textPositions.studentName.y, {
-      text: `${student.user.firstName} ${student.user.lastName}`,
-      alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
-      alignmentY: Jimp.VERTICAL_ALIGN_TOP
-    }, cardWidth, cardHeight);
+      // Add the four required fields to the card
+      
+      // Field 1: Student name (from users table) - Large white font
+      card.print(fontLarge, textPositions.studentName.x, textPositions.studentName.y, {
+        text: `${student.user.firstName} ${student.user.lastName}`,
+        alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
+        alignmentY: Jimp.VERTICAL_ALIGN_TOP
+      }, cardWidth, cardHeight);
 
-    // Field 2: Parent name (from users table)
-    card.print(fontMedium, textPositions.parentName.x, textPositions.parentName.y, {
-      text: student.parent?.user?.firstName ? `${student.parent.user.firstName} ${student.parent.user.lastName}` : 'N/A',
-      alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
-      alignmentY: Jimp.VERTICAL_ALIGN_TOP
-    }, cardWidth, cardHeight);
+      // Field 2: Parent name (from users table) - Medium white font
+      card.print(fontMedium, textPositions.parentName.x, textPositions.parentName.y, {
+        text: student.parent?.user?.firstName ? `${student.parent.user.firstName} ${student.parent.user.lastName}` : 'N/A',
+        alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
+        alignmentY: Jimp.VERTICAL_ALIGN_TOP
+      }, cardWidth, cardHeight);
 
-    // Field 3: Student User ID (from users table)
-    card.print(fontSmall, textPositions.studentUserId.x, textPositions.studentUserId.y, {
-      text: student.userId ? student.userId.toString() : 'N/A',
-      alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
-      alignmentY: Jimp.VERTICAL_ALIGN_TOP
-    }, cardWidth, cardHeight);
+      // Field 3: Class name and class code - Medium white font
+      const className = student.class?.name || 'N/A';
+      const classCode = student.class?.code || '';
+      const classText = classCode ? `${className} (${classCode})` : className;
+      
+      card.print(fontMedium, textPositions.className.x, textPositions.className.y, {
+        text: classText,
+        alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
+        alignmentY: Jimp.VERTICAL_ALIGN_TOP
+      }, cardWidth, cardHeight);
+
+      // Field 4: Student User ID (from users table) - Small white font
+      card.print(fontSmall, textPositions.studentUserId.x, textPositions.studentUserId.y, {
+        text: student.userId ? student.userId.toString() : 'N/A',
+        alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
+        alignmentY: Jimp.VERTICAL_ALIGN_TOP
+      }, cardWidth, cardHeight);
 
     } catch (error) {
       console.error('Error adding text to card:', error);
