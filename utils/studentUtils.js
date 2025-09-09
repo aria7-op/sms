@@ -42,6 +42,7 @@ export const StudentCreateSchema = z.object({
   user: z.object({
     firstName: z.string().min(2).max(50),
     lastName: z.string().min(2).max(50),
+    dariName: z.string().max(100).optional(),
     phone: z.string().regex(/^\+?[\d\s\-\(\)]+$/).optional(),
     gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
     dateOfBirth: z.string().optional(),
@@ -56,6 +57,7 @@ export const StudentCreateSchema = z.object({
     user: z.object({
       firstName: z.string().min(2).max(50),
       lastName: z.string().min(2).max(50),
+      dariName: z.string().max(100).optional(),
       phone: z.string().regex(/^\+?[\d\s\-\(\)]+$/).optional(),
       gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
       address: z.string().max(255).optional(),
@@ -106,6 +108,7 @@ export const StudentUpdateSchema = z.object({
   user: z.object({
     firstName: z.string().min(2).max(50).optional(),
     lastName: z.string().min(2).max(50).optional(),
+    dariName: z.string().max(100).optional(),
     phone: z.string().regex(/^\+?[\d\s\-\(\)]+$/).optional(),
     gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
     dateOfBirth: z.string().optional(),
@@ -121,6 +124,7 @@ export const StudentUpdateSchema = z.object({
     user: z.object({
       firstName: z.string().min(2).max(50).optional(),
       lastName: z.string().min(2).max(50).optional(),
+      dariName: z.string().max(100).optional(),
       phone: z.string().regex(/^\+?[\d\s\-\(\)]+$/).optional(),
       gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']).optional(),
       address: z.string().max(255).optional(),
