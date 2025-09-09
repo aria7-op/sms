@@ -3,6 +3,7 @@ import { z } from 'zod';
 import studentController from '../controllers/studentController.js';
 import gradeController from '../controllers/gradeController.js';
 import paymentController from '../controllers/paymentController.js';
+import { upload, handleUploadErrors, processUploadedFile } from '../middleware/studentUpload.js';
 import { 
   studentCacheMiddleware, 
   studentListCacheMiddleware,
@@ -360,6 +361,9 @@ router.post('/:studentId/avatar',
   authorizeRoles(['ADMIN', 'TEACHER', 'STAFF']),
   authorizePermissions(['student:update']),
   generalLimiter,
+  upload.single('avatar'),
+  handleUploadErrors,
+  processUploadedFile,
   safeControllerMethod(studentController, 'uploadStudentAvatar')
 );
 
