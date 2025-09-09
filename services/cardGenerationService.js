@@ -232,8 +232,8 @@ class CardGenerationService {
       // Add the four required fields to the card
       // Using white fonts for better visibility on dark card backgrounds
       
-      // Field 1: Student name (from users table) - Large font
-      const studentName = `${student.user.firstName} ${student.user.lastName}`;
+      // Field 1: Student name (use Dari name if available, otherwise English) - Large font
+      const studentName = student.user.dariName || `${student.user.firstName} ${student.user.lastName}`;
       console.log('🔍 DEBUG: Adding student name:', studentName, 'at position:', textPositions.studentName);
       card.print(fontLarge, textPositions.studentName.x, textPositions.studentName.y, {
         text: studentName,
@@ -241,8 +241,9 @@ class CardGenerationService {
         alignmentY: Jimp.VERTICAL_ALIGN_TOP
       }, cardWidth, cardHeight);
 
-      // Field 2: Parent name (from users table) - Medium font
-      const parentName = student.parent?.user?.firstName ? `${student.parent.user.firstName} ${student.parent.user.lastName}` : 'N/A';
+      // Field 2: Parent name (use Dari name if available, otherwise English) - Medium font
+      const parentName = student.parent?.user?.dariName || 
+        (student.parent?.user?.firstName ? `${student.parent.user.firstName} ${student.parent.user.lastName}` : 'N/A');
       console.log('🔍 DEBUG: Adding parent name:', parentName, 'at position:', textPositions.parentName);
       card.print(fontMedium, textPositions.parentName.x, textPositions.parentName.y, {
         text: parentName,
