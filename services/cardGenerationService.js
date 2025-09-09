@@ -224,31 +224,37 @@ class CardGenerationService {
         studentUserId: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.80) }
       };
 
-      // Load fonts with white color (Jimp has limited font support, using default for now)
+      // Load fonts with white color (Jimp supports white fonts)
       const fontLarge = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
-      const fontMedium = await Jimp.loadFont(Jimp.FONT_SANS_24_WHITE);
-      const fontSmall = await Jimp.loadFont(Jimp.FONT_SANS_20_WHITE);
+      const fontMedium = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+      const fontSmall = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
 
       // Add the four required fields to the card
+      // Using white fonts for better visibility on dark card backgrounds
       
-      // Field 1: Student name (from users table) - Large white font
+      // Field 1: Student name (from users table) - Large font
+      const studentName = `${student.user.firstName} ${student.user.lastName}`;
+      console.log('🔍 DEBUG: Adding student name:', studentName, 'at position:', textPositions.studentName);
       card.print(fontLarge, textPositions.studentName.x, textPositions.studentName.y, {
-        text: `${student.user.firstName} ${student.user.lastName}`,
+        text: studentName,
         alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
         alignmentY: Jimp.VERTICAL_ALIGN_TOP
       }, cardWidth, cardHeight);
 
-      // Field 2: Parent name (from users table) - Medium white font
+      // Field 2: Parent name (from users table) - Medium font
+      const parentName = student.parent?.user?.firstName ? `${student.parent.user.firstName} ${student.parent.user.lastName}` : 'N/A';
+      console.log('🔍 DEBUG: Adding parent name:', parentName, 'at position:', textPositions.parentName);
       card.print(fontMedium, textPositions.parentName.x, textPositions.parentName.y, {
-        text: student.parent?.user?.firstName ? `${student.parent.user.firstName} ${student.parent.user.lastName}` : 'N/A',
+        text: parentName,
         alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
         alignmentY: Jimp.VERTICAL_ALIGN_TOP
       }, cardWidth, cardHeight);
 
-      // Field 3: Class name and class code - Medium white font
+      // Field 3: Class name and class code - Medium font
       const className = student.class?.name || 'N/A';
       const classCode = student.class?.code || '';
       const classText = classCode ? `${className} (${classCode})` : className;
+      console.log('🔍 DEBUG: Adding class:', classText, 'at position:', textPositions.className);
       
       card.print(fontMedium, textPositions.className.x, textPositions.className.y, {
         text: classText,
@@ -256,9 +262,11 @@ class CardGenerationService {
         alignmentY: Jimp.VERTICAL_ALIGN_TOP
       }, cardWidth, cardHeight);
 
-      // Field 4: Student User ID (from users table) - Small white font
+      // Field 4: Student User ID (from users table) - Small font
+      const userId = student.userId ? student.userId.toString() : 'N/A';
+      console.log('🔍 DEBUG: Adding user ID:', userId, 'at position:', textPositions.studentUserId);
       card.print(fontSmall, textPositions.studentUserId.x, textPositions.studentUserId.y, {
-        text: student.userId ? student.userId.toString() : 'N/A',
+        text: userId,
         alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
         alignmentY: Jimp.VERTICAL_ALIGN_TOP
       }, cardWidth, cardHeight);
