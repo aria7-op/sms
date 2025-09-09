@@ -175,6 +175,7 @@ model User {
   firstName                       String                     @db.VarChar(50)
   middleName                      String?                    @db.VarChar(50)
   lastName                        String                     @db.VarChar(50)
+  dariName                        String?                    @db.VarChar(100)
   displayName                     String?                    @db.VarChar(100)
   gender                          Gender?
   birthDate                       DateTime?
@@ -406,7 +407,7 @@ model Class {
   id             BigInt         @id @default(autoincrement())
   uuid           String         @unique @default(uuid()) @db.VarChar(36)
   name           String         @db.VarChar(100)
-  code           String         @unique @db.VarChar(20)
+  code           String         @db.VarChar(20)
   level          Int
   section        String?        @db.VarChar(10)
   roomNumber     String?        @db.VarChar(20)
@@ -3140,6 +3141,7 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
+
 
 
 
