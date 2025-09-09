@@ -2678,10 +2678,10 @@ class StudentController {
    */
   async generateStudentCard(req, res) {
     try {
-      const { id } = req.params;
+      const { studentId } = req.params;
       
       // Validate ID format (can be student ID or user ID)
-      if (!/^[0-9]+$/.test(id)) {
+      if (!/^[0-9]+$/.test(studentId)) {
         return createErrorResponse(res, 400, 'Invalid ID format');
       }
 
@@ -2692,12 +2692,12 @@ class StudentController {
       await CardGenerationService.initialize();
       
       // Check if the ID is a student ID or user ID
-      let studentId = id;
+      let actualStudentId = studentId;
       
       // First, try to find student by student ID
       let student = await prisma.student.findFirst({
         where: {
-          id: BigInt(id),
+          id: BigInt(studentId),
           schoolId: req.user.schoolId,
           deletedAt: null
         }
@@ -2707,14 +2707,14 @@ class StudentController {
       if (!student) {
         student = await prisma.student.findFirst({
           where: {
-            userId: BigInt(id),
+            userId: BigInt(studentId),
             schoolId: req.user.schoolId,
             deletedAt: null
           }
         });
         
         if (student) {
-          studentId = student.id.toString();
+          actualStudentId = student.id.toString();
         }
       }
       
@@ -2723,7 +2723,7 @@ class StudentController {
       }
       
       // Generate the card using the student ID
-      const result = await CardGenerationService.generateStudentCard(studentId);
+      const result = await CardGenerationService.generateStudentCard(actualStudentId);
       
       if (result.success) {
         return createSuccessResponse(res, 200, 'Student card generated successfully', {
@@ -2737,6 +2737,135 @@ class StudentController {
     } catch (error) {
       console.error('Error in generateStudentCard:', error);
       return createErrorResponse(res, 500, `Failed to generate student card: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get student card print count
+   */
+  async getStudentCardPrintCount(req, res) {
+    try {
+      const { studentId } = req.params;
+      
+      // Validate ID format
+      if (!/^[0-9]+$/.test(studentId)) {
+        return createErrorResponse(res, 400, 'Invalid ID format');
+      }
+
+      // Import the card generation service
+      const CardGenerationService = (await import('../services/cardGenerationService.js')).default;
+      
+      // Get the print count
+      const printCount = await CardGenerationService.getCardPrintCount(studentId);
+      
+      return createSuccessResponse(res, 200, 'Card print count retrieved successfully', {
+        studentId: studentId,
+        printCount: printCount
+      });
+    } catch (error) {
+      console.error('Error in getStudentCardPrintCount:', error);
+      return createErrorResponse(res, 500, `Failed to get card print count: ${error.message}`);
+    }
+  }
+
+  /**
+   * Upload student avatar
+   */
+  async uploadStudentAvatar(req, res) {
+    try {
+      const { studentId } = req.params;
+      
+      // Validate ID format
+      if (!/^[0-9]+$/.test(studentId)) {
+        return createErrorResponse(res, 400, 'Invalid ID format');
+      }
+
+      // Check if file was uploaded
+      if (!req.file) {
+        return createErrorResponse(res, 400, 'No file uploaded');
+      }
+
+      // Get student data
+      const student = await prisma.student.findFirst({
+        where: {
+          id: BigInt(studentId),
+          schoolId: req.user.schoolId,
+          deletedAt: null
+        },
+        include: {
+          user: true
+        }
+      });
+
+      if (!student) {
+        return createErrorResponse(res, 404, 'Student not found');
+      }
+
+      // Update user avatar
+      await prisma.user.update({
+        where: { id: student.userId },
+        data: {
+          avatar: req.file.path,
+          updatedBy: req.user.id,
+          updatedAt: new Date()
+        }
+      });
+
+      return createSuccessResponse(res, 200, 'Avatar uploaded successfully', {
+        studentId: studentId,
+        avatarPath: req.file.path,
+        filename: req.file.filename
+      });
+    } catch (error) {
+      console.error('Error in uploadStudentAvatar:', error);
+      return createErrorResponse(res, 500, `Failed to upload avatar: ${error.message}`);
+    }
+  }
+
+  /**
+   * Delete student avatar
+   */
+  async deleteStudentAvatar(req, res) {
+    try {
+      const { studentId } = req.params;
+      
+      // Validate ID format
+      if (!/^[0-9]+$/.test(studentId)) {
+        return createErrorResponse(res, 400, 'Invalid ID format');
+      }
+
+      // Get student data
+      const student = await prisma.student.findFirst({
+        where: {
+          id: BigInt(studentId),
+          schoolId: req.user.schoolId,
+          deletedAt: null
+        },
+        include: {
+          user: true
+        }
+      });
+
+      if (!student) {
+        return createErrorResponse(res, 404, 'Student not found');
+      }
+
+      // Update user avatar to null
+      await prisma.user.update({
+        where: { id: student.userId },
+        data: {
+          avatar: null,
+          updatedBy: req.user.id,
+          updatedAt: new Date()
+        }
+      });
+
+      return createSuccessResponse(res, 200, 'Avatar deleted successfully', {
+        studentId: studentId
+      });
+    } catch (error) {
+      console.error('Error in deleteStudentAvatar:', error);
+      return createErrorResponse(res, 500, `Failed to delete avatar: ${error.message}`);
     }
   }
 }
