@@ -70,24 +70,58 @@ class CardGenerationService {
       let studentPhoto = null;
       if (student.user?.avatar) {
         try {
-          // Handle both relative and absolute URLs
+          console.log('🔍 DEBUG: Processing student avatar:', student.user.avatar);
+          
+          // Handle different avatar path formats
           let imagePath = student.user.avatar;
+          
           if (imagePath.startsWith('/uploads/')) {
-            // Convert relative path to absolute
-            imagePath = path.join(process.cwd(), 'public', imagePath);
+            // Convert relative path to absolute - try both public and direct uploads
+            const publicPath = path.join(process.cwd(), 'public', imagePath);
+            const directPath = path.join(process.cwd(), imagePath);
+            
+            console.log('🔍 DEBUG: Trying public path:', publicPath);
+            console.log('🔍 DEBUG: Trying direct path:', directPath);
+            
+            if (fs.existsSync(publicPath)) {
+              imagePath = publicPath;
+              console.log('✅ DEBUG: Found image at public path');
+            } else if (fs.existsSync(directPath)) {
+              imagePath = directPath;
+              console.log('✅ DEBUG: Found image at direct path');
+            } else {
+              console.warn('❌ DEBUG: Image not found at either path');
+              imagePath = null;
+            }
           } else if (imagePath.startsWith('http')) {
             // For HTTP URLs, we'll need to download the image first
             // For now, skip external URLs
             console.warn('External image URLs not supported for card generation');
             imagePath = null;
+          } else {
+            // Try as direct file path
+            const fullPath = path.join(process.cwd(), imagePath);
+            if (fs.existsSync(fullPath)) {
+              imagePath = fullPath;
+              console.log('✅ DEBUG: Found image at full path:', fullPath);
+            } else {
+              console.warn('❌ DEBUG: Image not found at full path:', fullPath);
+              imagePath = null;
+            }
           }
           
           if (imagePath && fs.existsSync(imagePath)) {
+            console.log('✅ DEBUG: Loading image from:', imagePath);
             studentPhoto = await Jimp.read(imagePath);
+            console.log('✅ DEBUG: Image loaded successfully, size:', studentPhoto.getWidth(), 'x', studentPhoto.getHeight());
+          } else {
+            console.warn('❌ DEBUG: No valid image path found for avatar:', student.user.avatar);
           }
         } catch (error) {
-          console.warn('Could not load student photo:', error.message);
+          console.warn('❌ DEBUG: Could not load student photo:', error.message);
         }
+      } else {
+        console.log('ℹ️ DEBUG: No avatar found for student');
       }
 
       // Process and add student photo
