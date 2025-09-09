@@ -316,9 +316,10 @@ router.get('/:id/performance',
 
 /**
  * @route   GET /api/students/:studentId/card
- * @desc    Generate and download student card
+ * @desc    Generate student card (JSON response with file info)
  * @access  Private (ADMIN, TEACHER, STAFF)
  * @params  {studentId} - Student ID
+ * @query   {format} - 'json' for JSON response, 'file' for direct download
  * @permissions student:read
  */
 router.get('/:studentId/card',
@@ -327,6 +328,21 @@ router.get('/:studentId/card',
   authorizePermissions(['student:read']),
   generalLimiter,
   safeControllerMethod(studentController, 'generateStudentCard')
+);
+
+/**
+ * @route   GET /api/students/:studentId/card/download
+ * @desc    Generate and download student card as file
+ * @access  Private (ADMIN, TEACHER, STAFF)
+ * @params  {studentId} - Student ID
+ * @permissions student:read
+ */
+router.get('/:studentId/card/download',
+  authenticateToken,
+  authorizeRoles(['ADMIN', 'TEACHER', 'STAFF']),
+  authorizePermissions(['student:read']),
+  generalLimiter,
+  safeControllerMethod(studentController, 'downloadStudentCard')
 );
 
 /**
