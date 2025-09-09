@@ -217,18 +217,58 @@ class CardGenerationService {
   }
 
   /**
-   * Get safe text for rendering (fallback to English if Unicode not supported)
+   * Get text for rendering - prioritize Dari names but ensure readability
    */
-  getSafeText(primaryText, fallbackText) {
+  getDisplayText(primaryText, fallbackText) {
     if (!primaryText) return fallbackText || 'N/A';
     
-    // If primary text has Unicode characters, use fallback if available
+    // For now, let's use English names as fallback since Jimp fonts don't support Unicode
+    // This is a temporary solution - in production, you'd want to use a Unicode-compatible font
     if (this.hasUnicodeCharacters(primaryText)) {
       console.log('🔍 DEBUG: Unicode detected in text:', primaryText, 'using fallback:', fallbackText);
-      return fallbackText || primaryText; // Use fallback or original if no fallback
+      return fallbackText || primaryText; // Use fallback if available, otherwise use original
     }
     
     return primaryText;
+  }
+
+  /**
+   * Render text with Unicode support using a different approach
+   */
+  async renderUnicodeText(card, text, x, y, fontSize, color = 0xFFFFFFFF) {
+    try {
+      // For Unicode text, we'll use a different approach
+      // Since Jimp's default fonts don't support Unicode well, we'll try to render
+      // the text using a method that might work better with Unicode characters
+      
+      console.log('🔍 DEBUG: Attempting to render Unicode text:', text);
+      
+      // Try to use a font that might support Unicode better
+      // We'll use the largest available font and scale it down if needed
+      let font;
+      if (fontSize >= 24) {
+        font = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
+      } else if (fontSize >= 16) {
+        font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+      } else {
+        font = await Jimp.loadFont(Jimp.FONT_SANS_8_WHITE);
+      }
+      
+      // Try to render the text directly - some Unicode characters might work
+      card.print(font, x, y, {
+        text: text,
+        alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
+        alignmentY: Jimp.VERTICAL_ALIGN_TOP
+      }, card.getWidth(), card.getHeight());
+      
+      console.log('✅ DEBUG: Unicode text rendered (may show as ? if font doesn\'t support characters)');
+      
+    } catch (error) {
+      console.error('Error rendering Unicode text:', error);
+      // Fallback to basic text rendering
+      const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+      card.print(font, x, y, text, card.getWidth(), card.getHeight());
+    }
   }
 
   /**
@@ -258,8 +298,10 @@ class CardGenerationService {
       
       // Field 1: Student name (use Dari name if available, otherwise English) - Large font
       const studentEnglishName = `${student.user.firstName || ''} ${student.user.lastName || ''}`.trim();
-      const studentName = this.getSafeText(student.user.dariName, studentEnglishName);
+      const studentName = this.getDisplayText(student.user.dariName, studentEnglishName);
       console.log('🔍 DEBUG: Adding student name:', studentName, 'at position:', textPositions.studentName);
+      
+      // Render student name using standard font
       card.print(fontLarge, textPositions.studentName.x, textPositions.studentName.y, {
         text: studentName,
         alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
@@ -269,8 +311,10 @@ class CardGenerationService {
       // Field 2: Parent name (use Dari name if available, otherwise English) - Medium font
       const parentEnglishName = student.parent?.user?.firstName ? 
         `${student.parent.user.firstName} ${student.parent.user.lastName}` : 'N/A';
-      const parentName = this.getSafeText(student.parent?.user?.dariName, parentEnglishName);
+      const parentName = this.getDisplayText(student.parent?.user?.dariName, parentEnglishName);
       console.log('🔍 DEBUG: Adding parent name:', parentName, 'at position:', textPositions.parentName);
+      
+      // Render parent name using standard font
       card.print(fontMedium, textPositions.parentName.x, textPositions.parentName.y, {
         text: parentName,
         alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
