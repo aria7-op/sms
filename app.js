@@ -702,6 +702,13 @@ dotenv.config();
   });
 
 // ============================================================================
+// STATIC FILE SERVING
+// ============================================================================
+
+// Serve uploaded files
+app.use('/uploads', express.static('uploads'));
+
+// ============================================================================
 // API ROUTES - Using route modules from ./routes/ folder
 // ============================================================================
 
@@ -1513,20 +1520,8 @@ app.use('/api/files', filesRoutes);
     });
   });
 
-  // Initialize WebSocket service
-let websocketService = null;
-try {
-  websocketService = new WebSocketService();
-  websocketService.initialize(server);
-  
-  // Set WebSocket service reference in notification service
-  setWebSocketService(websocketService);
-  
-  console.log('✅ WebSocket service initialized successfully');
-} catch (error) {
-  console.error('❌ Failed to initialize WebSocket service:', error);
-  websocketService = null;
-}
+        // WebSocket service removed - no longer needed
+      console.log('ℹ️ WebSocket service disabled - using polling-based notifications only');
 
   // Global error handler
   app.use((err, req, res, next) => {
