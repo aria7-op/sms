@@ -1,4 +1,5 @@
 import Jimp from 'jimp';
+import { createCanvas, loadImage, registerFont } from 'canvas';
 import path from 'path';
 import fs from 'fs-extra';
 import { PrismaClient } from '../generated/prisma/index.js';
@@ -17,6 +18,41 @@ class CardGenerationService {
       medium: null,
       small: null
     };
+    
+    // Try to register a Unicode-compatible font if available
+    this.registerUnicodeFont();
+  }
+
+  /**
+   * Register a Unicode-compatible font for text rendering
+   */
+  registerUnicodeFont() {
+    try {
+      // Try to register common Unicode fonts that might be available on the system
+      const possibleFonts = [
+        '/System/Library/Fonts/Arial Unicode MS.ttf', // macOS
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', // Linux
+        'C:/Windows/Fonts/arial.ttf', // Windows
+        'C:/Windows/Fonts/arialuni.ttf' // Windows Arial Unicode MS
+      ];
+      
+      for (const fontPath of possibleFonts) {
+        if (fs.existsSync(fontPath)) {
+          registerFont(fontPath, { family: 'UnicodeFont' });
+          console.log('✅ DEBUG: Registered Unicode font:', fontPath);
+          this.unicodeFontFamily = 'UnicodeFont';
+          return;
+        }
+      }
+      
+      // If no specific Unicode font found, use system default
+      this.unicodeFontFamily = 'Arial, sans-serif';
+      console.log('🔍 DEBUG: Using system default font for Unicode support');
+      
+    } catch (error) {
+      console.log('⚠️ DEBUG: Could not register Unicode font, using default:', error.message);
+      this.unicodeFontFamily = 'Arial, sans-serif';
+    }
   }
 
   /**
@@ -228,35 +264,36 @@ class CardGenerationService {
   }
 
   /**
-   * Render text with Unicode support using a different approach
+   * Render text with Unicode support using Canvas
    */
-  async renderUnicodeText(card, text, x, y, fontSize, color = 0xFFFFFFFF) {
+  async renderUnicodeText(card, text, x, y, fontSize, color = '#FFFFFF') {
     try {
-      console.log('🔍 DEBUG: Attempting to render Unicode text:', text);
+      console.log('🔍 DEBUG: Rendering Unicode text with Canvas:', text);
       
-      // Try to use the largest available font for better Unicode support
-      let font;
-      if (fontSize >= 24) {
-        font = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
-      } else if (fontSize >= 16) {
-        font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
-      } else {
-        font = await Jimp.loadFont(Jimp.FONT_SANS_8_WHITE);
-      }
+      // Create a canvas for text rendering
+      const textCanvas = createCanvas(400, 100);
+      const ctx = textCanvas.getContext('2d');
       
-      // Try to render the text directly - some Unicode characters might work
-      // Even if they show as ?, at least we're trying to render the Dari text
-      card.print(font, x, y, {
-        text: text,
-        alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
-        alignmentY: Jimp.VERTICAL_ALIGN_TOP
-      }, card.getWidth(), card.getHeight());
+      // Set font with Unicode support
+      ctx.font = `${fontSize}px ${this.unicodeFontFamily}`;
+      ctx.fillStyle = color;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
       
-      console.log('✅ DEBUG: Unicode text rendered (may show as ? if font doesn\'t support characters)');
+      // Render the text
+      ctx.fillText(text, 0, 0);
+      
+      // Get the text image
+      const textImage = await loadImage(textCanvas.toBuffer());
+      
+      // Composite the text onto the main card
+      card.composite(textImage, x, y);
+      
+      console.log('✅ DEBUG: Unicode text rendered successfully with Canvas');
       
     } catch (error) {
-      console.error('Error rendering Unicode text:', error);
-      // Fallback to basic text rendering
+      console.error('Error rendering Unicode text with Canvas:', error);
+      // Fallback to Jimp rendering
       const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
       card.print(font, x, y, text, card.getWidth(), card.getHeight());
     }
