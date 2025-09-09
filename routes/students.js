@@ -344,6 +344,41 @@ router.get('/:studentId/card/count',
 );
 
 // ======================
+// IMAGE UPLOAD ROUTES
+// ======================
+
+/**
+ * @route   POST /api/students/:studentId/avatar
+ * @desc    Upload student avatar image
+ * @access  Private (ADMIN, TEACHER, STAFF)
+ * @params  {studentId} - Student ID
+ * @body    {avatar} - Image file
+ * @permissions student:update
+ */
+router.post('/:studentId/avatar',
+  authenticateToken,
+  authorizeRoles(['ADMIN', 'TEACHER', 'STAFF']),
+  authorizePermissions(['student:update']),
+  generalLimiter,
+  safeControllerMethod(studentController, 'uploadStudentAvatar')
+);
+
+/**
+ * @route   DELETE /api/students/:studentId/avatar
+ * @desc    Delete student avatar image
+ * @access  Private (ADMIN, TEACHER, STAFF)
+ * @params  {studentId} - Student ID
+ * @permissions student:update
+ */
+router.delete('/:studentId/avatar',
+  authenticateToken,
+  authorizeRoles(['ADMIN', 'TEACHER', 'STAFF']),
+  authorizePermissions(['student:update']),
+  generalLimiter,
+  safeControllerMethod(studentController, 'deleteStudentAvatar')
+);
+
+// ======================
 // BULK OPERATIONS
 // ======================
 
