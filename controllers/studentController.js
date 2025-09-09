@@ -1,4 +1,5 @@
 import { PrismaClient } from '../generated/prisma/index.js';
+import path from 'path';
 import { 
   handlePrismaError, 
   createSuccessResponse, 
@@ -2726,16 +2727,94 @@ class StudentController {
       const result = await CardGenerationService.generateStudentCard(actualStudentId);
       
       if (result.success) {
-        return createSuccessResponse(res, 200, 'Student card generated successfully', {
-          filePath: result.filePath,
-          filename: result.filename,
-          student: result.student
+        // Set headers for file download
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+        
+        // Send the file
+        return res.sendFile(path.resolve(result.filePath), (err) => {
+          if (err) {
+            console.error('Error sending file:', err);
+            return createErrorResponse(res, 500, 'Failed to send card file');
+          }
         });
       } else {
         return createErrorResponse(res, 500, `Failed to generate student card: ${result.error}`);
       }
     } catch (error) {
       console.error('Error in generateStudentCard:', error);
+      return createErrorResponse(res, 500, `Failed to generate student card: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate student card as base64 (alternative endpoint)
+   */
+  async generateStudentCardBase64(req, res) {
+    try {
+      const { studentId } = req.params;
+      
+      // Validate ID format (can be student ID or user ID)
+      if (!/^[0-9]+$/.test(studentId)) {
+        return createErrorResponse(res, 400, 'Invalid ID format');
+      }
+
+      // Import the card generation service
+      const CardGenerationService = (await import('../services/cardGenerationService.js')).default;
+      
+      // Initialize the service
+      await CardGenerationService.initialize();
+      
+      // Check if the ID is a student ID or user ID
+      let actualStudentId = studentId;
+      
+      // First, try to find student by student ID
+      let student = await prisma.student.findFirst({
+        where: {
+          id: BigInt(studentId),
+          schoolId: req.user.schoolId,
+          deletedAt: null
+        }
+      });
+      
+      // If not found by student ID, try to find by user ID
+      if (!student) {
+        student = await prisma.student.findFirst({
+          where: {
+            userId: BigInt(studentId),
+            schoolId: req.user.schoolId,
+            deletedAt: null
+          }
+        });
+        
+        if (student) {
+          actualStudentId = student.id.toString();
+        }
+      }
+      
+      if (!student) {
+        return createErrorResponse(res, 404, 'Student not found');
+      }
+      
+      // Generate the card using the student ID
+      const result = await CardGenerationService.generateStudentCard(actualStudentId);
+      
+      if (result.success) {
+        // Read the file and convert to base64
+        const fs = await import('fs-extra');
+        const fileBuffer = await fs.readFile(result.filePath);
+        const base64Image = fileBuffer.toString('base64');
+        
+        return createSuccessResponse(res, 200, 'Student card generated successfully', {
+          filename: result.filename,
+          imageData: `data:image/jpeg;base64,${base64Image}`,
+          student: result.student
+        });
+      } else {
+        return createErrorResponse(res, 500, `Failed to generate student card: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error in generateStudentCardBase64:', error);
       return createErrorResponse(res, 500, `Failed to generate student card: ${error.message}`);
     }
   }
