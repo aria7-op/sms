@@ -392,21 +392,8 @@
       console.log(`Using provided class code: ${classCode}`);
     }
 
-    // Always check if the class code already exists in the school
-    console.log(`Checking if class code "${classCode}" already exists in school ${schoolId}`);
-    const existingClass = await prisma.class.findFirst({
-      where: {
-        code: classCode,
-        schoolId: schoolId,
-      }
-    });
-    
-    if (existingClass) {
-      console.log(`Class code "${classCode}" already exists:`, existingClass);
-      return res.status(409).json(formatResponse(false, null, 'Class code already exists in this school'));
-    }
-    
-    console.log(`Class code "${classCode}" is available, proceeding with creation`);
+    // Class code validation removed - multiple classes can now have the same code
+    console.log(`Using class code "${classCode}" for class creation`);
       
       // Validate class teacher if provided
       if (data.classTeacherId) {
@@ -504,20 +491,7 @@
         return res.status(404).json(formatResponse(false, null, 'Class not found'));
       }
       
-      // Check if class code already exists in the school (if code is being updated)
-      if (data.code && data.code !== existingClass.code) {
-        const duplicateClass = await prisma.class.findFirst({
-          where: {
-            code: data.code,
-            schoolId: existingClass.schoolId,
-            id: { not: id },
-          }
-        });
-        
-        if (duplicateClass) {
-          return res.status(409).json(formatResponse(false, null, 'Class code already exists in this school'));
-        }
-      }
+      // Class code validation removed - multiple classes can now have the same code
       
       // Validate capacity (cannot be less than current student count)
       if (data.capacity && data.capacity < existingClass.students.length) {
@@ -891,33 +865,12 @@
           classData.code = classCode;
             }
             
-            // Check if class code already exists
-            const existingClass = await prisma.class.findFirst({
-              where: {
-                code: classCode,
-                schoolId: schoolId,
-              }
+            // Class code validation removed - multiple classes can now have the same code
+            results.created.push({
+              data: classData,
+              status: 'valid',
             });
-            
-            if (existingClass && options.skipDuplicates) {
-              results.skipped.push({
-                data: classData,
-                reason: 'Class code already exists',
-              });
-              results.summary.skipped++;
-            } else if (existingClass) {
-              results.failed.push({
-                data: classData,
-                error: 'Class code already exists',
-              });
-              results.summary.failed++;
-            } else {
-              results.created.push({
-                data: classData,
-                status: 'valid',
-              });
-              results.summary.created++;
-            }
+            results.summary.created++;
           } catch (error) {
             results.failed.push({
               data: classData,
@@ -952,31 +905,8 @@
         classCode = await generateNextClassCode(classData.name, schoolId);
         classData.code = classCode;
           } else {
-            // Check if the provided class code already exists
-            const existingClass = await prisma.class.findFirst({
-              where: {
-                code: classCode,
-                schoolId: schoolId,
-              }
-            });
-            
-            if (existingClass && options.skipDuplicates) {
-              results.skipped.push({
-                data: classData,
-                reason: 'Class code already exists',
-              });
-              results.summary.skipped++;
-              continue;
-            }
-            
-            if (existingClass) {
-              results.failed.push({
-                data: classData,
-                error: 'Class code already exists',
-              });
-              results.summary.failed++;
-              continue;
-            }
+            // Class code validation removed - multiple classes can now have the same code
+            console.log(`Using provided class code: ${classCode}`);
           }
           
           // Validate class teacher if provided
@@ -3285,33 +3215,12 @@
       if (options.validateOnly) {
         for (const classData of data) {
           try {
-            // Check if class code already exists
-            const existingClass = await prisma.class.findFirst({
-              where: {
-                code: classData.code,
-                schoolId: classData.schoolId || defaultSchoolId,
-              }
+            // Class code validation removed - multiple classes can now have the same code
+            results.imported.push({
+              data: classData,
+              status: 'valid',
             });
-            
-            if (existingClass && options.skipDuplicates) {
-              results.skipped.push({
-                data: classData,
-                reason: 'Class code already exists',
-              });
-              results.summary.skipped++;
-            } else if (existingClass) {
-              results.failed.push({
-                data: classData,
-                error: 'Class code already exists',
-              });
-              results.summary.failed++;
-            } else {
-              results.imported.push({
-                data: classData,
-                status: 'valid',
-              });
-              results.summary.imported++;
-            }
+            results.summary.imported++;
           } catch (error) {
             results.failed.push({
               data: classData,
@@ -3333,75 +3242,30 @@
             createdBy: classData.createdBy || defaultCreatedBy,
           };
           
-          // Check if class code already exists
-          const existingClass = await prisma.class.findFirst({
-            where: {
-              code: importData.code,
-              schoolId: importData.schoolId,
+          // Class code validation removed - multiple classes can now have the same code
+          
+          // Always create new class since we allow duplicate codes
+          const createdClass = await prisma.class.create({
+            data: {
+              ...importData,
+              schoolId: BigInt(importData.schoolId),
+              createdBy: BigInt(importData.createdBy),
+              updatedBy: BigInt(req.user.id)
+            },
+            include: {
+              school: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                }
+              },
             }
           });
           
-          if (existingClass && options.skipDuplicates) {
-            results.skipped.push({
-              data: importData,
-              reason: 'Class code already exists',
-            });
-            results.summary.skipped++;
-            continue;
-          }
-          
-          if (existingClass && !options.updateExisting) {
-            results.failed.push({
-              data: importData,
-              error: 'Class code already exists',
-            });
-            results.summary.failed++;
-            continue;
-          }
-          
-          let createdClass;
-          if (existingClass && options.updateExisting) {
-            createdClass = await prisma.class.update({
-              where: { id: existingClass.id },
-              data: {
-                ...importData,
-                schoolId: BigInt(importData.schoolId),
-                createdBy: BigInt(importData.createdBy),
-                updatedBy: BigInt(req.user.id)
-              },
-              include: {
-                school: {
-                  select: {
-                    id: true,
-                    name: true,
-                    code: true,
-                  }
-                },
-              }
-            });
-          } else {
-            createdClass = await prisma.class.create({
-              data: {
-                ...importData,
-                schoolId: BigInt(importData.schoolId),
-                createdBy: BigInt(importData.createdBy),
-                updatedBy: BigInt(req.user.id)
-              },
-              include: {
-                school: {
-                  select: {
-                    id: true,
-                    name: true,
-                    code: true,
-                  }
-                },
-              }
-            });
-          }
-          
           results.imported.push({
             data: createdClass,
-            status: existingClass ? 'updated' : 'created',
+            status: 'created',
           });
           results.summary.imported++;
           
