@@ -492,14 +492,28 @@
       
       const data = parsed.data;
       
-      // Get existing class
-      const existingClass = await prisma.class.findUnique({
-        where: { id },
-        include: {
-          school: true,
-          students: true,
-        }
-      });
+      // Get existing class using raw query to avoid datetime validation issues
+      const existingClassResult = await prisma.$queryRaw`
+        SELECT c.*, s.name as school_name, s.code as school_code,
+               COUNT(st.id) as student_count
+        FROM classes c
+        LEFT JOIN schools s ON c.schoolId = s.id
+        LEFT JOIN students st ON c.id = st.classId AND st.deletedAt IS NULL
+        WHERE c.id = ${id} AND c.deletedAt IS NULL
+        GROUP BY c.id
+      `;
+      
+      const existingClass = existingClassResult[0];
+      
+      if (existingClass) {
+        // Format the result to match expected structure
+        existingClass.school = {
+          id: existingClass.schoolId,
+          name: existingClass.school_name,
+          code: existingClass.school_code
+        };
+        existingClass.students = Array.from({ length: existingClass.student_count }, () => ({}));
+      }
       
       if (!existingClass) {
         return res.status(404).json(formatResponse(false, null, 'Class not found'));
@@ -507,15 +521,15 @@
       
       // Check if class code already exists in the school (if code is being updated)
       if (data.code && data.code !== existingClass.code) {
-        const duplicateClass = await prisma.class.findFirst({
-          where: {
-            code: data.code,
-            schoolId: existingClass.schoolId,
-            id: { not: id },
-          }
-        });
+        const duplicateClassResult = await prisma.$queryRaw`
+          SELECT id FROM classes 
+          WHERE code = ${data.code} 
+            AND schoolId = ${existingClass.schoolId} 
+            AND id != ${id} 
+            AND deletedAt IS NULL
+        `;
         
-        if (duplicateClass) {
+        if (duplicateClassResult.length > 0) {
           return res.status(409).json(formatResponse(false, null, 'Class code already exists in this school'));
         }
       }
@@ -528,15 +542,17 @@
       
       // Validate class teacher if provided
       if (data.classTeacherId && data.classTeacherId !== existingClass.classTeacherId) {
-        const teacher = await prisma.teacher.findUnique({
-          where: { id: data.classTeacherId },
-          include: { school: true }
-        });
+        const teacherResult = await prisma.$queryRaw`
+          SELECT id, schoolId FROM teachers 
+          WHERE id = ${data.classTeacherId} 
+            AND deletedAt IS NULL
+        `;
         
-        if (!teacher) {
+        if (teacherResult.length === 0) {
           return res.status(400).json(formatResponse(false, null, 'Class teacher not found'));
         }
         
+        const teacher = teacherResult[0];
         if (teacher.schoolId !== existingClass.schoolId) {
           return res.status(400).json(formatResponse(false, null, 'Class teacher does not belong to the same school'));
         }
@@ -549,28 +565,87 @@
       delete cleanData.updatedAt;
       delete cleanData.deletedAt;
       
-      // Update the class
-      const updatedClass = await prisma.class.update({
-        where: { id },
-        data: cleanData,
-        include: {
-          school: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-            }
-          },
-          _count: {
-            select: {
-              students: true,
-              subjects: true,
-              timetables: true,
-              exams: true,
-            }
-          }
-        }
-      });
+      // Update the class using raw query to avoid datetime validation issues
+      const updateFields = [];
+      const updateValues = [];
+      
+      if (cleanData.name !== undefined) {
+        updateFields.push('name = ?');
+        updateValues.push(cleanData.name);
+      }
+      if (cleanData.code !== undefined) {
+        updateFields.push('code = ?');
+        updateValues.push(cleanData.code);
+      }
+      if (cleanData.level !== undefined) {
+        updateFields.push('level = ?');
+        updateValues.push(cleanData.level);
+      }
+      if (cleanData.section !== undefined) {
+        updateFields.push('section = ?');
+        updateValues.push(cleanData.section);
+      }
+      if (cleanData.roomNumber !== undefined) {
+        updateFields.push('roomNumber = ?');
+        updateValues.push(cleanData.roomNumber);
+      }
+      if (cleanData.capacity !== undefined) {
+        updateFields.push('capacity = ?');
+        updateValues.push(cleanData.capacity);
+      }
+      if (cleanData.classTeacherId !== undefined) {
+        updateFields.push('classTeacherId = ?');
+        updateValues.push(cleanData.classTeacherId);
+      }
+      if (cleanData.updatedBy !== undefined) {
+        updateFields.push('updatedBy = ?');
+        updateValues.push(cleanData.updatedBy);
+      }
+      
+      // Always update the updatedAt timestamp
+      updateFields.push('updatedAt = NOW()');
+      
+      if (updateFields.length > 0) {
+        updateValues.push(id);
+        await prisma.$executeRawUnsafe(
+          `UPDATE classes SET ${updateFields.join(', ')} WHERE id = ?`,
+          ...updateValues
+        );
+      }
+      
+      // Fetch the updated class using raw query
+      const updatedClassResult = await prisma.$queryRaw`
+        SELECT c.*, s.name as school_name, s.code as school_code,
+               COUNT(st.id) as student_count,
+               COUNT(sub.id) as subject_count,
+               COUNT(tt.id) as timetable_count,
+               COUNT(ex.id) as exam_count
+        FROM classes c
+        LEFT JOIN schools s ON c.schoolId = s.id
+        LEFT JOIN students st ON c.id = st.classId AND st.deletedAt IS NULL
+        LEFT JOIN subjects sub ON c.id = sub.classId AND sub.deletedAt IS NULL
+        LEFT JOIN timetables tt ON c.id = tt.classId AND tt.deletedAt IS NULL
+        LEFT JOIN exams ex ON c.id = ex.classId AND ex.deletedAt IS NULL
+        WHERE c.id = ${id} AND c.deletedAt IS NULL
+        GROUP BY c.id
+      `;
+      
+      const updatedClass = updatedClassResult[0];
+      
+      if (updatedClass) {
+        // Format the result to match expected structure
+        updatedClass.school = {
+          id: updatedClass.schoolId,
+          name: updatedClass.school_name,
+          code: updatedClass.school_code
+        };
+        updatedClass._count = {
+          students: updatedClass.student_count,
+          subjects: updatedClass.subject_count,
+          timetables: updatedClass.timetable_count,
+          exams: updatedClass.exam_count
+        };
+      }
       
       // Trigger automatic notification for class update
       await triggerEntityUpdatedNotifications(
