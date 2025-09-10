@@ -512,7 +512,7 @@
           name: existingClass.school_name,
           code: existingClass.school_code
         };
-        existingClass.students = Array.from({ length: existingClass.student_count }, () => ({}));
+        existingClass.students = Array.from({ length: Number(existingClass.student_count) }, () => ({}));
       }
       
       if (!existingClass) {
@@ -535,9 +535,9 @@
       }
       
       // Validate capacity (cannot be less than current student count)
-      if (data.capacity && data.capacity < existingClass.students.length) {
+      if (data.capacity && data.capacity < Number(existingClass.student_count)) {
         return res.status(400).json(formatResponse(false, null, 
-          `Capacity cannot be less than current student count (${existingClass.students.length})`));
+          `Capacity cannot be less than current student count (${Number(existingClass.student_count)})`));
       }
       
       // Validate class teacher if provided
@@ -640,10 +640,10 @@
           code: updatedClass.school_code
         };
         updatedClass._count = {
-          students: updatedClass.student_count,
-          subjects: updatedClass.subject_count,
-          timetables: updatedClass.timetable_count,
-          exams: updatedClass.exam_count
+          students: Number(updatedClass.student_count),
+          subjects: Number(updatedClass.subject_count),
+          timetables: Number(updatedClass.timetable_count),
+          exams: Number(updatedClass.exam_count)
         };
       }
       
