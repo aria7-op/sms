@@ -492,13 +492,49 @@
       const data = parsed.data;
       
       // Get existing class
-      const existingClass = await prisma.class.findUnique({
-        where: { id },
-        include: {
-          school: true,
-          students: true,
+      let existingClass;
+      try {
+        existingClass = await prisma.class.findUnique({
+          where: { id },
+          include: {
+            school: true,
+            students: true,
+          }
+        });
+      } catch (prismaError) {
+        // Handle specific datetime validation errors in findUnique
+        if (prismaError.code === 'P2020' && prismaError.message.includes('updatedAt')) {
+          console.error('Invalid datetime in database for class ID:', id);
+          console.error('Error details:', prismaError.meta);
+          
+          // Try to fix the database record first
+          try {
+            await prisma.$executeRaw`
+              UPDATE classes 
+              SET updatedAt = NOW(), createdAt = NOW() 
+              WHERE id = ${id} 
+                AND (updatedAt IS NULL OR updatedAt = '0000-00-00 00:00:00' 
+                     OR DAY(updatedAt) = 0 OR MONTH(updatedAt) = 0
+                     OR createdAt IS NULL OR createdAt = '0000-00-00 00:00:00'
+                     OR DAY(createdAt) = 0 OR MONTH(createdAt) = 0)
+            `;
+            
+            // Retry the findUnique operation
+            existingClass = await prisma.class.findUnique({
+              where: { id },
+              include: {
+                school: true,
+                students: true,
+              }
+            });
+          } catch (fixError) {
+            console.error('Failed to fix database datetime values:', fixError);
+            throw prismaError; // Re-throw original error if fix fails
+          }
+        } else {
+          throw prismaError; // Re-throw if it's not a datetime error
         }
-      });
+      }
       
       if (!existingClass) {
         return res.status(404).json(formatResponse(false, null, 'Class not found'));
@@ -506,13 +542,49 @@
       
       // Check if class code already exists in the school (if code is being updated)
       if (data.code && data.code !== existingClass.code) {
-        const duplicateClass = await prisma.class.findFirst({
-          where: {
-            code: data.code,
-            schoolId: existingClass.schoolId,
-            id: { not: id },
+        let duplicateClass;
+        try {
+          duplicateClass = await prisma.class.findFirst({
+            where: {
+              code: data.code,
+              schoolId: existingClass.schoolId,
+              id: { not: id },
+            }
+          });
+        } catch (prismaError) {
+          // Handle specific datetime validation errors in findFirst
+          if (prismaError.code === 'P2020' && prismaError.message.includes('updatedAt')) {
+            console.error('Invalid datetime in database during duplicate check for class code:', data.code);
+            console.error('Error details:', prismaError.meta);
+            
+            // Try to fix all classes with invalid datetime values in this school
+            try {
+              await prisma.$executeRaw`
+                UPDATE classes 
+                SET updatedAt = NOW(), createdAt = NOW() 
+                WHERE schoolId = ${existingClass.schoolId}
+                  AND (updatedAt IS NULL OR updatedAt = '0000-00-00 00:00:00' 
+                       OR DAY(updatedAt) = 0 OR MONTH(updatedAt) = 0
+                       OR createdAt IS NULL OR createdAt = '0000-00-00 00:00:00'
+                       OR DAY(createdAt) = 0 OR MONTH(createdAt) = 0)
+              `;
+              
+              // Retry the findFirst operation
+              duplicateClass = await prisma.class.findFirst({
+                where: {
+                  code: data.code,
+                  schoolId: existingClass.schoolId,
+                  id: { not: id },
+                }
+              });
+            } catch (fixError) {
+              console.error('Failed to fix database datetime values during duplicate check:', fixError);
+              throw prismaError; // Re-throw original error if fix fails
+            }
+          } else {
+            throw prismaError; // Re-throw if it's not a datetime error
           }
-        });
+        }
         
         if (duplicateClass) {
           return res.status(409).json(formatResponse(false, null, 'Class code already exists in this school'));
