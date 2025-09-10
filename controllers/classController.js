@@ -507,17 +507,19 @@
           console.error('Invalid datetime in database for class ID:', id);
           console.error('Error details:', prismaError.meta);
           
-          // Try to fix the database record first
+          // Try to fix the database record first using direct database connection
           try {
-            await prisma.$executeRaw`
+            // Import the query function from app.js
+            const { query } = await import('../app.js');
+            await query(`
               UPDATE classes 
               SET updatedAt = NOW(), createdAt = NOW() 
-              WHERE id = ${id} 
+              WHERE id = ? 
                 AND (updatedAt IS NULL OR updatedAt = '0000-00-00 00:00:00' 
                      OR DAY(updatedAt) = 0 OR MONTH(updatedAt) = 0
                      OR createdAt IS NULL OR createdAt = '0000-00-00 00:00:00'
                      OR DAY(createdAt) = 0 OR MONTH(createdAt) = 0)
-            `;
+            `, [id]);
             
             // Retry the findUnique operation
             existingClass = await prisma.class.findUnique({
@@ -559,15 +561,17 @@
             
             // Try to fix all classes with invalid datetime values in this school
             try {
-              await prisma.$executeRaw`
+              // Import the query function from app.js
+              const { query } = await import('../app.js');
+              await query(`
                 UPDATE classes 
                 SET updatedAt = NOW(), createdAt = NOW() 
-                WHERE schoolId = ${existingClass.schoolId}
+                WHERE schoolId = ?
                   AND (updatedAt IS NULL OR updatedAt = '0000-00-00 00:00:00' 
                        OR DAY(updatedAt) = 0 OR MONTH(updatedAt) = 0
                        OR createdAt IS NULL OR createdAt = '0000-00-00 00:00:00'
                        OR DAY(createdAt) = 0 OR MONTH(createdAt) = 0)
-              `;
+              `, [existingClass.schoolId]);
               
               // Retry the findFirst operation
               duplicateClass = await prisma.class.findFirst({
@@ -650,17 +654,19 @@
           console.error('Invalid datetime in database for class ID:', id);
           console.error('Error details:', prismaError.meta);
           
-          // Try to fix the database record first
+          // Try to fix the database record first using direct database connection
           try {
-            await prisma.$executeRaw`
+            // Import the query function from app.js
+            const { query } = await import('../app.js');
+            await query(`
               UPDATE classes 
               SET updatedAt = NOW(), createdAt = NOW() 
-              WHERE id = ${id} 
+              WHERE id = ? 
                 AND (updatedAt IS NULL OR updatedAt = '0000-00-00 00:00:00' 
                      OR DAY(updatedAt) = 0 OR MONTH(updatedAt) = 0
                      OR createdAt IS NULL OR createdAt = '0000-00-00 00:00:00'
                      OR DAY(createdAt) = 0 OR MONTH(createdAt) = 0)
-            `;
+            `, [id]);
             
             // Retry the update operation
             updatedClass = await prisma.class.update({
