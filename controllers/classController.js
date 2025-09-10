@@ -603,16 +603,10 @@
       // Fetch the updated class using raw query
       const updatedClassResult = await prisma.$queryRaw`
         SELECT c.*, s.name as school_name, s.code as school_code,
-               COUNT(st.id) as student_count,
-               COUNT(sub.id) as subject_count,
-               COUNT(tt.id) as timetable_count,
-               COUNT(ex.id) as exam_count
+               COUNT(st.id) as student_count
         FROM classes c
         LEFT JOIN schools s ON c.schoolId = s.id
         LEFT JOIN students st ON c.id = st.classId AND st.deletedAt IS NULL
-        LEFT JOIN subjects sub ON c.id = sub.classId AND sub.deletedAt IS NULL
-        LEFT JOIN timetables tt ON c.id = tt.classId AND tt.deletedAt IS NULL
-        LEFT JOIN exams ex ON c.id = ex.classId AND ex.deletedAt IS NULL
         WHERE c.id = ${id} AND c.deletedAt IS NULL
         GROUP BY c.id
       `;
@@ -628,9 +622,9 @@
         };
         updatedClass._count = {
           students: Number(updatedClass.student_count),
-          subjects: Number(updatedClass.subject_count),
-          timetables: Number(updatedClass.timetable_count),
-          exams: Number(updatedClass.exam_count)
+          subjects: 0,
+          timetables: 0,
+          exams: 0
         };
       }
       
