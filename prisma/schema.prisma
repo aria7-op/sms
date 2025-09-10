@@ -590,7 +590,6 @@ model Student {
   studentTransports       StudentTransport[]
   assignmentSubmissions   AssignmentSubmission[]
   events                  StudentEvent[]
-  cardTracking            StudentCardTracking?
 
   @@index([userId])
   @@index([admissionNo])
@@ -600,19 +599,6 @@ model Student {
   @@index([schoolId])
   @@index([convertedFromCustomerId])
   @@map("students")
-}
-
-model StudentCardTracking {
-  id            BigInt    @id @default(autoincrement())
-  studentId     BigInt    @unique
-  printCount    Int       @default(0)
-  lastPrintedAt DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  student       Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@index([studentId])
-  @@map("student_card_tracking")
 }
 
 model Parent {
@@ -3141,12 +3127,3 @@ enum MessageReactionType {
   PRAY
   CELEBRATE
 }
-
-
-
-
-
-
-
-
-
