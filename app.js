@@ -542,17 +542,31 @@ dotenv.config();
       }
       
       // Fix invalid datetime values in customers table
-      const result = await query(`
+      const customersResult = await query(`
         UPDATE customers 
         SET updatedAt = NOW(), createdAt = NOW() 
         WHERE updatedAt IS NULL OR updatedAt = '0000-00-00 00:00:00' 
            OR createdAt IS NULL OR createdAt = '0000-00-00 00:00:00'
       `);
       
+      // Fix invalid datetime values in classes table
+      const classesResult = await query(`
+        UPDATE classes 
+        SET updatedAt = NOW(), createdAt = NOW() 
+        WHERE updatedAt IS NULL OR updatedAt = '0000-00-00 00:00:00' 
+           OR createdAt IS NULL OR createdAt = '0000-00-00 00:00:00'
+           OR DAY(updatedAt) = 0 OR MONTH(updatedAt) = 0
+           OR DAY(createdAt) = 0 OR MONTH(createdAt) = 0
+      `);
+      
       res.json({
         success: true,
         message: 'Database datetime values fixed',
-        affectedRows: result.affectedRows
+        affectedRows: {
+          customers: customersResult.affectedRows,
+          classes: classesResult.affectedRows,
+          total: customersResult.affectedRows + classesResult.affectedRows
+        }
       });
     } catch (error) {
       res.status(500).json({
@@ -700,13 +714,6 @@ dotenv.config();
       });
     }
   });
-
-// ============================================================================
-// STATIC FILE SERVING
-// ============================================================================
-
-// Serve uploaded files
-app.use('/uploads', express.static('uploads'));
 
 // ============================================================================
 // API ROUTES - Using route modules from ./routes/ folder
