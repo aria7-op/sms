@@ -519,20 +519,7 @@
         return res.status(404).json(formatResponse(false, null, 'Class not found'));
       }
       
-      // Check if class code already exists in the school (if code is being updated)
-      if (data.code && data.code !== existingClass.code) {
-        const duplicateClassResult = await prisma.$queryRaw`
-          SELECT id FROM classes 
-          WHERE code = ${data.code} 
-            AND schoolId = ${existingClass.schoolId} 
-            AND id != ${id} 
-            AND deletedAt IS NULL
-        `;
-        
-        if (duplicateClassResult.length > 0) {
-          return res.status(409).json(formatResponse(false, null, 'Class code already exists in this school'));
-        }
-      }
+      // Allow duplicate class codes - validation removed
       
       // Validate capacity (cannot be less than current student count)
       if (data.capacity && data.capacity < Number(existingClass.student_count)) {
