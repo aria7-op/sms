@@ -407,29 +407,8 @@ class CardGenerationService {
       console.log('✅ DEBUG: Unicode text rendered successfully with Canvas');
       
     } catch (canvasError) {
-      console.error('Canvas rendering failed, trying alternative approach:', canvasError.message);
-      
-      // Alternative approach: try to render raw text with Jimp (won't shape Arabic, but avoids U+ codes)
-      try {
-        const convertedText = text; // keep original characters
-        // Use Jimp bitmap font as a last resort
-        const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
-        const w = Math.floor(card.getWidth() * 0.7);
-        const h = Math.floor(card.getHeight() * 0.1);
-        card.print(font, x, y, {
-          text: convertedText,
-          alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
-          alignmentY: Jimp.VERTICAL_ALIGN_TOP
-        }, w, h);
-        console.log('✅ DEBUG: Fallback Jimp text rendered (no shaping)');
-        
-      } catch (jimpError) {
-        console.error('All rendering methods failed:', jimpError);
-        
-        // Last resort: Use original text and hope for the best
-        const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
-        card.print(font, x, y, text, card.getWidth(), card.getHeight());
-      }
+      console.error('Canvas rendering failed:', canvasError.message);
+      // Skip fallback to avoid U+xxxx artifacts
     }
   }
 
