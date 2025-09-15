@@ -28,6 +28,25 @@ class CardGenerationService {
    */
   registerUnicodeFont() {
     try {
+      // Prefer a project-bundled font if present
+      const bundledFontCandidates = [
+        path.join(process.cwd(), 'assets', 'NotoNaskhArabic-VariableFont_wght.ttf'),
+        path.join(process.cwd(), 'assets', 'NotoNaskhArabic-Regular.ttf'),
+        path.join(process.cwd(), 'assets', 'NotoSansArabic-Regular.ttf')
+      ];
+      for (const fontPath of bundledFontCandidates) {
+        if (fs.existsSync(fontPath)) {
+          try {
+            registerFont(fontPath, { family: 'NotoNaskhArabic' });
+            this.unicodeFontFamily = 'NotoNaskhArabic';
+            console.log('✅ DEBUG: Registered bundled Arabic font:', fontPath);
+            return;
+          } catch (err) {
+            console.log('⚠️ DEBUG: Failed registering bundled font:', fontPath, err.message);
+          }
+        }
+      }
+
       // Try to register common Unicode fonts that might be available on the system
       const possibleFonts = [
         // macOS fonts
@@ -39,6 +58,11 @@ class CardGenerationService {
         '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
         '/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf',
+        // Arabic-capable fonts (recommended)
+        '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf',
+        '/usr/share/fonts/truetype/noto/NotoNaskhArabic-Medium.ttf',
+        '/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf',
+        '/usr/share/fonts/truetype/noto/NotoSansArabic-Medium.ttf',
         '/usr/share/fonts/truetype/arphic/ukai.ttc',
         
         // Windows fonts
@@ -51,10 +75,18 @@ class CardGenerationService {
       for (const fontPath of possibleFonts) {
         if (fs.existsSync(fontPath)) {
           try {
-            registerFont(fontPath, { family: 'UnicodeFont' });
+            const family = path.basename(fontPath).replace(/\.(ttf|otf|ttc)$/i, '');
+            registerFont(fontPath, { family: family });
             console.log('✅ DEBUG: Registered Unicode font:', fontPath);
-            this.unicodeFontFamily = 'UnicodeFont';
-            return;
+            // Prefer Arabic-capable family if detected
+            if (/Noto(Naskh|Sans)Arabic/i.test(family)) {
+              this.unicodeFontFamily = family;
+              return;
+            }
+            // Fallback capture if we didn't find Arabic-specific yet
+            if (!this.unicodeFontFamily) {
+              this.unicodeFontFamily = family;
+            }
           } catch (fontError) {
             console.log('⚠️ DEBUG: Could not register font:', fontPath, fontError.message);
             continue;
@@ -63,12 +95,12 @@ class CardGenerationService {
       }
       
       // If no specific Unicode font found, use system default with multiple fallbacks
-      this.unicodeFontFamily = 'Arial Unicode MS, DejaVu Sans, Noto Sans, Liberation Sans, Arial, sans-serif';
+      this.unicodeFontFamily = this.unicodeFontFamily || 'Noto Naskh Arabic, Noto Sans Arabic, Arial Unicode MS, DejaVu Sans, Noto Sans, Liberation Sans, Arial, sans-serif';
       console.log('🔍 DEBUG: Using system default fonts for Unicode support');
       
     } catch (error) {
       console.log('⚠️ DEBUG: Could not register Unicode font, using default:', error.message);
-      this.unicodeFontFamily = 'Arial Unicode MS, DejaVu Sans, Noto Sans, Liberation Sans, Arial, sans-serif';
+      this.unicodeFontFamily = 'Noto Naskh Arabic, Noto Sans Arabic, Arial Unicode MS, DejaVu Sans, Noto Sans, Liberation Sans, Arial, sans-serif';
     }
   }
 
@@ -352,11 +384,16 @@ class CardGenerationService {
       ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
       ctx.font = `${fontSize}px ${this.unicodeFontFamily}`;
       ctx.fillStyle = color;
-      ctx.textAlign = 'left';
+      // Use RTL if text contains Arabic range
+      const isArabic = /[\u0600-\u06FF]/.test(text);
+      ctx.direction = isArabic ? 'rtl' : 'ltr';
+      ctx.textAlign = isArabic ? 'right' : 'left';
       ctx.textBaseline = 'top';
       
       // Render the text
-      ctx.fillText(text, 10, 10);
+      // If RTL, draw anchored at right edge inside the small canvas
+      const drawX = isArabic ? textCanvas.width - 10 : 10;
+      ctx.fillText(text, drawX, 10);
       
       const textImage = await loadImage(textCanvas.toBuffer());
       card.composite(textImage, x, y);
