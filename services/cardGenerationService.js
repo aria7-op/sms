@@ -30,9 +30,9 @@ class CardGenerationService {
     try {
       // Prefer a project-bundled font if present
       const bundledFontCandidates = [
-        path.join(process.cwd(), 'assets', 'NotoNaskhArabic-VariableFont_wght.ttf'),
         path.join(process.cwd(), 'assets', 'NotoNaskhArabic-Regular.ttf'),
-        path.join(process.cwd(), 'assets', 'NotoSansArabic-Regular.ttf')
+        path.join(process.cwd(), 'assets', 'NotoSansArabic-Regular.ttf'),
+        path.join(process.cwd(), 'assets', 'NotoNaskhArabic-VariableFont_wght.ttf')
       ];
       for (const fontPath of bundledFontCandidates) {
         if (fs.existsSync(fontPath)) {
@@ -115,6 +115,9 @@ class CardGenerationService {
       // Load fonts (using default fonts for now, can be customized later)
       // Note: Jimp doesn't have built-in font loading like PIL, so we'll use basic text rendering
       console.log('✅ Card generation service initialized');
+      console.log('🔤 Active Unicode font family:', this.unicodeFontFamily);
+      // Run a one-time Unicode check image for diagnostics
+      await this.testCanvasUnicode();
       return true;
     } catch (error) {
       console.error('❌ Failed to initialize card generation service:', error);
@@ -411,11 +414,13 @@ class CardGenerationService {
         const convertedText = text; // keep original characters
         // Use Jimp bitmap font as a last resort
         const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+        const w = Math.floor(card.getWidth() * 0.7);
+        const h = Math.floor(card.getHeight() * 0.1);
         card.print(font, x, y, {
           text: convertedText,
           alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
           alignmentY: Jimp.VERTICAL_ALIGN_TOP
-        }, card.getWidth(), card.getHeight());
+        }, w, h);
         console.log('✅ DEBUG: Fallback Jimp text rendered (no shaping)');
         
       } catch (jimpError) {
