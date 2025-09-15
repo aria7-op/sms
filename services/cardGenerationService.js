@@ -398,6 +398,7 @@ class CardGenerationService {
       // Convert Canvas buffer into a Jimp image for compositing
       const textBuffer = textCanvas.toBuffer();
       const textImage = await Jimp.read(textBuffer);
+      console.log('✅ DEBUG: Compositing shaped text via Jimp buffer');
       card.composite(textImage, x, y);
       
       console.log('✅ DEBUG: Unicode text rendered successfully with Canvas');
@@ -405,19 +406,17 @@ class CardGenerationService {
     } catch (canvasError) {
       console.error('Canvas rendering failed, trying alternative approach:', canvasError.message);
       
-      // Alternative approach: Convert Unicode to readable format
+      // Alternative approach: try to render raw text with Jimp (won't shape Arabic, but avoids U+ codes)
       try {
-        const convertedText = this.convertUnicodeText(text);
-        
-        // Use Jimp with converted text
+        const convertedText = text; // keep original characters
+        // Use Jimp bitmap font as a last resort
         const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
         card.print(font, x, y, {
           text: convertedText,
           alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
           alignmentY: Jimp.VERTICAL_ALIGN_TOP
         }, card.getWidth(), card.getHeight());
-        
-        console.log('✅ DEBUG: Unicode text rendered with conversion method');
+        console.log('✅ DEBUG: Fallback Jimp text rendered (no shaping)');
         
       } catch (jimpError) {
         console.error('All rendering methods failed:', jimpError);
