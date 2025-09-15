@@ -395,7 +395,9 @@ class CardGenerationService {
       const drawX = isArabic ? textCanvas.width - 10 : 10;
       ctx.fillText(text, drawX, 10);
       
-      const textImage = await loadImage(textCanvas.toBuffer());
+      // Convert Canvas buffer into a Jimp image for compositing
+      const textBuffer = textCanvas.toBuffer();
+      const textImage = await Jimp.read(textBuffer);
       card.composite(textImage, x, y);
       
       console.log('✅ DEBUG: Unicode text rendered successfully with Canvas');
