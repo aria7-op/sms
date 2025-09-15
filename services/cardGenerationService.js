@@ -437,11 +437,17 @@ class CardGenerationService {
       
       // Text positions based on HTML percentages for 1085x1764 card
       // Field 1: Student name, Field 2: Parent name, Field 3: Class name & code, Field 4: Student User ID
-      const textPositions = {
+      const textPositionsLTR = {
         studentName: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.52) },
         parentName: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.59) },
         className: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.66) },
         studentUserId: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.80) }
+      };
+      const textPositionsRTL = {
+        studentName: { x: Math.floor(cardWidth * 0.93), y: Math.floor(cardHeight * 0.52) },
+        parentName: { x: Math.floor(cardWidth * 0.93), y: Math.floor(cardHeight * 0.59) },
+        className: { x: Math.floor(cardWidth * 0.93), y: Math.floor(cardHeight * 0.66) },
+        studentUserId: { x: Math.floor(cardWidth * 0.93), y: Math.floor(cardHeight * 0.80) }
       };
 
       // Load fonts with white color (Jimp supports white fonts)
@@ -454,14 +460,17 @@ class CardGenerationService {
       
       // Field 1: Student name (use Dari name if available, otherwise English) - Large font
       const studentEnglishName = `${student.user.firstName || ''} ${student.user.lastName || ''}`.trim();
-      const studentName = this.getDisplayText(student.user.dariName, studentEnglishName);
-      console.log('🔍 DEBUG: Adding student name:', studentName, 'at position:', textPositions.studentName);
+      const studentPrimary = student.user.dariName || student.user.displayName;
+      const studentName = this.getDisplayText(studentPrimary, studentEnglishName);
+      const studentIsArabic = this.hasUnicodeCharacters(studentName);
+      const posStudent = studentIsArabic ? textPositionsRTL.studentName : textPositionsLTR.studentName;
+      console.log('🔍 DEBUG: Adding student name:', studentName, 'at position:', posStudent);
       
       // Render student name - use Unicode rendering for Dari names
-      if (this.hasUnicodeCharacters(studentName)) {
-        await this.renderUnicodeText(card, studentName, textPositions.studentName.x, textPositions.studentName.y, 32);
+      if (studentIsArabic) {
+        await this.renderUnicodeText(card, studentName, posStudent.x, posStudent.y, 32);
       } else {
-        card.print(fontLarge, textPositions.studentName.x, textPositions.studentName.y, {
+        card.print(fontLarge, posStudent.x, posStudent.y, {
           text: studentName,
           alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
           alignmentY: Jimp.VERTICAL_ALIGN_TOP
@@ -471,14 +480,17 @@ class CardGenerationService {
       // Field 2: Parent name (use Dari name if available, otherwise English) - Medium font
       const parentEnglishName = student.parent?.user?.firstName ? 
         `${student.parent.user.firstName} ${student.parent.user.lastName}` : 'N/A';
-      const parentName = this.getDisplayText(student.parent?.user?.dariName, parentEnglishName);
-      console.log('🔍 DEBUG: Adding parent name:', parentName, 'at position:', textPositions.parentName);
+      const parentPrimary = student.parent?.user?.dariName || student.parent?.user?.displayName;
+      const parentName = this.getDisplayText(parentPrimary, parentEnglishName);
+      const parentIsArabic = this.hasUnicodeCharacters(parentName);
+      const posParent = parentIsArabic ? textPositionsRTL.parentName : textPositionsLTR.parentName;
+      console.log('🔍 DEBUG: Adding parent name:', parentName, 'at position:', posParent);
       
       // Render parent name - use Unicode rendering for Dari names
-      if (this.hasUnicodeCharacters(parentName)) {
-        await this.renderUnicodeText(card, parentName, textPositions.parentName.x, textPositions.parentName.y, 16);
+      if (parentIsArabic) {
+        await this.renderUnicodeText(card, parentName, posParent.x, posParent.y, 16);
       } else {
-        card.print(fontMedium, textPositions.parentName.x, textPositions.parentName.y, {
+        card.print(fontMedium, posParent.x, posParent.y, {
           text: parentName,
           alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
           alignmentY: Jimp.VERTICAL_ALIGN_TOP
@@ -489,9 +501,11 @@ class CardGenerationService {
       const className = student.class?.name || 'N/A';
       const classCode = student.class?.code || '';
       const classText = classCode ? `${className} (${classCode})` : className;
-      console.log('🔍 DEBUG: Adding class:', classText, 'at position:', textPositions.className);
+      const classIsArabic = this.hasUnicodeCharacters(classText);
+      const posClass = classIsArabic ? textPositionsRTL.className : textPositionsLTR.className;
+      console.log('🔍 DEBUG: Adding class:', classText, 'at position:', posClass);
       
-      card.print(fontMedium, textPositions.className.x, textPositions.className.y, {
+      card.print(fontMedium, posClass.x, posClass.y, {
         text: classText,
         alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
         alignmentY: Jimp.VERTICAL_ALIGN_TOP
@@ -499,8 +513,9 @@ class CardGenerationService {
 
       // Field 4: Student User ID (from users table) - Small font
       const userId = student.userId ? student.userId.toString() : 'N/A';
-      console.log('🔍 DEBUG: Adding user ID:', userId, 'at position:', textPositions.studentUserId);
-      card.print(fontSmall, textPositions.studentUserId.x, textPositions.studentUserId.y, {
+      const posId = textPositionsLTR.studentUserId; // numerals LTR
+      console.log('🔍 DEBUG: Adding user ID:', userId, 'at position:', posId);
+      card.print(fontSmall, posId.x, posId.y, {
         text: userId,
         alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
         alignmentY: Jimp.VERTICAL_ALIGN_TOP
