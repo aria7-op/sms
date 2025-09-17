@@ -380,10 +380,21 @@ class CardGenerationService {
     try {
       console.log('🔍 DEBUG: Rendering Unicode text with Canvas:', text);
       
-      // Try Canvas first
-      const textCanvas = createCanvas(600, 200);
+      // Prepare a measuring canvas to compute exact width/height to avoid clipping
+      const measureCanvas = createCanvas(10, 10);
+      const mctx = measureCanvas.getContext('2d');
+      mctx.font = `${fontSize}px ${this.unicodeFontFamily}`;
+      const metrics = mctx.measureText(text);
+      const ascent = Math.ceil(metrics.actualBoundingBoxAscent || fontSize * 0.8);
+      const descent = Math.ceil(metrics.actualBoundingBoxDescent || fontSize * 0.3);
+      const paddingX = 28; // extra horizontal padding for RTL glyphs
+      const paddingY = 18; // extra vertical padding to prevent cut off
+      const textWidth = Math.ceil(metrics.width) + paddingX * 2;
+      const textHeight = ascent + descent + paddingY * 2;
+
+      // Create the actual canvas sized to the text
+      const textCanvas = createCanvas(textWidth, textHeight);
       const ctx = textCanvas.getContext('2d');
-      
       ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
       ctx.font = `${fontSize}px ${this.unicodeFontFamily}`;
       ctx.fillStyle = color;
@@ -391,18 +402,21 @@ class CardGenerationService {
       const isArabic = /[\u0600-\u06FF]/.test(text);
       ctx.direction = isArabic ? 'rtl' : 'ltr';
       ctx.textAlign = isArabic ? 'right' : 'left';
-      ctx.textBaseline = 'top';
-      
-      // Render the text
-      // If RTL, draw anchored at right edge inside the small canvas
-      const drawX = isArabic ? textCanvas.width - 10 : 10;
-      ctx.fillText(text, drawX, 10);
+      ctx.textBaseline = 'alphabetic';
+      // Draw text inside the canvas with padding; for baseline, y = paddingY + ascent
+      const drawX = isArabic ? textCanvas.width - paddingX : paddingX;
+      const drawY = paddingY + ascent;
+      ctx.fillText(text, drawX, drawY);
       
       // Convert Canvas buffer into a Jimp image for compositing
       const textBuffer = textCanvas.toBuffer();
       const textImage = await Jimp.read(textBuffer);
-      console.log('✅ DEBUG: Compositing shaped text via Jimp buffer');
-      card.composite(textImage, x, y);
+      // If RTL, anchor to the right edge position by subtracting the text image width
+      const destX = isArabic ? Math.max(0, x - textCanvas.width) : x;
+      // Nudge up slightly to align to the rule line visually
+      const destY = Math.max(0, y - Math.floor(fontSize * 0.12));
+      console.log('✅ DEBUG: Compositing shaped text via Jimp buffer at', { destX, destY, width: textCanvas.width, height: textCanvas.height, isArabic });
+      card.composite(textImage, destX, destY);
       
       console.log('✅ DEBUG: Unicode text rendered successfully with Canvas');
       
@@ -423,22 +437,22 @@ class CardGenerationService {
       // Text positions based on HTML percentages for 1085x1764 card
       // Field 1: Student name, Field 2: Parent name, Field 3: Class name & code, Field 4: Student User ID
       const textPositionsLTR = {
-        studentName: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.52) },
-        parentName: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.59) },
-        className: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.66) },
-        studentUserId: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.80) }
+        studentName: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.51) },
+        parentName: { x: Math.floor(cardWidth * 0.20), y: Math.floor(cardHeight * 0.58) },
+        className: { x: Math.floor(cardWidth * 0.56), y: Math.floor(cardHeight * 0.66) },
+        studentUserId: { x: Math.floor(cardWidth * 0.56), y: Math.floor(cardHeight * 0.80) }
       };
       const textPositionsRTL = {
-        studentName: { x: Math.floor(cardWidth * 0.93), y: Math.floor(cardHeight * 0.52) },
-        parentName: { x: Math.floor(cardWidth * 0.93), y: Math.floor(cardHeight * 0.59) },
-        className: { x: Math.floor(cardWidth * 0.93), y: Math.floor(cardHeight * 0.66) },
-        studentUserId: { x: Math.floor(cardWidth * 0.93), y: Math.floor(cardHeight * 0.80) }
+        studentName: { x: Math.floor(cardWidth * 0.68), y: Math.floor(cardHeight * 0.51) },
+        parentName: { x: Math.floor(cardWidth * 0.68), y: Math.floor(cardHeight * 0.58) },
+        className: { x: Math.floor(cardWidth * 0.80), y: Math.floor(cardHeight * 0.66) },
+        studentUserId: { x: Math.floor(cardWidth * 0.80), y: Math.floor(cardHeight * 0.80) }
       };
 
       // Load fonts with white color (Jimp supports white fonts)
-      const fontLarge = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE);
-      const fontMedium = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
-      const fontSmall = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+      const fontLarge = await Jimp.loadFont(Jimp.FONT_SANS_64_WHITE); // names
+      const fontMedium = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE); // class
+      const fontSmall = await Jimp.loadFont(Jimp.FONT_SANS_32_WHITE); // id (match class size)
 
       // Add the four required fields to the card
       // Using white fonts for better visibility on dark card backgrounds
@@ -453,7 +467,7 @@ class CardGenerationService {
       
       // Render student name - use Unicode rendering for Dari names
       if (studentIsArabic) {
-        await this.renderUnicodeText(card, studentName, posStudent.x, posStudent.y, 32);
+        await this.renderUnicodeText(card, studentName, posStudent.x, posStudent.y, 56);
       } else {
         card.print(fontLarge, posStudent.x, posStudent.y, {
           text: studentName,
@@ -473,9 +487,9 @@ class CardGenerationService {
       
       // Render parent name - use Unicode rendering for Dari names
       if (parentIsArabic) {
-        await this.renderUnicodeText(card, parentName, posParent.x, posParent.y, 16);
+        await this.renderUnicodeText(card, parentName, posParent.x, posParent.y, 56);
       } else {
-        card.print(fontMedium, posParent.x, posParent.y, {
+        card.print(fontLarge, posParent.x, posParent.y, {
           text: parentName,
           alignmentX: Jimp.HORIZONTAL_ALIGN_LEFT,
           alignmentY: Jimp.VERTICAL_ALIGN_TOP
