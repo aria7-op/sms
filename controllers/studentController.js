@@ -1,5 +1,4 @@
 import { PrismaClient } from '../generated/prisma/index.js';
-import path from 'path';
 import { 
   handlePrismaError, 
   createSuccessResponse, 
@@ -13,6 +12,7 @@ import {
   buildStudentIncludeQuery,
   generateStudentStats,
   generateStudentAnalytics,
+  generateStudentDashboardAnalytics,
   calculateStudentPerformance,
   generateStudentExportData,
   validateStudentImportData,
@@ -61,11 +61,16 @@ function convertBigInts(obj) {
   if (obj === null || obj === undefined) {
     return obj;
   }
-  if (obj instanceof Date) {
-    return obj.toISOString();
-  }
   if (typeof obj === 'bigint') {
     return obj.toString();
+  }
+  // Robust Date detection (handles cross-realm Date objects)
+  const isDateObject = (value) => (
+    value instanceof Date || Object.prototype.toString.call(value) === '[object Date]'
+  );
+  if (isDateObject(obj)) {
+    const d = new Date(obj);
+    return isNaN(d.getTime()) ? null : d.toISOString();
   }
   if (Array.isArray(obj)) {
     return obj.map(convertBigInts);
@@ -73,7 +78,7 @@ function convertBigInts(obj) {
   if (typeof obj === 'object') {
     const newObj = {};
     for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
         newObj[key] = convertBigInts(obj[key]);
       }
     }
@@ -215,7 +220,7 @@ class StudentController {
       
       if (studentData.parent && studentData.parent.user) {
         console.log('🔍 Creating parent with user data...');
-        console.log('🔍 Parent data:', JSON.stringify(convertBigInts(studentData.parent), null, 2));
+        console.log('🔍 Parent data:', JSON.stringify(studentData.parent, null, 2));
         if (req.user) {
           console.log('🔍 Current user:', {
             id: req.user.id,
@@ -229,7 +234,7 @@ class StudentController {
         }
         
         try {
-          console.log('🔍 Creating parent with data:', JSON.stringify(convertBigInts(studentData.parent), null, 2));
+          console.log('🔍 Creating parent with data:', JSON.stringify(studentData.parent, null, 2));
           
           // Determine the correct owner ID for parent creation
           let parentOwnerId;
@@ -266,7 +271,7 @@ class StudentController {
             parentOwnerId,
             schoolId
           );
-          console.log('🔍 Parent created successfully:', JSON.stringify(convertBigInts(parent), null, 2));
+          console.log('🔍 Parent created successfully:', JSON.stringify(parent, null, 2));
           console.log('🔍 Parent object keys:', Object.keys(parent));
           console.log('🔍 Parent ID type:', typeof parent.id);
           console.log('🔍 Parent ID value:', parent.id);
@@ -436,7 +441,7 @@ class StudentController {
       const studentEventService = new StudentEventService();
       const event = await studentEventService.createStudentEnrollmentEvent(
         student,
-        req.user ? req.user.id : (studentOwnerId ?? BigInt(1)),
+        req.user.id,
         schoolId
       );
 
@@ -465,7 +470,7 @@ class StudentController {
         'student',
         student.id,
         student,
-        req.user || { id: studentOwnerId ?? BigInt(1) },
+        req.user,
         {
           auditDetails: {
             studentId: student.id.toString(),
@@ -568,15 +573,8 @@ class StudentController {
         orderBy: { [sortBy]: sortOrder }
       };
       
-      // Check if this is an ID search - if so, don't paginate to get exact result
-      const isIdSearch = search && !isNaN(search) && !isNaN(parseFloat(search));
-      
-      // For any search, remove pagination to ensure we get all matching results
-      if (search) {
-        console.log('🔍 Search detected - removing pagination to get all matching results');
-        // Don't add skip/take for searches to ensure we get all results
-      } else if (limitNum !== undefined) {
-        // Only add pagination if no search and limit is specified
+      // Only add pagination if limit is specified
+      if (limitNum !== undefined) {
         finalQuery.skip = (pageNum - 1) * limitNum;
         finalQuery.take = limitNum;
       }
@@ -595,148 +593,28 @@ class StudentController {
       // Add timeout to prevent hanging queries
       const queryTimeout = 30000; // 30 seconds
       
-      let students, totalCount;
-      
-      try {
-        // Execute both count and data queries in parallel for better performance
-        [students, totalCount] = await Promise.race([
-          Promise.all([
-            prisma.student.findMany(finalQuery),
-            prisma.student.count({
-              where: {
-                ...searchQuery,
-                schoolId: BigInt(schoolId),
-                deletedAt: null
-              }
-            })
-          ]),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Query timeout after 30 seconds')), queryTimeout)
-          )
-        ]);
-        
-        console.log('🔍 Prisma query executed successfully');
-      } catch (error) {
-        console.error('🔍 Prisma query failed:', error.message);
-        
-        // If search failed, try a simpler approach
-        if (search) {
-          console.log('🔍 Trying fallback search approach...');
-          try {
-            // Try a simpler search without complex OR conditions
-            const simpleQuery = {
-              where: {
-                schoolId: BigInt(schoolId),
-                deletedAt: null,
-                OR: [
-                  { id: isNaN(search) ? undefined : parseInt(search) },
-                  { userId: isNaN(search) ? undefined : parseInt(search) },
-                  { admissionNo: { contains: search } },
-                  { rollNo: { contains: search } }
-                ].filter(condition => Object.values(condition)[0] !== undefined)
-              },
-              include: includeQuery,
-              orderBy: { [sortBy]: sortOrder }
-            };
-            
-            students = await prisma.student.findMany(simpleQuery);
-            totalCount = students.length;
-            console.log('🔍 Fallback search found:', students.length, 'results');
-          } catch (fallbackError) {
-            console.error('🔍 Fallback search also failed:', fallbackError.message);
-            throw error; // Throw original error
-          }
-        } else {
-          throw error; // Re-throw if not a search
-        }
-      }
-
-      console.log('Step 8: Query completed. Found students:', students.length, 'Total count:', totalCount);
-      
-      // Debug: Check if there are any students in the database at all
-      if (students.length === 0 && search) {
-        console.log('🔍 No students found for search. Checking if any students exist in database...');
-        try {
-          const totalStudentsInDb = await prisma.student.count({
+      // Execute both count and data queries in parallel for better performance
+      const [students, totalCount] = await Promise.race([
+        Promise.all([
+          prisma.student.findMany(finalQuery),
+          prisma.student.count({
             where: {
+              ...searchQuery,
               schoolId: BigInt(schoolId),
               deletedAt: null
             }
-          });
-          console.log('🔍 Total students in database for this school:', totalStudentsInDb);
-          
-          if (totalStudentsInDb > 0) {
-            // Get a sample student to see the data structure
-            const sampleStudent = await prisma.student.findFirst({
-              where: {
-                schoolId: BigInt(schoolId),
-                deletedAt: null
-              },
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                    username: true,
-                    phone: true
-                  }
-                }
-              }
-            });
-            console.log('🔍 Sample student data:', JSON.stringify(sampleStudent, (key, value) => {
-              if (typeof value === 'bigint') return value.toString();
-              return value;
-            }, 2));
-          }
-        } catch (debugError) {
-          console.error('🔍 Error checking database:', debugError.message);
-        }
-      }
-      
-      // Debug: Log search results for debugging
-      if (search) {
-        console.log('🔍 Search results for term "' + search + '":');
-        students.forEach((student, index) => {
-          console.log(`🔍 Student ${index + 1}:`, {
-            id: student.id,
-            admissionNo: student.admissionNo,
-            rollNo: student.rollNo,
-            name: student.user ? `${student.user.firstName} ${student.user.lastName}` : 'No user data',
-            username: student.user?.username,
-            phone: student.user?.phone
-          });
-        });
-      }
-      
-      // Debug: Log parent data to see what's being returned
-      if (students.length > 0) {
-        console.log('🔍 First student parent data:', JSON.stringify(students[0].parent, (key, value) => {
-          if (typeof value === 'bigint') {
-            return value.toString();
-          }
-          return value;
-        }, 2));
-        if (students[0].parent?.user) {
-          console.log('🔍 Parent user fields:', Object.keys(students[0].parent.user));
-          console.log('🔍 Parent username value:', students[0].parent.user.username);
-        }
-      }
+          })
+        ]),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Query timeout after 30 seconds')), queryTimeout)
+        )
+      ]);
+
+      console.log('Step 8: Query completed. Found students:', students.length, 'Total count:', totalCount);
       
       // Calculate pagination metadata
       let pagination;
-      if (search) {
-        // Any search - no pagination, return all matching results
-        pagination = {
-          currentPage: 1,
-          totalPages: 1,
-          totalCount: students.length,
-          limit: 'search',
-          hasNextPage: false,
-          hasPrevPage: false,
-          isSearch: true
-        };
-      } else if (limitNum !== undefined) {
+      if (limitNum !== undefined) {
         // Normal pagination
         const totalPages = Math.ceil(totalCount / limitNum);
         const hasNextPage = pageNum < totalPages;
@@ -765,10 +643,7 @@ class StudentController {
       console.log('Step 9: Pagination metadata:', pagination);  
       console.log('=== getStudents END ===');
       
-      // Convert BigInt values to strings for JSON serialization
-      const convertedStudents = convertBigInts(students);
-      
-      return createSuccessResponse(res, 200, 'Students fetched successfully', convertedStudents, {
+      return createSuccessResponse(res, 200, 'Students fetched successfully', students, {
         pagination
       });
     } catch (error) {
@@ -843,26 +718,14 @@ class StudentController {
   async updateStudent(req, res) {
     try {
       const { id } = req.params;
-      const { user, parent, ...updateData } = req.body;
+      const { user, ...updateData } = req.body;
 
-      // Validate student ID format
-      if (!/^[0-9]+$/.test(id)) {
-        return createErrorResponse(res, 400, 'Invalid student ID');
-      }
-
-      // Get existing student with proper school validation
+      // Get existing student
       const existingStudent = await prisma.student.findFirst({
         where: {
           id: parseInt(id),
-          schoolId: BigInt(req.user.schoolId),
+          schoolId: req.user.schoolId,
           deletedAt: null
-        },
-        include: {
-          parent: {
-            include: {
-              user: true
-            }
-          }
         }
       });
 
@@ -873,75 +736,6 @@ class StudentController {
       // Validate class access if class is being updated
       if (updateData.classId && updateData.classId !== existingStudent.classId) {
         await validateClassAccess(req.user, updateData.classId, req.user.schoolId);
-      }
-
-      // Handle parent data update if provided
-      if (parent && existingStudent.parent) {
-        console.log('🔍 Updating existing parent data...');
-        console.log('🔍 Parent data:', JSON.stringify(convertBigInts(parent), null, 2));
-        console.log('🔍 Existing parent ID:', existingStudent.parent.id);
-        
-        try {
-          // Update parent user data if provided
-          if (parent.user) {
-            console.log('🔍 Updating parent user data...');
-            
-            // Extract address fields and move to metadata
-            const { address, city, state, country, postalCode, ...userDataWithoutAddress } = parent.user;
-            
-            // Create metadata object with address information (only include defined values)
-            const userMetadata = {};
-            if (address || city || state || country || postalCode) {
-              userMetadata.address = {};
-              if (address) userMetadata.address.street = address;
-              if (city) userMetadata.address.city = city;
-              if (state) userMetadata.address.state = state;
-              if (country) userMetadata.address.country = country;
-              if (postalCode) userMetadata.address.postalCode = postalCode;
-            }
-            
-            // Debug parent user data
-            console.log('🔍 DEBUG: Parent user data before update:', JSON.stringify(userDataWithoutAddress, null, 2));
-            console.log('🔍 DEBUG: Parent dariName:', userDataWithoutAddress.dariName);
-            
-            // Update parent user
-            await prisma.user.update({
-              where: { id: existingStudent.parent.user.id },
-              data: {
-                ...userDataWithoutAddress,
-                // Store address in metadata as JSON string
-                metadata: Object.keys(userMetadata).length > 0 ? JSON.stringify(userMetadata) : null,
-                updatedBy: req.user.id,
-                updatedAt: new Date()
-              }
-            });
-            console.log('🔍 Parent user updated successfully');
-          }
-          
-          // Update parent record data if provided (non-user fields)
-          const parentFields = { ...parent };
-          delete parentFields.user; // Remove user data as it's handled separately
-          
-          if (Object.keys(parentFields).length > 0) {
-            console.log('🔍 Updating parent record data...');
-            await prisma.parent.update({
-              where: { id: existingStudent.parent.id },
-              data: {
-                ...parentFields,
-                updatedBy: req.user.id,
-                updatedAt: new Date()
-              }
-            });
-            console.log('🔍 Parent record updated successfully');
-          }
-          
-        } catch (parentError) {
-          console.error('❌ Error updating parent:', parentError);
-          return createErrorResponse(res, 500, `Failed to update parent: ${parentError.message}`);
-        }
-      } else if (parent && !existingStudent.parent) {
-        console.log('🔍 Parent data provided but student has no existing parent');
-        return createErrorResponse(res, 400, 'Student has no existing parent to update. Use parentId to connect to an existing parent.');
       }
 
       // EVENT-FIRST WORKFLOW: Log event before updating student
@@ -961,161 +755,19 @@ class StudentController {
         req.user.schoolId
       );
 
-      // Prepare update data with proper field filtering
-      const validStudentFields = [
-        'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality', 
-        'religion', 'caste',  'bankAccountNo', 'bankName', 'ifscCode', 
-        'previousSchool', 'classId', 'sectionId', 'parentId', 'status', 'priority'
-      ];
-      
-      const filteredUpdateData = {};
-      for (const key of Object.keys(updateData)) {
-        if (validStudentFields.includes(key)) {
-          // Handle BigInt fields
-          if (key === 'classId' || key === 'sectionId' || key === 'parentId') {
-            if (updateData[key] === null || updateData[key] === 'null') {
-              // Allow null values to pass through for disconnection
-              filteredUpdateData[key] = null;
-            } else if (updateData[key] && updateData[key] !== 'undefined') {
-              try {
-                filteredUpdateData[key] = BigInt(updateData[key]);
-              } catch (error) {
-                console.warn(`Invalid ${key} value: ${updateData[key]}, skipping...`);
-                continue;
-              }
-            }
-          } else if (key === 'admissionDate') {
-            // Handle date fields
-            if (updateData[key]) {
-              filteredUpdateData[key] = new Date(updateData[key]);
-            }
-          } else {
-            filteredUpdateData[key] = updateData[key];
-          }
-        }
-      }
-
-      // Build prisma update payload: map scalar fields and relations
-      const prismaUpdateData = {
-        updatedBy: req.user.id,
-        updatedAt: new Date()
-      };
-
-      // Allowed scalar fields (non-relations)
-      const scalarFields = [
-        'admissionNo', 'rollNo', 'admissionDate', 'bloodGroup', 'nationality',
-        'religion', 'caste',  'bankAccountNo', 'bankName', 'ifscCode',
-        'previousSchool', 'tazkiraNo',
-        'originAddress', 'originCity', 'originState', 'originProvince', 'originCountry', 'originPostalCode',
-        'currentAddress', 'currentCity', 'currentState', 'currentProvince', 'currentCountry', 'currentPostalCode',
-        'status', 'priority'
-      ];
-      for (const key of Object.keys(filteredUpdateData)) {
-        if (scalarFields.includes(key)) {
-          // Special handling for date fields
-          if (key === 'admissionDate' && filteredUpdateData[key]) {
-            prismaUpdateData[key] = new Date(filteredUpdateData[key]);
-          } else {
-            prismaUpdateData[key] = filteredUpdateData[key];
-          }
-        }
-      }
-
-      // Relations: class, section, parent
-      if (Object.prototype.hasOwnProperty.call(filteredUpdateData, 'classId')) {
-        const val = filteredUpdateData.classId;
-        if (val === null) {
-          prismaUpdateData.class = { disconnect: true };
-        } else if (val !== undefined) {
-          prismaUpdateData.class = { connect: { id: val } };
-        }
-      }
-      if (Object.prototype.hasOwnProperty.call(filteredUpdateData, 'sectionId')) {
-        const val = filteredUpdateData.sectionId;
-        if (val === null) {
-          prismaUpdateData.section = { disconnect: true };
-        } else if (val !== undefined) {
-          prismaUpdateData.section = { connect: { id: val } };
-        }
-      }
-      if (Object.prototype.hasOwnProperty.call(filteredUpdateData, 'parentId')) {
-        const val = filteredUpdateData.parentId;
-        if (val === null) {
-          prismaUpdateData.parent = { disconnect: true };
-        } else if (val !== undefined) {
-          prismaUpdateData.parent = { connect: { id: val } };
-        }
-      }
-
-      // Handle user updates if provided
-      let userUpdateData = null;
-      if (user) {
-        console.log('🔍 Updating student user data...');
-        console.log('🔍 User data:', JSON.stringify(convertBigInts(user), null, 2));
-        
-        try {
-          // Extract address fields and move to metadata
-          const { address, city, state, country, postalCode, ...userDataWithoutAddress } = user;
-          
-          console.log('🔍 DEBUG: Original user data:', JSON.stringify(user, null, 2));
-          console.log('🔍 DEBUG: userDataWithoutAddress after destructuring:', JSON.stringify(userDataWithoutAddress, null, 2));
-          console.log('🔍 DEBUG: dariName in userDataWithoutAddress:', userDataWithoutAddress.dariName);
-          
-          // Create metadata object with address information (only include defined values)
-          const userMetadata = {};
-          if (address || city || state || country || postalCode) {
-            userMetadata.address = {};
-            if (address) userMetadata.address.street = address;
-            if (city) userMetadata.address.city = city;
-            if (state) userMetadata.address.state = state;
-            if (country) userMetadata.address.country = country;
-            if (postalCode) userMetadata.address.postalCode = postalCode;
-          }
-          
-          // Filter out any undefined or null values that might cause issues
-          // But preserve dariName even if it's an empty string
-          const filteredUserData = {};
-          Object.keys(userDataWithoutAddress).forEach(key => {
-            if (userDataWithoutAddress[key] !== undefined && userDataWithoutAddress[key] !== null) {
-              filteredUserData[key] = userDataWithoutAddress[key];
-            } else if (key === 'dariName') {
-              // Preserve dariName field even if it's undefined or null
-              filteredUserData[key] = userDataWithoutAddress[key];
-            }
-          });
-          
-          console.log('🔍 DEBUG: filteredUserData after filtering:', JSON.stringify(filteredUserData, null, 2));
-          console.log('🔍 DEBUG: dariName in filteredUserData:', filteredUserData.dariName);
-          
-          userUpdateData = {
-            ...filteredUserData,
-            // Store address in metadata as JSON string
-            metadata: Object.keys(userMetadata).length > 0 ? JSON.stringify(userMetadata) : null,
-            updatedBy: req.user.id,
-            updatedAt: new Date()
-          };
-          
-          console.log('🔍 Processed user update data:', JSON.stringify(convertBigInts(userUpdateData), null, 2));
-        } catch (userDataError) {
-          console.error('❌ Error processing user data:', userDataError);
-          return createErrorResponse(res, 500, `Failed to process user data: ${userDataError.message}`);
-        }
-      }
-
       // Update student
-      let updatedStudent;
-      try {
-        updatedStudent = await prisma.student.update({
-          where: { id: parseInt(id) },
-          data: {
-            ...prismaUpdateData,
-            // Handle user updates if provided
-            ...(userUpdateData && {
-              user: {
-                update: userUpdateData
-              }
-            })
-          },
+      const updatedStudent = await prisma.student.update({
+        where: { id: parseInt(id) },
+        data: {
+          ...updateData,
+          updatedBy: req.user.id,
+          // Handle user updates if provided
+          ...(user && {
+            user: {
+              update: user
+            }
+          })
+        },
         include: {
           user: {
             select: {
@@ -1153,22 +805,16 @@ class StudentController {
           }
         }
       });
-      } catch (updateError) {
-        console.error('❌ Error updating student:', updateError);
-        return createErrorResponse(res, 500, `Failed to update student: ${updateError.message}`);
-      }
 
-      // Update the event with the final student data (store as string in metadata)
+      // Update the event with the final student data
       await prisma.studentEvent.update({
         where: { id: event.id },
-        data: {
-          metadata: {
-            set: JSON.stringify({
-              ...event.metadata,
-              updatedStudentData: convertBigInts(updatedStudent),
-              updatedFields: Object.keys(filteredUpdateData)
-            })
-          }
+        data: { 
+          metadata: JSON.stringify({ 
+            ...event.metadata, 
+            updatedStudentData: convertBigInts(updatedStudent),
+            updatedFields: Object.keys(updateData)
+          })
         }
       });
 
@@ -1182,7 +828,7 @@ class StudentController {
         'Student',
         {
           studentId: updatedStudent.id.toString(),
-          updatedFields: Object.keys(filteredUpdateData)
+          updatedFields: Object.keys(updateData)
         }
       );
 
@@ -1202,13 +848,9 @@ class StudentController {
         req.user
       );
 
-      // Convert BigInt values for response
-      const convertedStudent = convertBigInts(updatedStudent);
-      const convertedEvent = convertBigInts(event);
-
       return createSuccessResponse(res, 200, 'Student updated successfully', {
-        student: convertedStudent,
-        event: convertedEvent
+        student: updatedStudent,
+        event
       });
     } catch (error) {
       return handlePrismaError(res, error, 'updateStudent');
@@ -1417,6 +1059,64 @@ class StudentController {
       });
     } catch (error) {
       return handlePrismaError(res, error, 'getStudentAnalytics');
+    }
+  }
+
+  /**
+   * Get comprehensive student dashboard analytics
+   */
+  async getStudentDashboardAnalytics(req, res) {
+    try {
+      const { period = '30d', classId, startDate, endDate } = req.query;
+      
+      // Check cache first
+      const cacheKey = `dashboard-${period}-${classId || 'all'}-${startDate || 'none'}-${endDate || 'none'}`;
+      const cachedAnalytics = await getStudentAnalyticsFromCache('dashboard', { period, classId, startDate, endDate });
+      if (cachedAnalytics) {
+        return createSuccessResponse(res, 200, 'Student dashboard analytics fetched from cache', cachedAnalytics, {
+          source: 'cache'
+        });
+      }
+
+      const analytics = await generateStudentDashboardAnalytics({ period, classId, startDate, endDate });
+      
+      // Cache the analytics
+      await setStudentAnalyticsInCache('dashboard', { period, classId, startDate, endDate }, analytics);
+
+      return createSuccessResponse(res, 200, 'Student dashboard analytics fetched successfully', analytics, {
+        source: 'database'
+      });
+    } catch (error) {
+      return handlePrismaError(res, error, 'getStudentDashboardAnalytics');
+    }
+  }
+
+  /**
+   * Get general student analytics (for dashboard)
+   */
+  async getGeneralStudentAnalytics(req, res) {
+    try {
+      const { period = '30d', classId, startDate, endDate } = req.query;
+      
+      // Check cache first
+      const cacheKey = `general-${period}-${classId || 'all'}-${startDate || 'none'}-${endDate || 'none'}`;
+      const cachedAnalytics = await getStudentAnalyticsFromCache('general', { period, classId, startDate, endDate });
+      if (cachedAnalytics) {
+        return createSuccessResponse(res, 200, 'General student analytics fetched from cache', cachedAnalytics, {
+          source: 'cache'
+        });
+      }
+
+      const analytics = await generateStudentDashboardAnalytics({ period, classId, startDate, endDate });
+      
+      // Cache the analytics
+      await setStudentAnalyticsInCache('general', { period, classId, startDate, endDate }, analytics);
+
+      return createSuccessResponse(res, 200, 'General student analytics fetched successfully', analytics, {
+        source: 'database'
+      });
+    } catch (error) {
+      return handlePrismaError(res, error, 'getGeneralStudentAnalytics');
     }
   }
 
@@ -2502,7 +2202,7 @@ class StudentController {
           student: {
             select: {
               id: true,
-              user: { select: { firstName: true, lastName: true, dariName: true, displayName: true } }
+              user: { select: { firstName: true, lastName: true, displayName: true } }
             }
           }
         },
@@ -2671,353 +2371,6 @@ class StudentController {
         message: 'Failed to fetch student conversion stats',
         error: error.message
       });
-    }
-  }
-
-  /**
-   * Generate student card
-   */
-  async generateStudentCard(req, res) {
-    try {
-      const { studentId } = req.params;
-      
-      // Validate ID format (can be student ID or user ID)
-      if (!/^[0-9]+$/.test(studentId)) {
-        return createErrorResponse(res, 400, 'Invalid ID format');
-      }
-
-      // Import the card generation service
-      const CardGenerationService = (await import('../services/cardGenerationService.js')).default;
-      
-      // Initialize the service
-      await CardGenerationService.initialize();
-      
-      // Check if the ID is a student ID or user ID
-      let actualStudentId = studentId;
-      
-      // First, try to find student by student ID
-      let student = await prisma.student.findFirst({
-        where: {
-          id: BigInt(studentId),
-          schoolId: req.user.schoolId,
-          deletedAt: null
-        }
-      });
-      
-      // If not found by student ID, try to find by user ID
-      if (!student) {
-        student = await prisma.student.findFirst({
-          where: {
-            userId: BigInt(studentId),
-            schoolId: req.user.schoolId,
-            deletedAt: null
-          }
-        });
-        
-        if (student) {
-          actualStudentId = student.id.toString();
-        }
-      }
-      
-      if (!student) {
-        return createErrorResponse(res, 404, 'Student not found');
-      }
-      
-      // Generate the card using the student ID
-      const result = await CardGenerationService.generateStudentCard(actualStudentId);
-      
-      if (result.success) {
-        // Always download the file directly
-        res.setHeader('Content-Type', 'image/jpeg');
-        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-        
-        // Send the file
-        return res.sendFile(path.resolve(result.filePath), (err) => {
-          if (err) {
-            console.error('Error sending file:', err);
-            return createErrorResponse(res, 500, 'Failed to send card file');
-          }
-        });
-      } else {
-        return createErrorResponse(res, 500, `Failed to generate student card: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('Error in generateStudentCard:', error);
-      return createErrorResponse(res, 500, `Failed to generate student card: ${error.message}`);
-    }
-  }
-
-  /**
-   * Download student card as file
-   */
-  async downloadStudentCard(req, res) {
-    try {
-      const { studentId } = req.params;
-      
-      // Validate ID format (can be student ID or user ID)
-      if (!/^[0-9]+$/.test(studentId)) {
-        return createErrorResponse(res, 400, 'Invalid ID format');
-      }
-
-      // Import the card generation service
-      const CardGenerationService = (await import('../services/cardGenerationService.js')).default;
-      
-      // Initialize the service
-      await CardGenerationService.initialize();
-      
-      // Check if the ID is a student ID or user ID
-      let actualStudentId = studentId;
-      
-      // First, try to find student by student ID
-      let student = await prisma.student.findFirst({
-        where: {
-          id: BigInt(studentId),
-          schoolId: req.user.schoolId,
-          deletedAt: null
-        }
-      });
-      
-      // If not found by student ID, try to find by user ID
-      if (!student) {
-        student = await prisma.student.findFirst({
-          where: {
-            userId: BigInt(studentId),
-            schoolId: req.user.schoolId,
-            deletedAt: null
-          }
-        });
-        
-        if (student) {
-          actualStudentId = student.id.toString();
-        }
-      }
-      
-      if (!student) {
-        return createErrorResponse(res, 404, 'Student not found');
-      }
-      
-      // Generate the card using the student ID
-      const result = await CardGenerationService.generateStudentCard(actualStudentId);
-      
-      if (result.success) {
-        // Set headers for file download
-        res.setHeader('Content-Type', 'image/jpeg');
-        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-        
-        // Send the file
-        return res.sendFile(path.resolve(result.filePath), (err) => {
-          if (err) {
-            console.error('Error sending file:', err);
-            return createErrorResponse(res, 500, 'Failed to send card file');
-          }
-        });
-      } else {
-        return createErrorResponse(res, 500, `Failed to generate student card: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('Error in downloadStudentCard:', error);
-      return createErrorResponse(res, 500, `Failed to generate student card: ${error.message}`);
-    }
-  }
-
-  /**
-   * Generate student card as base64 (alternative endpoint)
-   */
-  async generateStudentCardBase64(req, res) {
-    try {
-      const { studentId } = req.params;
-      
-      // Validate ID format (can be student ID or user ID)
-      if (!/^[0-9]+$/.test(studentId)) {
-        return createErrorResponse(res, 400, 'Invalid ID format');
-      }
-
-      // Import the card generation service
-      const CardGenerationService = (await import('../services/cardGenerationService.js')).default;
-      
-      // Initialize the service
-      await CardGenerationService.initialize();
-      
-      // Check if the ID is a student ID or user ID
-      let actualStudentId = studentId;
-      
-      // First, try to find student by student ID
-      let student = await prisma.student.findFirst({
-        where: {
-          id: BigInt(studentId),
-          schoolId: req.user.schoolId,
-          deletedAt: null
-        }
-      });
-      
-      // If not found by student ID, try to find by user ID
-      if (!student) {
-        student = await prisma.student.findFirst({
-          where: {
-            userId: BigInt(studentId),
-            schoolId: req.user.schoolId,
-            deletedAt: null
-          }
-        });
-        
-        if (student) {
-          actualStudentId = student.id.toString();
-        }
-      }
-      
-      if (!student) {
-        return createErrorResponse(res, 404, 'Student not found');
-      }
-      
-      // Generate the card using the student ID
-      const result = await CardGenerationService.generateStudentCard(actualStudentId);
-      
-      if (result.success) {
-        // Read the file and convert to base64
-        const fs = await import('fs-extra');
-        const fileBuffer = await fs.readFile(result.filePath);
-        const base64Image = fileBuffer.toString('base64');
-        
-        return createSuccessResponse(res, 200, 'Student card generated successfully', {
-          filename: result.filename,
-          imageData: `data:image/jpeg;base64,${base64Image}`,
-          student: result.student
-        });
-      } else {
-        return createErrorResponse(res, 500, `Failed to generate student card: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('Error in generateStudentCardBase64:', error);
-      return createErrorResponse(res, 500, `Failed to generate student card: ${error.message}`);
-    }
-  }
-
-  /**
-   * Get student card print count
-   */
-  async getStudentCardPrintCount(req, res) {
-    try {
-      const { studentId } = req.params;
-      
-      // Validate ID format
-      if (!/^[0-9]+$/.test(studentId)) {
-        return createErrorResponse(res, 400, 'Invalid ID format');
-      }
-
-      // Import the card generation service
-      const CardGenerationService = (await import('../services/cardGenerationService.js')).default;
-      
-      // Get the print count
-      const printCount = await CardGenerationService.getCardPrintCount(studentId);
-      
-      return createSuccessResponse(res, 200, 'Card print count retrieved successfully', {
-        studentId: studentId,
-        printCount: printCount
-      });
-    } catch (error) {
-      console.error('Error in getStudentCardPrintCount:', error);
-      return createErrorResponse(res, 500, `Failed to get card print count: ${error.message}`);
-    }
-  }
-
-  /**
-   * Upload student avatar
-   */
-  async uploadStudentAvatar(req, res) {
-    try {
-      const { studentId } = req.params;
-      
-      // Validate ID format
-      if (!/^[0-9]+$/.test(studentId)) {
-        return createErrorResponse(res, 400, 'Invalid ID format');
-      }
-
-      // Check if file was uploaded
-      if (!req.file) {
-        return createErrorResponse(res, 400, 'No file uploaded');
-      }
-
-      // Get student data
-      const student = await prisma.student.findFirst({
-        where: {
-          id: BigInt(studentId),
-          schoolId: req.user.schoolId,
-          deletedAt: null
-        },
-        include: {
-          user: true
-        }
-      });
-
-      if (!student) {
-        return createErrorResponse(res, 404, 'Student not found');
-      }
-
-      // Update user avatar
-      await prisma.user.update({
-        where: { id: student.userId },
-        data: {
-          avatar: req.file.path,
-          updatedBy: req.user.id,
-          updatedAt: new Date()
-        }
-      });
-
-      return createSuccessResponse(res, 200, 'Avatar uploaded successfully', {
-        studentId: studentId,
-        avatarPath: req.file.path,
-        filename: req.file.filename
-      });
-    } catch (error) {
-      console.error('Error in uploadStudentAvatar:', error);
-      return createErrorResponse(res, 500, `Failed to upload avatar: ${error.message}`);
-    }
-  }
-
-  /**
-   * Delete student avatar
-   */
-  async deleteStudentAvatar(req, res) {
-    try {
-      const { studentId } = req.params;
-      
-      // Validate ID format
-      if (!/^[0-9]+$/.test(studentId)) {
-        return createErrorResponse(res, 400, 'Invalid ID format');
-      }
-
-      // Get student data
-      const student = await prisma.student.findFirst({
-        where: {
-          id: BigInt(studentId),
-          schoolId: req.user.schoolId,
-          deletedAt: null
-        },
-        include: {
-          user: true
-        }
-      });
-
-      if (!student) {
-        return createErrorResponse(res, 404, 'Student not found');
-      }
-
-      // Update user avatar to null
-      await prisma.user.update({
-        where: { id: student.userId },
-        data: {
-          avatar: null,
-          updatedBy: req.user.id,
-          updatedAt: new Date()
-        }
-      });
-
-      return createSuccessResponse(res, 200, 'Avatar deleted successfully', {
-        studentId: studentId
-      });
-    } catch (error) {
-      console.error('Error in deleteStudentAvatar:', error);
-      return createErrorResponse(res, 500, `Failed to delete avatar: ${error.message}`);
     }
   }
 }
