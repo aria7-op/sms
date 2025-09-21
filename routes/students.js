@@ -918,7 +918,8 @@ router.post('/cache/warm',
   studentController.warmCache.bind(studentController)
 );
 
-
+// Add this route to your student routes file
+router.get('/analytics/dashboard', studentController.getGeneralStudentAnalytics);
 // ======================
 // ERROR HANDLING MIDDLEWARE
 // ======================
